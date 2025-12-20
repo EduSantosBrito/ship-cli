@@ -79,7 +79,8 @@ async function injectShipContext(
   context?: { model?: { providerID: string; modelID: string }; agent?: string }
 ): Promise<void> {
   try {
-    const primeOutput = await $`ship prime`.text();
+    // Use quiet() to prevent any output from bleeding into TUI
+    const primeOutput = await $`ship prime`.quiet().text();
 
     if (!primeOutput || primeOutput.trim() === "") {
       return;
@@ -116,7 +117,8 @@ async function runShip(
   args: string[]
 ): Promise<{ success: boolean; output: string }> {
   try {
-    const result = await $`ship ${args}`.nothrow();
+    // Use quiet() to prevent output from bleeding into TUI
+    const result = await $`ship ${args}`.quiet().nothrow();
     const stdout = await new Response(result.stdout).text();
     const stderr = await new Response(result.stderr).text();
 
@@ -140,7 +142,8 @@ async function runShip(
 async function isShipConfigured($: PluginInput["$"]): Promise<boolean> {
   try {
     // Try running ship prime - it will fail if not configured
-    const result = await $`ship prime`.nothrow();
+    // Use quiet() to suppress stdout/stderr from bleeding into TUI
+    const result = await $`ship prime`.quiet().nothrow();
     return result.exitCode === 0;
   } catch {
     return false;

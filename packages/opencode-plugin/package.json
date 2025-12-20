@@ -1,6 +1,6 @@
 {
   "name": "@ship-cli/opencode",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
   "description": "OpenCode plugin for Ship - Linear task management integration",
   "license": "MIT",
