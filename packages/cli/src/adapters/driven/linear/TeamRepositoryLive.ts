@@ -82,7 +82,8 @@ const make = Effect.gen(function* () {
             if (!t) throw new Error("Team not returned");
             return t;
           },
-          catch: (e) => new LinearApiError({ message: `Failed to get created team: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to get created team: ${e}`, cause: e }),
         });
 
         return mapTeam(team);

@@ -388,11 +388,14 @@ const make = Effect.gen(function* () {
               relatedIssueId: blockerId,
               type: LinearDocument.IssueRelationType.Blocks,
             }),
-          catch: (e) => new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
         });
 
         if (!result.success) {
-          return yield* Effect.fail(new TaskError({ message: "Failed to create blocking relation" }));
+          return yield* Effect.fail(
+            new TaskError({ message: "Failed to create blocking relation" }),
+          );
         }
       }),
       "Adding blocker",
@@ -417,7 +420,8 @@ const make = Effect.gen(function* () {
 
         const relations = yield* Effect.tryPromise({
           try: () => blocked.relations(),
-          catch: (e) => new LinearApiError({ message: `Failed to fetch relations: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to fetch relations: ${e}`, cause: e }),
         });
 
         const relationToDelete = yield* Effect.tryPromise({
@@ -442,7 +446,8 @@ const make = Effect.gen(function* () {
 
         yield* Effect.tryPromise({
           try: () => client.deleteIssueRelation(relationToDelete.id),
-          catch: (e) => new LinearApiError({ message: `Failed to delete relation: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to delete relation: ${e}`, cause: e }),
         });
       }),
       "Removing blocker",

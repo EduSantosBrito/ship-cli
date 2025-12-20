@@ -133,11 +133,13 @@ async function runShip(
 }
 
 /**
- * Check if ship is configured in the given directory
+ * Check if ship is configured by attempting to run a ship command.
+ * This handles both local (.ship/config.yaml) and global configurations.
  */
 async function isShipConfigured($: PluginInput["$"]): Promise<boolean> {
   try {
-    const result = await $`test -f .ship/config.yaml`.nothrow();
+    // Try running ship prime - it will fail if not configured
+    const result = await $`ship prime`.nothrow();
     return result.exitCode === 0;
   } catch {
     return false;

@@ -40,14 +40,15 @@ export const teamCommand = Command.make("team", {}, () =>
 
     // Select team or create new
     const currentTeamId = Option.isSome(partial.linear) ? partial.linear.value.teamId : null;
-    const teamOptions: Array<{ value: TeamId | typeof CREATE_NEW; label: string; hint?: string }> = [
-      ...teams.map((t) =>
-        currentTeamId === t.id
-          ? { value: t.id, label: `${t.key} - ${t.name}`, hint: "current" as const }
-          : { value: t.id, label: `${t.key} - ${t.name}` },
-      ),
-      { value: CREATE_NEW, label: "Create new team..." },
-    ];
+    const teamOptions: Array<{ value: TeamId | typeof CREATE_NEW; label: string; hint?: string }> =
+      [
+        ...teams.map((t) =>
+          currentTeamId === t.id
+            ? { value: t.id, label: `${t.key} - ${t.name}`, hint: "current" as const }
+            : { value: t.id, label: `${t.key} - ${t.name}` },
+        ),
+        { value: CREATE_NEW, label: "Create new team..." },
+      ];
 
     const teamChoice = yield* Effect.tryPromise({
       try: () =>

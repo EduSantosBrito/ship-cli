@@ -37,7 +37,9 @@ export const startCommand = Command.make(
         if (json) {
           yield* Console.log(JSON.stringify({ status: "already_in_progress", task: taskId }));
         } else {
-          yield* Console.log(`Task ${task.identifier} is already in progress (${task.state.name}).`);
+          yield* Console.log(
+            `Task ${task.identifier} is already in progress (${task.state.name}).`,
+          );
         }
         return;
       }
