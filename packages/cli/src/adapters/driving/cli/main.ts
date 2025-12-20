@@ -14,6 +14,8 @@ import { blockCommand } from "./commands/block.js";
 import { unblockCommand } from "./commands/unblock.js";
 import { blockedCommand } from "./commands/blocked.js";
 import { primeCommand } from "./commands/prime.js";
+import { updateCommand } from "./commands/update.js";
+import { relateCommand } from "./commands/relate.js";
 
 // Root command
 const ship = Command.make("ship", {}, () =>
@@ -35,9 +37,11 @@ Commands:
   
   start <id>        Start working on a task
   done <id>         Mark task as complete
+  update <id>       Update task details
   
   block <a> <b>     Mark task A as blocking task B
   unblock <a> <b>   Remove blocking relationship
+  relate <a> <b>    Link two tasks as related
   
   prime             Output AI-optimized context
 
@@ -56,9 +60,11 @@ export const command = ship.pipe(
     showCommand,
     startCommand,
     doneCommand,
+    updateCommand,
     createCommand,
     blockCommand,
     unblockCommand,
+    relateCommand,
     blockedCommand,
     primeCommand,
   ]),

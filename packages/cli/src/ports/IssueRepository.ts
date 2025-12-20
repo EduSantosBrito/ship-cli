@@ -62,6 +62,12 @@ export interface IssueRepository {
     blockerId: TaskId,
   ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
 
+  /** Add a "related" relationship between tasks (enables auto-linking in Linear) */
+  readonly addRelated: (
+    taskId: TaskId,
+    relatedTaskId: TaskId,
+  ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
+
   /** Get the suggested branch name for a task */
   readonly getBranchName: (id: TaskId) => Effect.Effect<string, TaskNotFoundError | LinearApiError>;
 }

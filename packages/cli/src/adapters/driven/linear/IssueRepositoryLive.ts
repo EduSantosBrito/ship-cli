@@ -453,6 +453,34 @@ const make = Effect.gen(function* () {
       "Removing blocker",
     );
 
+  const addRelated = (
+    taskId: TaskId,
+    relatedTaskId: TaskId,
+  ): Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError> =>
+    withRetryAndTimeout(
+      Effect.gen(function* () {
+        const client = yield* linearClient.client();
+
+        const result = yield* Effect.tryPromise({
+          try: () =>
+            client.createIssueRelation({
+              issueId: taskId,
+              relatedIssueId: relatedTaskId,
+              type: LinearDocument.IssueRelationType.Related,
+            }),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
+        });
+
+        if (!result.success) {
+          return yield* Effect.fail(
+            new TaskError({ message: "Failed to create related relation" }),
+          );
+        }
+      }),
+      "Adding related",
+    );
+
   const getBranchName = (id: TaskId): Effect.Effect<string, TaskNotFoundError | LinearApiError> =>
     withRetryAndTimeout(
       Effect.gen(function* () {
@@ -492,6 +520,7 @@ const make = Effect.gen(function* () {
     getBlockedTasks,
     addBlocker,
     removeBlocker,
+    addRelated,
     getBranchName,
   };
 });

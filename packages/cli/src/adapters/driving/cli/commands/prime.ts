@@ -11,6 +11,39 @@ const formatTaskCompact = (task: Task): string => {
   return `${priority}${task.identifier}: ${task.title} [${task.state.name}]`;
 };
 
+const formatTaskFull = (task: Task): string[] => {
+  const lines: string[] = [];
+  const priority = task.priority === "urgent" ? "!" : task.priority === "high" ? "^" : "";
+
+  lines.push(`### ${priority}${task.identifier}: ${task.title}`);
+  lines.push(`**Status:** ${task.state.name} | **Priority:** ${task.priority}`);
+
+  if (task.labels.length > 0) {
+    lines.push(`**Labels:** ${task.labels.join(", ")}`);
+  }
+
+  if (Option.isSome(task.branchName)) {
+    lines.push(`**Branch:** \`${task.branchName.value}\``);
+  }
+
+  if (task.blockedBy.length > 0) {
+    lines.push(`**Blocked by:** ${task.blockedBy.join(", ")}`);
+  }
+
+  if (task.blocks.length > 0) {
+    lines.push(`**Blocks:** ${task.blocks.join(", ")}`);
+  }
+
+  if (Option.isSome(task.description) && task.description.value.trim()) {
+    lines.push("");
+    lines.push(task.description.value);
+  }
+
+  lines.push(`**URL:** ${task.url}`);
+
+  return lines;
+};
+
 export const primeCommand = Command.make("prime", {}, () =>
   Effect.gen(function* () {
     const config = yield* ConfigRepository;
@@ -45,14 +78,20 @@ export const primeCommand = Command.make("prime", {}, () =>
       lines.push(`Project: ${cfg.linear.projectId.value}`);
     }
 
+    // Show in-progress tasks with FULL details (description, acceptance criteria, etc.)
     if (inProgressTasks.length > 0) {
       lines.push("");
-      lines.push("## In Progress");
+      lines.push("## Current Work (In Progress)");
+      lines.push("");
       for (const task of inProgressTasks) {
-        lines.push(`- ${formatTaskCompact(task)}`);
+        lines.push(...formatTaskFull(task));
+        lines.push("");
+        lines.push("---");
+        lines.push("");
       }
     }
 
+    // Show ready tasks with compact format (just titles)
     if (readyTasks.length > 0) {
       lines.push("");
       lines.push("## Ready to Work");
@@ -64,6 +103,7 @@ export const primeCommand = Command.make("prime", {}, () =>
       }
     }
 
+    // Show blocked tasks with blockers info
     if (blockedTasks.length > 0) {
       lines.push("");
       lines.push("## Blocked");
