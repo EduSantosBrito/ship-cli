@@ -1,0 +1,50 @@
+{
+  "name": "@ship-cli/core",
+  "version": "0.0.1",
+  "type": "module",
+  "license": "MIT",
+  "description": "Linear + jj workflow CLI for AI agents",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/ship",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "ship": "./dist/bin.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "tsx src/bin.ts",
+    "build": "tsup",
+    "clean": "rimraf dist/*",
+    "check": "tsc -b tsconfig.json",
+    "lint": "oxlint",
+    "format": "oxfmt --write src/",
+    "format:check": "oxfmt src/",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@effect/cli": "^0.69.0",
+    "@effect/language-service": "latest",
+    "@effect/platform": "^0.90.3",
+    "@effect/platform-node": "^0.96.0",
+    "@effect/vitest": "^0.25.1",
+    "@linear/sdk": "^29.0.0",
+    "@types/node": "^22.5.2",
+    "effect": "^3.17.7",
+    "oxfmt": "^0.19.0",
+    "oxlint": "^1.0.0",
+    "rimraf": "^5.0.0",
+    "tsup": "^8.2.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^3.2.0",
+    "yaml": "^2.7.0"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0"
+  }
+}

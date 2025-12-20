@@ -1,0 +1,23 @@
+# Source
+src/
+scripts/
+
+# Config
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.eslintrc*
+.prettierrc*
+biome.json
+
+# Dev
+.ship/
+*.log
+coverage/
+.vscode/
+.idea/
+
+# Tests
+**/*.test.ts
+**/*.spec.ts
+__tests__/

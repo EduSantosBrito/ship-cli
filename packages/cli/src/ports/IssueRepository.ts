@@ -1,0 +1,69 @@
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import type {
+  CreateTaskInput,
+  Task,
+  TaskFilter,
+  TaskId,
+  TeamId,
+  UpdateTaskInput,
+  ProjectId,
+} from "../domain/Task.js";
+import type { LinearApiError, TaskError, TaskNotFoundError } from "../domain/Errors.js";
+
+export interface IssueRepository {
+  /** Get a task by its Linear ID */
+  readonly getTask: (id: TaskId) => Effect.Effect<Task, TaskNotFoundError | LinearApiError>;
+
+  /** Get a task by its identifier (e.g., "ENG-123") */
+  readonly getTaskByIdentifier: (
+    identifier: string,
+  ) => Effect.Effect<Task, TaskNotFoundError | LinearApiError>;
+
+  /** Create a new task */
+  readonly createTask: (
+    teamId: TeamId,
+    input: CreateTaskInput,
+  ) => Effect.Effect<Task, TaskError | LinearApiError>;
+
+  /** Update an existing task */
+  readonly updateTask: (
+    id: TaskId,
+    input: UpdateTaskInput,
+  ) => Effect.Effect<Task, TaskNotFoundError | TaskError | LinearApiError>;
+
+  /** List tasks with optional filters */
+  readonly listTasks: (
+    teamId: TeamId,
+    filter: TaskFilter,
+  ) => Effect.Effect<ReadonlyArray<Task>, LinearApiError>;
+
+  /** Get tasks that are ready to work on (not blocked) */
+  readonly getReadyTasks: (
+    teamId: TeamId,
+    projectId?: ProjectId,
+  ) => Effect.Effect<ReadonlyArray<Task>, LinearApiError>;
+
+  /** Get tasks that are blocked by other tasks */
+  readonly getBlockedTasks: (
+    teamId: TeamId,
+    projectId?: ProjectId,
+  ) => Effect.Effect<ReadonlyArray<Task>, LinearApiError>;
+
+  /** Add a blocking relationship between tasks */
+  readonly addBlocker: (
+    blockedId: TaskId,
+    blockerId: TaskId,
+  ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
+
+  /** Remove a blocking relationship between tasks */
+  readonly removeBlocker: (
+    blockedId: TaskId,
+    blockerId: TaskId,
+  ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
+
+  /** Get the suggested branch name for a task */
+  readonly getBranchName: (id: TaskId) => Effect.Effect<string, TaskNotFoundError | LinearApiError>;
+}
+
+export const IssueRepository = Context.GenericTag<IssueRepository>("IssueRepository");

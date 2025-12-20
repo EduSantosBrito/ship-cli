@@ -1,0 +1,40 @@
+{
+  "name": "@ship-cli/opencode",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "OpenCode plugin for Ship - Linear task management integration",
+  "license": "MIT",
+  "main": "src/plugin.ts",
+  "files": ["src", "README.md"],
+  "keywords": [
+    "opencode",
+    "plugin",
+    "ship",
+    "linear",
+    "task-management",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/ship",
+    "directory": "packages/opencode-plugin"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.0.143",
+    "@opencode-ai/sdk": "^1.0.143"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "typescript": "~5.6.2"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
