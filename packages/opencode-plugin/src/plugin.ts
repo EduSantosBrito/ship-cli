@@ -85,6 +85,7 @@ async function injectShipContext(
       return;
     }
 
+    // Wrap the plain markdown output with XML tags (like beads plugin does)
     const shipContext = `<ship-context>
 ${primeOutput.trim()}
 </ship-context>
@@ -203,10 +204,11 @@ function formatTaskDetails(task: {
 }
 
 /**
- * Ship tool for task management
+ * Create ship tool with captured $ from plugin context
  */
-const shipTool = createTool({
-  description: `Linear task management for the current project.
+function createShipTool($: PluginInput["$"]) {
+  return createTool({
+    description: `Linear task management for the current project.
 
 Use this tool to:
 - List tasks ready to work on (no blockers)
@@ -219,68 +221,66 @@ Use this tool to:
 Requires ship to be configured in the project (.ship/config.yaml).
 Run 'ship init' in the terminal first if not configured.`,
 
-  args: {
-    action: createTool.schema
-      .enum([
-        "ready",
-        "list",
-        "blocked",
-        "show",
-        "start",
-        "done",
-        "create",
-        "block",
-        "unblock",
-        "prime",
-        "status",
-      ])
-      .describe(
-        "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), block/unblock (dependencies), prime (AI context), status (current config)"
-      ),
-    taskId: createTool.schema
-      .string()
-      .optional()
-      .describe("Task identifier (e.g., BRI-123) - required for show, start, done"),
-    title: createTool.schema
-      .string()
-      .optional()
-      .describe("Task title - required for create"),
-    description: createTool.schema
-      .string()
-      .optional()
-      .describe("Task description - optional for create"),
-    priority: createTool.schema
-      .enum(["urgent", "high", "medium", "low", "none"])
-      .optional()
-      .describe("Task priority - optional for create"),
-    blocker: createTool.schema
-      .string()
-      .optional()
-      .describe("Blocker task ID - required for block/unblock"),
-    blocked: createTool.schema
-      .string()
-      .optional()
-      .describe("Blocked task ID - required for block/unblock"),
-    filter: createTool.schema
-      .object({
-        status: createTool.schema
-          .enum(["backlog", "todo", "in_progress", "in_review", "done", "cancelled"])
-          .optional(),
-        priority: createTool.schema.enum(["urgent", "high", "medium", "low", "none"]).optional(),
-        mine: createTool.schema.boolean().optional(),
-      })
-      .optional()
-      .describe("Filters for list action"),
-  },
+    args: {
+      action: createTool.schema
+        .enum([
+          "ready",
+          "list",
+          "blocked",
+          "show",
+          "start",
+          "done",
+          "create",
+          "block",
+          "unblock",
+          "prime",
+          "status",
+        ])
+        .describe(
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), block/unblock (dependencies), prime (AI context), status (current config)"
+        ),
+      taskId: createTool.schema
+        .string()
+        .optional()
+        .describe("Task identifier (e.g., BRI-123) - required for show, start, done"),
+      title: createTool.schema
+        .string()
+        .optional()
+        .describe("Task title - required for create"),
+      description: createTool.schema
+        .string()
+        .optional()
+        .describe("Task description - optional for create"),
+      priority: createTool.schema
+        .enum(["urgent", "high", "medium", "low", "none"])
+        .optional()
+        .describe("Task priority - optional for create"),
+      blocker: createTool.schema
+        .string()
+        .optional()
+        .describe("Blocker task ID - required for block/unblock"),
+      blocked: createTool.schema
+        .string()
+        .optional()
+        .describe("Blocked task ID - required for block/unblock"),
+      filter: createTool.schema
+        .object({
+          status: createTool.schema
+            .enum(["backlog", "todo", "in_progress", "in_review", "done", "cancelled"])
+            .optional(),
+          priority: createTool.schema.enum(["urgent", "high", "medium", "low", "none"]).optional(),
+          mine: createTool.schema.boolean().optional(),
+        })
+        .optional()
+        .describe("Filters for list action"),
+    },
 
-  async execute(args, ctx) {
-    const $ = (ctx as any).$ as PluginInput["$"];
-
-    // Check if ship is configured
-    if (args.action !== "status") {
-      const configured = await isShipConfigured($);
-      if (!configured) {
-        return `Ship is not configured in this project.
+    async execute(args) {
+      // Check if ship is configured
+      if (args.action !== "status") {
+        const configured = await isShipConfigured($);
+        if (!configured) {
+          return `Ship is not configured in this project.
 
 Run 'ship init' in the terminal to:
 1. Authenticate with Linear (paste your API key from https://linear.app/settings/api)
@@ -288,170 +288,174 @@ Run 'ship init' in the terminal to:
 3. Optionally select a project
 
 After that, you can use this tool to manage tasks.`;
-      }
-    }
-
-    switch (args.action) {
-      case "status": {
-        const configured = await isShipConfigured($);
-        if (!configured) {
-          return "Ship is not configured. Run 'ship init' first.";
         }
-        return "Ship is configured in this project.";
       }
 
-      case "ready": {
-        const result = await runShip($, ["ready", "--json"]);
-        if (!result.success) {
-          return `Failed to get ready tasks: ${result.output}`;
-        }
-        try {
-          const tasks = JSON.parse(result.output);
-          if (tasks.length === 0) {
-            return "No tasks ready to work on (all tasks are either blocked or completed).";
+      switch (args.action) {
+        case "status": {
+          const configured = await isShipConfigured($);
+          if (!configured) {
+            return "Ship is not configured. Run 'ship init' first.";
           }
-          return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}`;
-        } catch {
-          return result.output;
+          return "Ship is configured in this project.";
         }
-      }
 
-      case "list": {
-        const listArgs = ["list", "--json"];
-        if (args.filter?.status) listArgs.push("--status", args.filter.status);
-        if (args.filter?.priority) listArgs.push("--priority", args.filter.priority);
-        if (args.filter?.mine) listArgs.push("--mine");
-
-        const result = await runShip($, listArgs);
-        if (!result.success) {
-          return `Failed to list tasks: ${result.output}`;
-        }
-        try {
-          const tasks = JSON.parse(result.output);
-          if (tasks.length === 0) {
-            return "No tasks found matching the filter.";
+        case "ready": {
+          const result = await runShip($, ["ready", "--json"]);
+          if (!result.success) {
+            return `Failed to get ready tasks: ${result.output}`;
           }
-          return `Tasks:\n\n${formatTaskList(tasks)}`;
-        } catch {
-          return result.output;
-        }
-      }
-
-      case "blocked": {
-        const result = await runShip($, ["blocked", "--json"]);
-        if (!result.success) {
-          return `Failed to get blocked tasks: ${result.output}`;
-        }
-        try {
-          const tasks = JSON.parse(result.output);
-          if (tasks.length === 0) {
-            return "No blocked tasks.";
+          try {
+            const tasks = JSON.parse(result.output);
+            if (tasks.length === 0) {
+              return "No tasks ready to work on (all tasks are either blocked or completed).";
+            }
+            return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}`;
+          } catch {
+            return result.output;
           }
-          return `Blocked tasks:\n\n${formatTaskList(tasks)}`;
-        } catch {
+        }
+
+        case "list": {
+          const listArgs = ["list", "--json"];
+          if (args.filter?.status) listArgs.push("--status", args.filter.status);
+          if (args.filter?.priority) listArgs.push("--priority", args.filter.priority);
+          if (args.filter?.mine) listArgs.push("--mine");
+
+          const result = await runShip($, listArgs);
+          if (!result.success) {
+            return `Failed to list tasks: ${result.output}`;
+          }
+          try {
+            const tasks = JSON.parse(result.output);
+            if (tasks.length === 0) {
+              return "No tasks found matching the filter.";
+            }
+            return `Tasks:\n\n${formatTaskList(tasks)}`;
+          } catch {
+            return result.output;
+          }
+        }
+
+        case "blocked": {
+          const result = await runShip($, ["blocked", "--json"]);
+          if (!result.success) {
+            return `Failed to get blocked tasks: ${result.output}`;
+          }
+          try {
+            const tasks = JSON.parse(result.output);
+            if (tasks.length === 0) {
+              return "No blocked tasks.";
+            }
+            return `Blocked tasks:\n\n${formatTaskList(tasks)}`;
+          } catch {
+            return result.output;
+          }
+        }
+
+        case "show": {
+          if (!args.taskId) {
+            return "Error: taskId is required for show action";
+          }
+          const result = await runShip($, ["show", args.taskId, "--json"]);
+          if (!result.success) {
+            return `Failed to get task: ${result.output}`;
+          }
+          try {
+            const task = JSON.parse(result.output);
+            return formatTaskDetails(task);
+          } catch {
+            return result.output;
+          }
+        }
+
+        case "start": {
+          if (!args.taskId) {
+            return "Error: taskId is required for start action";
+          }
+          const result = await runShip($, ["start", args.taskId]);
+          if (!result.success) {
+            return `Failed to start task: ${result.output}`;
+          }
+          return `Started working on ${args.taskId}`;
+        }
+
+        case "done": {
+          if (!args.taskId) {
+            return "Error: taskId is required for done action";
+          }
+          const result = await runShip($, ["done", args.taskId]);
+          if (!result.success) {
+            return `Failed to complete task: ${result.output}`;
+          }
+          return `Completed ${args.taskId}`;
+        }
+
+        case "create": {
+          if (!args.title) {
+            return "Error: title is required for create action";
+          }
+          const createArgs = ["create", args.title, "--json"];
+          if (args.description) createArgs.push("--description", args.description);
+          if (args.priority) createArgs.push("--priority", args.priority);
+
+          const result = await runShip($, createArgs);
+          if (!result.success) {
+            return `Failed to create task: ${result.output}`;
+          }
+          try {
+            const task = JSON.parse(result.output);
+            return `Created task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
+          } catch {
+            return result.output;
+          }
+        }
+
+        case "block": {
+          if (!args.blocker || !args.blocked) {
+            return "Error: both blocker and blocked task IDs are required";
+          }
+          const result = await runShip($, ["block", args.blocker, args.blocked]);
+          if (!result.success) {
+            return `Failed to add blocker: ${result.output}`;
+          }
+          return `${args.blocker} now blocks ${args.blocked}`;
+        }
+
+        case "unblock": {
+          if (!args.blocker || !args.blocked) {
+            return "Error: both blocker and blocked task IDs are required";
+          }
+          const result = await runShip($, ["unblock", args.blocker, args.blocked]);
+          if (!result.success) {
+            return `Failed to remove blocker: ${result.output}`;
+          }
+          return `Removed ${args.blocker} as blocker of ${args.blocked}`;
+        }
+
+        case "prime": {
+          const result = await runShip($, ["prime"]);
+          if (!result.success) {
+            return `Failed to get context: ${result.output}`;
+          }
           return result.output;
         }
+
+        default:
+          return `Unknown action: ${args.action}`;
       }
-
-      case "show": {
-        if (!args.taskId) {
-          return "Error: taskId is required for show action";
-        }
-        const result = await runShip($, ["show", args.taskId, "--json"]);
-        if (!result.success) {
-          return `Failed to get task: ${result.output}`;
-        }
-        try {
-          const task = JSON.parse(result.output);
-          return formatTaskDetails(task);
-        } catch {
-          return result.output;
-        }
-      }
-
-      case "start": {
-        if (!args.taskId) {
-          return "Error: taskId is required for start action";
-        }
-        const result = await runShip($, ["start", args.taskId]);
-        if (!result.success) {
-          return `Failed to start task: ${result.output}`;
-        }
-        return `Started working on ${args.taskId}`;
-      }
-
-      case "done": {
-        if (!args.taskId) {
-          return "Error: taskId is required for done action";
-        }
-        const result = await runShip($, ["done", args.taskId]);
-        if (!result.success) {
-          return `Failed to complete task: ${result.output}`;
-        }
-        return `Completed ${args.taskId}`;
-      }
-
-      case "create": {
-        if (!args.title) {
-          return "Error: title is required for create action";
-        }
-        const createArgs = ["create", args.title, "--json"];
-        if (args.description) createArgs.push("--description", args.description);
-        if (args.priority) createArgs.push("--priority", args.priority);
-
-        const result = await runShip($, createArgs);
-        if (!result.success) {
-          return `Failed to create task: ${result.output}`;
-        }
-        try {
-          const task = JSON.parse(result.output);
-          return `Created task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
-        } catch {
-          return result.output;
-        }
-      }
-
-      case "block": {
-        if (!args.blocker || !args.blocked) {
-          return "Error: both blocker and blocked task IDs are required";
-        }
-        const result = await runShip($, ["block", args.blocker, args.blocked]);
-        if (!result.success) {
-          return `Failed to add blocker: ${result.output}`;
-        }
-        return `${args.blocker} now blocks ${args.blocked}`;
-      }
-
-      case "unblock": {
-        if (!args.blocker || !args.blocked) {
-          return "Error: both blocker and blocked task IDs are required";
-        }
-        const result = await runShip($, ["unblock", args.blocker, args.blocked]);
-        if (!result.success) {
-          return `Failed to remove blocker: ${result.output}`;
-        }
-        return `Removed ${args.blocker} as blocker of ${args.blocked}`;
-      }
-
-      case "prime": {
-        const result = await runShip($, ["prime"]);
-        if (!result.success) {
-          return `Failed to get context: ${result.output}`;
-        }
-        return result.output;
-      }
-
-      default:
-        return `Unknown action: ${args.action}`;
-    }
-  },
-});
+    },
+  });
+}
 
 /**
  * Ship OpenCode Plugin
  */
 export const ShipPlugin: Plugin = async ({ client, $ }) => {
   const injectedSessions = new Set<string>();
+
+  // Create the ship tool with captured $
+  const shipTool = createShipTool($);
 
   return {
     "chat.message": async (_input, output) => {
