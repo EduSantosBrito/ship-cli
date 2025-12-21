@@ -6,6 +6,7 @@ import { LinearClientLive } from "../adapters/driven/linear/LinearClient.js";
 import { TeamRepositoryLive } from "../adapters/driven/linear/TeamRepositoryLive.js";
 import { ProjectRepositoryLive } from "../adapters/driven/linear/ProjectRepositoryLive.js";
 import { IssueRepositoryLive } from "../adapters/driven/linear/IssueRepositoryLive.js";
+import { VcsServiceLive } from "../adapters/driven/vcs/VcsServiceLive.js";
 
 // Layer dependencies:
 // ConfigRepositoryLive: FileSystem + Path -> ConfigRepository
@@ -14,6 +15,7 @@ import { IssueRepositoryLive } from "../adapters/driven/linear/IssueRepositoryLi
 // TeamRepositoryLive: LinearClientService -> TeamRepository
 // ProjectRepositoryLive: LinearClientService -> ProjectRepository
 // IssueRepositoryLive: LinearClientService -> IssueRepository
+// VcsServiceLive: CommandExecutor -> VcsService
 
 // Build the layer chain - each layer provides what the next needs
 // ConfigRepository provides what AuthService needs
@@ -23,14 +25,18 @@ const ConfigAndAuth = AuthServiceLive.pipe(Layer.provideMerge(ConfigRepositoryLi
 const ConfigAuthAndLinear = LinearClientLive.pipe(Layer.provideMerge(ConfigAndAuth));
 
 // LinearClientService provides what repositories need
-// Merge all three repository layers together
+// Merge all repository layers together
 const RepositoryLayers = Layer.mergeAll(
   TeamRepositoryLive,
   ProjectRepositoryLive,
   IssueRepositoryLive,
 );
 
-const AllServices = RepositoryLayers.pipe(Layer.provideMerge(ConfigAuthAndLinear));
+// VcsService depends on CommandExecutor (from NodeContext)
+// Merge it with the other services
+const AllServices = Layer.mergeAll(RepositoryLayers, VcsServiceLive).pipe(
+  Layer.provideMerge(ConfigAuthAndLinear),
+);
 
 // Full application layer for Phase 1 (Linear + Config + Auth)
 // Use provideMerge to:

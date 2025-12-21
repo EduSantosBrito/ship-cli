@@ -84,4 +84,4 @@ export interface VcsService {
   readonly fetch: () => Effect.Effect<void, VcsError>;
 }
 
-export class VcsService extends Context.Tag("VcsService")<VcsService, VcsService>() {}
+export const VcsService = Context.GenericTag<VcsService>("VcsService");
