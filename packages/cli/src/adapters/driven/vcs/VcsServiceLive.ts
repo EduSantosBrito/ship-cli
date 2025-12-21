@@ -70,14 +70,15 @@ const parseChanges = (output: string): Effect.Effect<ReadonlyArray<Change>, VcsE
 
 /**
  * Extract change ID from jj new/commit output
- * Output format: "Working copy now at: <change_id> <commit_id> (empty) <description>"
+ * Output format: "Working copy  (@) now at: <change_id> <commit_id> (empty) <description>"
  */
 const extractChangeId = (output: string): Effect.Effect<ChangeId, VcsError> =>
   Effect.try({
     try: () => {
-      // jj new output: "Working copy now at: ksrmwuon 1a2b3c4d (empty) message"
-      // jj commit output: "Working copy now at: newchange 5e6f7g8h (empty) (no description set)"
-      const match = output.match(/Working copy now at:\s+(\w+)/);
+      // jj new output: "Working copy  (@) now at: rnrztzzn 98410bd9 (empty) message"
+      // jj commit output: "Working copy  (@) now at: newchange 5e6f7g8h (empty) (no description set)"
+      // Match accounts for optional (@) and variable whitespace
+      const match = output.match(/Working copy\s+(?:\(@\)\s+)?now at:\s+(\w+)/);
       if (!match) {
         throw new Error(`Could not extract change ID from: ${output}`);
       }
@@ -91,10 +92,27 @@ const make = Effect.gen(function* () {
   const executor = yield* CommandExecutor.CommandExecutor;
 
   /**
-   * Run a jj command and return stdout as string
+   * Escape a string for safe use in a single-quoted shell argument.
+   * Uses the POSIX-compliant pattern: replace ' with '\'' (end quote, escaped quote, start quote).
+   *
+   * Note: Consider using a library like `shell-quote` for more complex escaping needs.
+   * For our use case (simple jj command arguments), this pattern is sufficient and well-tested.
+   */
+  const escapeShellArg = (arg: string): string => `'${arg.replace(/'/g, "'\"'\"'")}'`;
+
+  /**
+   * Run a jj command and return combined stdout+stderr as string.
+   *
+   * Why shell wrapper? jj outputs most information to stderr, not stdout.
+   * @effect/platform's Command.string only captures stdout, so we use
+   * `sh -c "jj ... 2>&1"` to redirect stderr to stdout for capture.
+   *
+   * This approach will be improved in BRI-8 (jj output parsing) by using
+   * jj's native JSON/template output instead of parsing human-readable text.
    */
   const runJj = (...args: ReadonlyArray<string>): Effect.Effect<string, VcsError> => {
-    const cmd = Command.make("jj", ...args);
+    const escapedArgs = args.map(escapeShellArg).join(" ");
+    const cmd = Command.make("sh", "-c", `jj ${escapedArgs} 2>&1`);
     return Command.string(cmd).pipe(
       Effect.provideService(CommandExecutor.CommandExecutor, executor),
       Effect.mapError((e) => new VcsError({ message: `jj ${args[0]} failed: ${e}`, cause: e })),
@@ -102,7 +120,10 @@ const make = Effect.gen(function* () {
   };
 
   /**
-   * Run a jj command and return exit code (for checking success/failure)
+   * Run a jj command and return exit code (for checking success/failure).
+   *
+   * Note: Uses direct execution (not shell-wrapped) since we only need the exit code,
+   * not the output. Exit codes work correctly without stderr capture.
    */
   const runJjExitCode = (...args: ReadonlyArray<string>): Effect.Effect<number, never> => {
     const cmd = Command.make("jj", ...args);
