@@ -5,13 +5,14 @@ import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { JjNotInstalledError, VcsError } from "../../../domain/Errors.js";
-import { VcsService, ChangeId, PushResult } from "../../../ports/VcsService.js";
+import { VcsService, ChangeId, PushResult, type VcsErrors } from "../../../ports/VcsService.js";
 import {
   JJ_LOG_JSON_TEMPLATE,
   parseChanges,
   parseChangeIdFromOutput,
   getCurrentChangeId,
 } from "./JjParser.js";
+import { mapJjError, looksLikeError, type JjError } from "./JjErrorMapper.js";
 
 // Retry policy for network operations: exponential backoff with max 3 retries
 const networkRetryPolicy = Schedule.intersect(
@@ -41,13 +42,32 @@ const make = Effect.gen(function* () {
    * Why shell wrapper? jj outputs most information to stderr, not stdout.
    * @effect/platform's Command.string only captures stdout, so we use
    * `sh -c "jj ... 2>&1"` to redirect stderr to stdout for capture.
+   *
+   * Error handling: If the output looks like an error (based on heuristics),
+   * we map it to a typed JjError using the error mapper.
    */
-  const runJj = (...args: ReadonlyArray<string>): Effect.Effect<string, VcsError> => {
+  const runJj = (...args: ReadonlyArray<string>): Effect.Effect<string, JjError> => {
     const escapedArgs = args.map(escapeShellArg).join(" ");
     const cmd = Command.make("sh", "-c", `jj ${escapedArgs} 2>&1`);
+    const command = args[0] ?? "unknown";
+
     return Command.string(cmd).pipe(
       Effect.provideService(CommandExecutor.CommandExecutor, executor),
-      Effect.mapError((e) => new VcsError({ message: `jj ${args[0]} failed: ${e}`, cause: e })),
+      Effect.flatMap((output) => {
+        // Check if output looks like an error
+        if (looksLikeError(output)) {
+          return Effect.fail(mapJjError(output, command));
+        }
+        return Effect.succeed(output);
+      }),
+      Effect.mapError((e) => {
+        // If already a JjError, pass through
+        if (e && typeof e === "object" && "_tag" in e) {
+          return e as JjError;
+        }
+        // Otherwise map the platform error
+        return new VcsError({ message: `jj ${command} failed: ${e}`, cause: e });
+      }),
     );
   };
 
@@ -89,10 +109,12 @@ const make = Effect.gen(function* () {
     );
   };
 
-  const isRepo = (): Effect.Effect<boolean, VcsError> =>
+  const isRepo = (): Effect.Effect<boolean, VcsErrors> =>
     runJjExitCode("root").pipe(Effect.map((code) => code === 0));
 
-  const createChange = (message: string): Effect.Effect<ChangeId, JjNotInstalledError | VcsError> =>
+  const createChange = (
+    message: string,
+  ): Effect.Effect<ChangeId, JjNotInstalledError | VcsErrors> =>
     Effect.gen(function* () {
       const available = yield* isAvailable();
       if (!available) {
@@ -104,16 +126,16 @@ const make = Effect.gen(function* () {
       return yield* getCurrentChangeId(runJj);
     });
 
-  const describe = (message: string): Effect.Effect<void, VcsError> =>
+  const describe = (message: string): Effect.Effect<void, VcsErrors> =>
     runJj("describe", "-m", message).pipe(Effect.asVoid);
 
-  const commit = (message: string): Effect.Effect<ChangeId, VcsError> =>
+  const commit = (message: string): Effect.Effect<ChangeId, VcsErrors> =>
     Effect.gen(function* () {
       yield* runJj("commit", "-m", message);
       return yield* getCurrentChangeId(runJj);
     });
 
-  const createBookmark = (name: string, ref?: ChangeId): Effect.Effect<void, VcsError> => {
+  const createBookmark = (name: string, ref?: ChangeId): Effect.Effect<void, VcsErrors> => {
     if (ref) {
       return runJj("bookmark", "create", name, "-r", ref).pipe(Effect.asVoid);
     }
@@ -122,7 +144,7 @@ const make = Effect.gen(function* () {
 
   const getCurrentChange = (): Effect.Effect<
     import("../../../ports/VcsService.js").Change,
-    VcsError
+    VcsErrors
   > =>
     Effect.gen(function* () {
       const output = yield* runJj("log", "-r", "@", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
@@ -133,7 +155,7 @@ const make = Effect.gen(function* () {
       return changes[0];
     });
 
-  const push = (bookmark: string): Effect.Effect<PushResult, VcsError> =>
+  const push = (bookmark: string): Effect.Effect<PushResult, VcsErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
         yield* runJj("git", "push", "-b", bookmark);
@@ -150,7 +172,7 @@ const make = Effect.gen(function* () {
 
   const getStack = (): Effect.Effect<
     ReadonlyArray<import("../../../ports/VcsService.js").Change>,
-    VcsError
+    VcsErrors
   > =>
     Effect.gen(function* () {
       // Get changes from trunk (main/master) to current working copy
@@ -160,14 +182,14 @@ const make = Effect.gen(function* () {
 
   const getLog = (
     revset?: string,
-  ): Effect.Effect<ReadonlyArray<import("../../../ports/VcsService.js").Change>, VcsError> =>
+  ): Effect.Effect<ReadonlyArray<import("../../../ports/VcsService.js").Change>, VcsErrors> =>
     Effect.gen(function* () {
       const rev = revset ?? "@";
       const output = yield* runJj("log", "-r", rev, "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
       return yield* parseChanges(output);
     });
 
-  const fetch = (): Effect.Effect<void, VcsError> =>
+  const fetch = (): Effect.Effect<void, VcsErrors> =>
     withNetworkRetry(runJj("git", "fetch").pipe(Effect.asVoid), "git fetch");
 
   return {

@@ -47,11 +47,14 @@ export class WorkspaceNotInitializedError extends Data.TaggedError("WorkspaceNot
 
 // === VCS Errors ===
 
+/** Generic VCS error - used when error doesn't match a specific type */
 export class VcsError extends Data.TaggedError("VcsError")<{
   readonly message: string;
   readonly cause?: unknown;
+  readonly exitCode?: number;
 }> {}
 
+/** jj CLI is not installed or not in PATH */
 export class JjNotInstalledError extends Data.TaggedError("JjNotInstalledError")<{
   readonly message: string;
 }> {
@@ -59,6 +62,47 @@ export class JjNotInstalledError extends Data.TaggedError("JjNotInstalledError")
     message: "jj is not installed. Visit https://jj-vcs.github.io/jj/",
   });
 }
+
+/** Current directory is not a jj repository */
+export class NotARepoError extends Data.TaggedError("NotARepoError")<{
+  readonly message: string;
+  readonly path?: string;
+}> {
+  static readonly default = new NotARepoError({
+    message: "Not a jj repository. Run 'jj git init' to initialize.",
+  });
+}
+
+/** Working copy has conflicts that need to be resolved */
+export class JjConflictError extends Data.TaggedError("JjConflictError")<{
+  readonly message: string;
+  readonly conflictedPaths?: ReadonlyArray<string>;
+}> {}
+
+/** Push operation failed (auth, network, rejected, etc.) */
+export class JjPushError extends Data.TaggedError("JjPushError")<{
+  readonly message: string;
+  readonly bookmark?: string;
+  readonly cause?: unknown;
+}> {}
+
+/** Fetch operation failed (network, auth, etc.) */
+export class JjFetchError extends Data.TaggedError("JjFetchError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+/** Bookmark operation failed (already exists, not found, etc.) */
+export class JjBookmarkError extends Data.TaggedError("JjBookmarkError")<{
+  readonly message: string;
+  readonly bookmark?: string;
+}> {}
+
+/** Revision/revset not found or invalid */
+export class JjRevisionError extends Data.TaggedError("JjRevisionError")<{
+  readonly message: string;
+  readonly revision?: string;
+}> {}
 
 // === PR Errors ===
 
