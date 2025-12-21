@@ -176,7 +176,14 @@ const make = Effect.gen(function* () {
   > =>
     Effect.gen(function* () {
       // Get changes from trunk (main/master) to current working copy
-      const output = yield* runJj("log", "-r", "trunk()..@", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
+      const output = yield* runJj(
+        "log",
+        "-r",
+        "trunk()..@",
+        "-T",
+        JJ_LOG_JSON_TEMPLATE,
+        "--no-graph",
+      );
       return yield* parseChanges(output);
     });
 

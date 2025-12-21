@@ -16,6 +16,7 @@ import { blockedCommand } from "./commands/blocked.js";
 import { primeCommand } from "./commands/prime.js";
 import { updateCommand } from "./commands/update.js";
 import { relateCommand } from "./commands/relate.js";
+import { statusCommand } from "./commands/status.js";
 
 // Root command
 const ship = Command.make("ship", {}, () =>
@@ -28,6 +29,7 @@ Commands:
   login             Re-authenticate with Linear
   team              Switch team
   project           Switch project
+  status            Check configuration status
   
   ready             List tasks ready to work on (no blockers)
   blocked           List blocked tasks
@@ -55,6 +57,7 @@ export const command = ship.pipe(
     loginCommand,
     teamCommand,
     projectCommand,
+    statusCommand,
     readyCommand,
     listCommand,
     showCommand,
