@@ -11,7 +11,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { VcsError } from "../../../domain/Errors.js";
-import { Change, ChangeId } from "../../../ports/VcsService.js";
+import { Change, ChangeId, type VcsErrors } from "../../../ports/VcsService.js";
 
 // === jj JSON Template ===
 
@@ -125,9 +125,9 @@ export const parseChangeIdFromOutput = (output: string): Effect.Effect<ChangeId,
  * This is more reliable than parsing command output - we run the command,
  * then query the current state with JSON output.
  */
-export const getCurrentChangeId = (
-  runJj: (...args: ReadonlyArray<string>) => Effect.Effect<string, VcsError>,
-): Effect.Effect<ChangeId, VcsError> =>
+export const getCurrentChangeId = <E extends VcsErrors>(
+  runJj: (...args: ReadonlyArray<string>) => Effect.Effect<string, E>,
+): Effect.Effect<ChangeId, E | VcsError> =>
   runJj("log", "-r", "@", "--no-graph", "-T", 'change_id ++ "\\n"').pipe(
     Effect.map((output) => output.trim().split("\n")[0] as ChangeId),
     Effect.flatMap((changeId) =>
