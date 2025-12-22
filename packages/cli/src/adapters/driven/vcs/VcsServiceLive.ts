@@ -292,11 +292,16 @@ const make = Effect.gen(function* () {
 
   const squash = (message: string): Effect.Effect<Change, VcsErrors> =>
     Effect.gen(function* () {
-      // Run jj squash with message (required to avoid editor)
+      // Run jj squash with message to set description on the combined change
       yield* runJj("squash", "-m", message);
 
-      // After squash, working copy moves to parent (which now has the squashed content)
-      return yield* getCurrentChange();
+      // After squash, jj creates a new empty working copy on top of the squashed result.
+      // We need to return the parent (the actual squashed change), not the new empty working copy.
+      const parent = yield* getParentChange();
+      if (!parent) {
+        return yield* new VcsError({ message: "Failed to get squashed change" });
+      }
+      return parent;
     });
 
   const abandon = (changeId?: string): Effect.Effect<Change, VcsErrors> =>
