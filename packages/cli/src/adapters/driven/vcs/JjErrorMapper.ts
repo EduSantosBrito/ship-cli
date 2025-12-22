@@ -211,17 +211,22 @@ export const mapJjError = (output: string, command: string, exitCode?: number): 
  *
  * jj uses exit codes but when running through shell we may not have them.
  * This checks common error indicators in the output.
+ *
+ * IMPORTANT: These patterns must be specific enough to avoid false positives.
+ * The output may contain user-written commit messages, descriptions, etc.
+ * Don't match generic words like "conflict" - instead match jj's actual error patterns.
  */
 export const looksLikeError = (output: string): boolean => {
   const errorIndicators = [
     /^Error:/im,
     /^error:/im,
     /^fatal:/im,
-    /failed/i,
-    /cannot/i,
-    /won't/i,
-    /refusing/i,
-    /conflict/i,
+    /failed to/i, // More specific than just "failed"
+    /cannot /i, // With space to avoid matching "cannotation" etc
+    /won't /i, // With space for specificity
+    /refusing to/i, // jj's actual pattern
+    /Conflicting changes in/i, // jj's actual conflict message
+    /has conflicts?$/im, // "Working copy has conflicts" or "has conflict"
   ];
 
   return errorIndicators.some((pattern) => pattern.test(output));
