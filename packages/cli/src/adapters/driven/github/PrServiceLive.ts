@@ -213,8 +213,9 @@ const make = Effect.gen(function* () {
   ): Effect.Effect<PullRequest, PrErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
-        // Build the command arguments
-        const args = [
+        // Build the command arguments for creating the PR
+        // Note: gh pr create doesn't support --json, it just outputs the PR URL
+        const createArgs = [
           "pr",
           "create",
           "--title",
@@ -225,11 +226,21 @@ const make = Effect.gen(function* () {
           input.head,
           "--base",
           input.base,
+        ];
+
+        // Create the PR (output is the PR URL)
+        yield* runGh(...createArgs);
+
+        // Now fetch the PR details using gh pr view with --json
+        const viewArgs = [
+          "pr",
+          "view",
+          input.head,
           "--json",
           "id,number,title,url,state,headRefName,baseRefName",
         ];
 
-        const output = yield* runGh(...args);
+        const output = yield* runGh(...viewArgs);
         const ghPr = yield* parseGhJson(output, GhPrJsonSchema);
         return yield* toPullRequest(ghPr);
       }),

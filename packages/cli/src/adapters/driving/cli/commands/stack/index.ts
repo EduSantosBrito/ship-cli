@@ -15,6 +15,7 @@ import { statusCommand } from "./status.js";
 import { createCommand } from "./create.js";
 import { describeCommand } from "./describe.js";
 import { syncCommand } from "./sync.js";
+import { submitCommand } from "./submit.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -28,6 +29,7 @@ Commands:
   create            Create a new change
   describe          Update change description
   sync              Fetch and rebase onto trunk
+  submit            Push and create/update PR
 
 Run 'ship stack <command> --help' for more information.`),
 );
@@ -40,5 +42,6 @@ export const stackCommand = stack.pipe(
     createCommand,
     describeCommand,
     syncCommand,
+    submitCommand,
   ]),
 );

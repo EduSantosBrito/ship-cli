@@ -36,14 +36,27 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking.
 | `relate` | Link tasks as related | taskId, relatedTaskId |
 | `status` | Check configuration | - |
 
+### Stack Actions (VCS)
+
+| Action | Description | Required params |
+|--------|-------------|-----------------|
+| `stack-log` | View stack of changes from trunk to current | - |
+| `stack-status` | Show current change status | - |
+| `stack-create` | Create a new change | message (optional), bookmark (optional) |
+| `stack-describe` | Update change description | message |
+| `stack-sync` | Fetch and rebase onto trunk | - |
+| `stack-submit` | Push and create/update PR | draft (optional), title (optional), body (optional) |
+
 ---
 
 ## Workflow
 
-1. Check available work: `ship` tool with action `ready`
-2. Start a task: `ship` tool with action `start` and taskId
-3. Do the work
-4. Mark complete: `ship` tool with action `done` and taskId
+1. **Sync with trunk**: `ship` tool with action `stack-sync` (ensures you're on latest code)
+2. Check available work: `ship` tool with action `ready`
+3. Start a task: `ship` tool with action `start` and taskId (creates change + bookmark)
+4. Do the work
+5. Submit changes: `ship` tool with action `stack-submit`
+6. Mark complete: `ship` tool with action `done` and taskId
 
 ---
 
@@ -104,11 +117,26 @@ Use ship tool with:
 
 ---
 
+## Stack Workflow (VCS)
+
+Use stack actions to manage changes with jj:
+
+1. **Sync before starting**: `ship` tool with action `stack-sync` (fetch + rebase onto trunk)
+2. **Check stack status**: `ship` tool with action `stack-status`
+3. **Create new change**: `ship` tool with action `stack-create`, message="Description"
+4. **Update description**: `ship` tool with action `stack-describe`, message="New description"
+5. **Sync before submitting**: `ship` tool with action `stack-sync` (rebase onto latest trunk)
+6. **Submit for review**: `ship` tool with action `stack-submit`
+
+**Always sync before starting work and before submitting** to avoid merge conflicts and ensure clean PRs.
+
+---
+
 ## Post-Task Completion
 
 After completing a task:
 
 1. **Review changes** - Summarize what was modified
 2. **Quality checks** - Run lint, format, typecheck
-3. **Version control** - Commit and push changes
+3. **Submit PR** - Use `ship` tool with action `stack-submit`
 4. **Mark complete** - Use `ship` tool with action `done`

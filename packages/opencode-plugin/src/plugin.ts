@@ -96,6 +96,17 @@ interface StackSyncResult {
   error?: { tag: string; message: string };
 }
 
+interface StackSubmitResult {
+  pushed: boolean;
+  bookmark?: string;
+  pr?: {
+    url: string;
+    number: number;
+    status: "created" | "updated" | "exists";
+  };
+  error?: string;
+}
+
 // =============================================================================
 // Shell Service
 // =============================================================================
@@ -210,6 +221,11 @@ interface ShipService {
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
   readonly describeStackChange: (message: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
   readonly syncStack: () => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
+  readonly submitStack: (input: {
+    draft?: boolean;
+    title?: string;
+    body?: string;
+  }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -336,6 +352,16 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackSyncResult>(output);
     });
 
+  const submitStack = (input: { draft?: boolean; title?: string; body?: string }) =>
+    Effect.gen(function* () {
+      const args = ["stack", "submit", "--json"];
+      if (input.draft) args.push("--draft");
+      if (input.title) args.push("--title", input.title);
+      if (input.body) args.push("--body", input.body);
+      const output = yield* shell.run(args);
+      return yield* parseJson<StackSubmitResult>(output);
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -355,6 +381,7 @@ const makeShipService = Effect.gen(function* () {
     createStackChange,
     describeStackChange,
     syncStack,
+    submitStack,
   } satisfies ShipService;
 });
 
@@ -411,6 +438,8 @@ type ToolArgs = {
   // Stack-specific args
   message?: string;
   bookmark?: string;
+  draft?: boolean;
+  body?: string;
 };
 
 const executeAction = (
@@ -628,6 +657,29 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
   Stack:   ${result.stackSize} change(s)`;
       }
 
+      case "stack-submit": {
+        const result = yield* ship.submitStack({
+          draft: args.draft,
+          title: args.title,
+          body: args.body,
+        });
+        if (result.error) {
+          if (result.pushed) {
+            return `Pushed bookmark: ${result.bookmark}\nWarning: ${result.error}`;
+          }
+          return `Error: ${result.error}`;
+        }
+        if (result.pr) {
+          const statusMsg = result.pr.status === "created"
+            ? "Created PR"
+            : result.pr.status === "exists"
+              ? "PR already exists"
+              : "Updated PR";
+          return `Pushed bookmark: ${result.bookmark}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
+        }
+        return `Pushed bookmark: ${result.bookmark}`;
+      }
+
       default:
         return `Unknown action: ${args.action}`;
     }
@@ -681,9 +733,10 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-create",
           "stack-describe",
           "stack-sync",
+          "stack-submit",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR)"
         ),
       taskId: createTool.schema
         .string()
@@ -723,6 +776,14 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("Bookmark name for stack-create action"),
+      draft: createTool.schema
+        .boolean()
+        .optional()
+        .describe("Create PR as draft - for stack-submit action"),
+      body: createTool.schema
+        .string()
+        .optional()
+        .describe("PR body - for stack-submit action (defaults to change description)"),
     },
 
     async execute(args) {
