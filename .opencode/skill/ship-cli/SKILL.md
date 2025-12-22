@@ -15,7 +15,7 @@ Ship provides real task tracking that persists across sessions, supports depende
 
 **IMPORTANT: Always use the `ship` tool, NEVER run `ship` or `pnpm ship` via bash/terminal.**
 
-The `ship` tool replaces built-in todo management. Use it for all task tracking.
+The `ship` tool replaces built-in todo management. Use it for all task tracking and VCS operations.
 
 ---
 
@@ -47,7 +47,47 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking.
 | `stack-create` | Create a new jj change with bookmark | message (optional), bookmark (optional) |
 | `stack-describe` | Update change description | message |
 | `stack-sync` | Fetch and rebase onto trunk | - |
-| `stack-submit` | Push and create/update PR | draft (optional), title (optional), body (optional) |
+| `stack-submit` | Push and create/update PR (auto-subscribes to webhook events) | draft (optional) |
+| `stack-squash` | Squash current change into parent | message |
+| `stack-abandon` | Abandon current change | changeId (optional) |
+
+### Webhook Actions (GitHub Event Routing)
+
+| Action | Description | Required params |
+|--------|-------------|-----------------|
+| `webhook-daemon-status` | Check if webhook daemon is running | - |
+| `webhook-subscribe` | Subscribe to PR events | sessionId, prNumbers |
+| `webhook-unsubscribe` | Unsubscribe from PR events | sessionId, prNumbers |
+
+---
+
+## Webhook Daemon & GitHub Events
+
+The webhook daemon enables agents to receive real-time GitHub events (PR merges, CI status, review comments).
+
+### How It Works
+
+1. **User starts daemon once** (in terminal): `ship webhook start`
+2. **Agent submits PR**: `stack-submit` automatically subscribes to all stack PRs
+3. **GitHub events arrive**: Daemon routes events to the agent's session
+4. **Agent reacts**: Receives notification and can take action (e.g., rebase on merge)
+
+### Automatic Subscription
+
+When you use `stack-submit`, the agent is automatically subscribed to receive events for:
+- The PR being submitted
+- All parent PRs in the stack
+
+This enables the **automatic rebase workflow**: when a parent PR is merged, the agent receives the event and can run `stack-sync` to rebase.
+
+### Reacting to GitHub Events
+
+When you receive a GitHub event notification:
+
+1. **PR Merged**: Run `stack-sync` to rebase onto the new trunk
+2. **CI Failed**: Investigate and fix the issue
+3. **Review Comment**: Address the feedback
+4. **PR Approved**: Consider merging or waiting for CI
 
 ---
 
@@ -74,6 +114,7 @@ Task management and VCS operations are **separate**. You control when each happe
 
 7. **Sync before submit**: `ship` tool with action `stack-sync`
 8. **Submit PR**: `ship` tool with action `stack-submit`
+   - This automatically subscribes you to webhook events for all stack PRs
 9. **Mark complete**: `ship` tool with action `done`, taskId=`<id>`
 
 ---
@@ -160,6 +201,7 @@ ship tool: action=`stack-sync`
 Always sync:
 - Before starting new work (get latest trunk)
 - Before submitting (ensure clean rebase)
+- After receiving a "PR merged" webhook event
 
 ### Create Change
 
@@ -182,6 +224,8 @@ Options:
 
 If PR already exists and title/body provided, it will update the existing PR.
 
+**Auto-subscription**: This action automatically subscribes your session to webhook events for all PRs in the stack.
+
 ---
 
 ## Post-Task Completion
@@ -193,3 +237,22 @@ After completing a task:
 3. **Sync** - `ship` tool with action `stack-sync`
 4. **Submit PR** - `ship` tool with action `stack-submit`
 5. **Mark complete** - `ship` tool with action `done`
+
+---
+
+## Stacked PRs Workflow
+
+When working on dependent changes (stacked PRs):
+
+```
+trunk ← PR A (#34) ← PR B (#35) ← PR C (#36)
+              ↑           ↑           ↑
+           merged      rebases    rebases
+```
+
+1. Each change builds on the previous one
+2. When PR A is merged, you receive a webhook event
+3. Run `stack-sync` to rebase PRs B and C onto the new trunk
+4. Run `stack-submit` to update the PRs with rebased commits
+
+This keeps your stack always up-to-date with trunk.

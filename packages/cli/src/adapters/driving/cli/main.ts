@@ -13,7 +13,6 @@ import { createCommand } from "./commands/create.js";
 import { blockCommand } from "./commands/block.js";
 import { unblockCommand } from "./commands/unblock.js";
 import { blockedCommand } from "./commands/blocked.js";
-import { primeCommand } from "./commands/prime.js";
 import { updateCommand } from "./commands/update.js";
 import { relateCommand } from "./commands/relate.js";
 import { statusCommand } from "./commands/status.js";
@@ -47,8 +46,6 @@ Commands:
   unblock <a> <b>   Remove blocking relationship
   relate <a> <b>    Link two tasks as related
   
-  prime             Output AI-optimized context
-  
   stack             VCS operations (jj wrapper for AI agents)
   webhook           GitHub webhook operations
 
@@ -74,7 +71,6 @@ export const command = ship.pipe(
     unblockCommand,
     relateCommand,
     blockedCommand,
-    primeCommand,
     stackCommand,
     webhookCommand,
   ]),

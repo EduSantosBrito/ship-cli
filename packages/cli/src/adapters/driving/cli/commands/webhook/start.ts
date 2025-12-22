@@ -23,7 +23,7 @@ const eventsOption = Options.text("events").pipe(
   Options.withDescription(
     "Comma-separated list of events to subscribe to (e.g., pull_request,pull_request_review)",
   ),
-  Options.withDefault("pull_request,pull_request_review,issue_comment,check_run"),
+  Options.withDefault("pull_request,pull_request_review,pull_request_review_comment,issue_comment,check_run"),
 );
 
 // === Command ===

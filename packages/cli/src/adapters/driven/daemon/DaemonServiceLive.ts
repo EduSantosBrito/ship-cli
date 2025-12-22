@@ -419,6 +419,39 @@ const runDaemonServer = (
       Effect.annotateLogs({ repo, events: events.join(",") })
     );
 
+    // Check if event should be forwarded to the agent
+    // Only forward actionable events: comments, reviews, and merges
+    const shouldForwardEvent = (event: WebhookEvent): boolean => {
+      const { event: eventType, action } = event;
+      const payload = event.payload as Record<string, unknown> | null;
+
+      // Comments on PRs - always actionable
+      if (eventType === "issue_comment" && action === "created") {
+        return true;
+      }
+
+      // Review comments - always actionable
+      if (eventType === "pull_request_review_comment" && action === "created") {
+        return true;
+      }
+
+      // Reviews - submitted reviews are actionable (approved, changes_requested, commented)
+      if (eventType === "pull_request_review" && action === "submitted") {
+        return true;
+      }
+
+      // PR merged - agent should sync
+      if (eventType === "pull_request" && action === "closed") {
+        const pr = payload?.pull_request as Record<string, unknown> | undefined;
+        if (pr?.merged === true) {
+          return true;
+        }
+      }
+
+      // All other events are not forwarded
+      return false;
+    };
+
     // Extract PR number from webhook event
     const extractPrNumber = (event: WebhookEvent): number | null => {
       const payload = event.payload as Record<string, unknown> | null;
@@ -453,10 +486,18 @@ const runDaemonServer = (
           Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
         );
 
+        // Filter to only actionable events
+        if (!shouldForwardEvent(event)) {
+          yield* Effect.logDebug("Event filtered out (not actionable)").pipe(
+            Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
+          );
+          return;
+        }
+
         const prNumber = extractPrNumber(event);
         if (prNumber === null) {
           yield* Effect.logInfo("Event has no PR number, skipping").pipe(
-            Effect.annotateLogs({ event: event.event })
+            Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
           );
           return;
         }
@@ -470,7 +511,7 @@ const runDaemonServer = (
         
         if (sessions._tag === "None" || HashSet.size(sessions.value) === 0) {
           yield* Effect.logInfo("No subscribers for PR").pipe(
-            Effect.annotateLogs({ prNumber: String(prNumber) })
+            Effect.annotateLogs({ prNumber: String(prNumber), event: event.event })
           );
           return;
         }
@@ -511,16 +552,16 @@ const runDaemonServer = (
     const eventStreamFiber = yield* webhookService
       .connectAndStream(webhook.wsUrl)
       .pipe(
-        Stream.tap(() => Effect.logInfo("Stream consumer pulled an event")),
-        Stream.mapEffect((event) => 
-          Effect.gen(function* () {
-            yield* Effect.logInfo("Received webhook event from stream").pipe(
-              Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
-            );
-            yield* routeEvent(event);
-            return event;
-          })
+        Stream.tap((event) => 
+          Effect.logInfo("Received webhook event").pipe(
+            Effect.annotateLogs({ 
+              event: event.event, 
+              action: event.action ?? "none",
+              deliveryId: event.deliveryId 
+            })
+          )
         ),
+        Stream.tap((event) => routeEvent(event)),
         Stream.tapError((e) =>
           Ref.set(connectedRef, false).pipe(
             Effect.tap(() => 
