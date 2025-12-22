@@ -17,6 +17,7 @@ import { primeCommand } from "./commands/prime.js";
 import { updateCommand } from "./commands/update.js";
 import { relateCommand } from "./commands/relate.js";
 import { statusCommand } from "./commands/status.js";
+import { stackCommand } from "./commands/stack/index.js";
 
 // Root command
 const ship = Command.make("ship", {}, () =>
@@ -46,6 +47,8 @@ Commands:
   relate <a> <b>    Link two tasks as related
   
   prime             Output AI-optimized context
+  
+  stack             VCS operations (jj wrapper for AI agents)
 
 Run 'ship <command> --help' for more information on a command.`),
 );
@@ -70,6 +73,7 @@ export const command = ship.pipe(
     relateCommand,
     blockedCommand,
     primeCommand,
+    stackCommand,
   ]),
 );
 
