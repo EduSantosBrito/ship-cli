@@ -7,3 +7,4 @@ export * from "./VcsService.js";
 export * from "./PrService.js";
 export * from "./WebhookService.js";
 export * from "./OpenCodeService.js";
+export * from "./DaemonService.js";
