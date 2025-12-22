@@ -136,6 +136,12 @@ export interface VcsService {
    * This is the high-level operation that agents should use after PRs merge
    */
   readonly sync: () => Effect.Effect<SyncResult, VcsErrors>;
+
+  /**
+   * Get parent change of current working copy
+   * Returns null if current change is on trunk (no parent in stack)
+   */
+  readonly getParentChange: () => Effect.Effect<Change | null, VcsErrors>;
 }
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");

@@ -99,6 +99,7 @@ interface StackSyncResult {
 interface StackSubmitResult {
   pushed: boolean;
   bookmark?: string;
+  baseBranch?: string;
   pr?: {
     url: string;
     number: number;
@@ -665,7 +666,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         });
         if (result.error) {
           if (result.pushed) {
-            return `Pushed bookmark: ${result.bookmark}\nWarning: ${result.error}`;
+            return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\nWarning: ${result.error}`;
           }
           return `Error: ${result.error}`;
         }
@@ -675,9 +676,9 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
             : result.pr.status === "exists"
               ? "PR already exists"
               : "Updated PR";
-          return `Pushed bookmark: ${result.bookmark}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
+          return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
         }
-        return `Pushed bookmark: ${result.bookmark}`;
+        return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
       }
 
       default:

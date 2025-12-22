@@ -13,7 +13,9 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Array from "effect/Array";
 import * as Console from "effect/Console";
+import { pipe } from "effect/Function";
 import { checkVcsAvailability, outputError } from "./shared.js";
 import { PrService, CreatePrInput, UpdatePrInput } from "../../../../../ports/PrService.js";
 
@@ -46,6 +48,7 @@ const bodyOption = Options.text("body").pipe(
 interface SubmitOutput {
   pushed: boolean;
   bookmark?: string;
+  baseBranch?: string;
   pr?: {
     url: string;
     number: number;
@@ -128,13 +131,18 @@ export const submitCommand = Command.make(
         return;
       }
 
-      // Get trunk info for base branch
-      const trunkResult = yield* vcs.getTrunkInfo().pipe(
-        Effect.map((trunk) => ({ success: true as const, trunk })),
-        Effect.catchAll(() => Effect.succeed({ success: false as const })),
+      // Determine base branch for PR
+      // If parent change has a bookmark, use that (stacked PR workflow)
+      // Otherwise, fall back to main/trunk
+      const parentChange = yield* vcs.getParentChange().pipe(
+        Effect.catchAll(() => Effect.succeed(null)),
       );
-      // Default to "main" if trunk detection fails
-      const baseBranch = trunkResult.success ? "main" : "main"; // trunk() revset resolves to main/master
+
+      const baseBranch = pipe(
+        Option.fromNullable(parentChange),
+        Option.flatMap((p) => Array.head(p.bookmarks)),
+        Option.getOrElse(() => "main"),
+      );
 
       // Resolve PR title and body using Option.getOrElse
       const prTitle = Option.getOrElse(title, () => change.description.split("\n")[0] || bookmark);
@@ -169,6 +177,7 @@ export const submitCommand = Command.make(
             output = {
               pushed: true,
               bookmark,
+              baseBranch,
               pr: {
                 url: existingPr.url,
                 number: existingPr.number,
@@ -180,6 +189,7 @@ export const submitCommand = Command.make(
             output = {
               pushed: true,
               bookmark,
+              baseBranch,
               pr: {
                 url: updateResult.pr.url,
                 number: updateResult.pr.number,
@@ -192,6 +202,7 @@ export const submitCommand = Command.make(
           output = {
             pushed: true,
             bookmark,
+            baseBranch,
             pr: {
               url: existingPr.url,
               number: existingPr.number,
@@ -221,12 +232,14 @@ export const submitCommand = Command.make(
           output = {
             pushed: true,
             bookmark,
+            baseBranch,
             error: `Pushed but failed to create PR: ${createResult.error}`,
           };
         } else {
           output = {
             pushed: true,
             bookmark,
+            baseBranch,
             pr: {
               url: createResult.pr.url,
               number: createResult.pr.number,
@@ -242,9 +255,11 @@ export const submitCommand = Command.make(
       } else {
         if (output.error) {
           yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
+          yield* Console.log(`Base branch: ${output.baseBranch}`);
           yield* Console.log(`Warning: ${output.error}`);
         } else if (output.pr) {
           yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
+          yield* Console.log(`Base branch: ${output.baseBranch}`);
           const statusMsg = output.pr.status === "created" 
             ? "Created PR" 
             : output.pr.status === "exists" 
