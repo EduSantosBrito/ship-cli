@@ -65,20 +65,26 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking 
 
 The webhook daemon enables agents to receive real-time GitHub events (PR merges, CI status, review comments).
 
+**You do NOT need to manually subscribe to PR events.** The `stack-submit` action handles this automatically.
+
 ### How It Works
 
 1. **User starts daemon once** (in terminal): `ship webhook start`
-2. **Agent submits PR**: `stack-submit` automatically subscribes to all stack PRs
+2. **Agent submits PR**: `stack-submit` **automatically subscribes** to all stack PRs
 3. **GitHub events arrive**: Daemon routes events to the agent's session
 4. **Agent reacts**: Receives notification and can take action (e.g., rebase on merge)
 
-### Automatic Subscription
+### Automatic Subscription (No Manual Action Required)
 
-When you use `stack-submit`, the agent is automatically subscribed to receive events for:
+When you use `stack-submit`, the agent is **automatically subscribed** to receive events for:
 - The PR being submitted
 - All parent PRs in the stack
 
+**You will see confirmation in the output**: "Auto-subscribed to stack PRs: 40, 41, 42"
+
 This enables the **automatic rebase workflow**: when a parent PR is merged, the agent receives the event and can run `stack-sync` to rebase.
+
+**DO NOT manually call `webhook-subscribe`** - it's only needed for advanced cases where you want to subscribe to PRs you didn't create.
 
 ### Reacting to GitHub Events
 
@@ -114,7 +120,9 @@ Task management and VCS operations are **separate**. You control when each happe
 
 7. **Sync before submit**: `ship` tool with action `stack-sync`
 8. **Submit PR**: `ship` tool with action `stack-submit`
-   - This automatically subscribes you to webhook events for all stack PRs
+   - **IMPORTANT**: This automatically subscribes you to webhook events for all stack PRs
+   - You will receive notifications when the PR is merged, CI fails, or reviews are added
+   - No need to manually call `webhook-subscribe` - it happens automatically
 9. **Mark complete**: `ship` tool with action `done`, taskId=`<id>`
 
 ---
@@ -224,7 +232,12 @@ Options:
 
 If PR already exists and title/body provided, it will update the existing PR.
 
-**Auto-subscription**: This action automatically subscribes your session to webhook events for all PRs in the stack.
+**CRITICAL - Auto-subscription**: This action **automatically subscribes** your session to webhook events for all PRs in the stack. You do NOT need to manually call `webhook-subscribe`. The output will confirm: "Auto-subscribed to stack PRs: X, Y, Z"
+
+This means you will automatically receive GitHub event notifications for:
+- PR merges (so you can run `stack-sync` to rebase)
+- CI status changes
+- Review comments and approvals
 
 ---
 

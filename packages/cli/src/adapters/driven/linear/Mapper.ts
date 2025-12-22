@@ -15,6 +15,7 @@ import {
   ProjectId,
   WorkflowState,
   WorkflowStateType,
+  Subtask,
   type TaskStatus,
 } from "../../../domain/Task.js";
 
@@ -96,7 +97,7 @@ export const priorityToLinear = (priority: Priority): number => {
   }
 };
 
-export const mapIssueToTask = async (issue: Issue): Promise<Task> => {
+export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Promise<Task> => {
   // Fetch related data
   const state = await issue.state;
   const labels = await issue.labels();
@@ -106,6 +107,26 @@ export const mapIssueToTask = async (issue: Issue): Promise<Task> => {
   // Note: Linear SDK doesn't directly expose relations, we'll handle this in the repository
   const blockedBy: TaskId[] = [];
   const blocks: TaskId[] = [];
+
+  // Fetch subtasks (children) if requested
+  const subtasks: Subtask[] = [];
+  if (includeSubtasks) {
+    const children = await issue.children();
+    if (children?.nodes) {
+      for (const child of children.nodes) {
+        const childState = await child.state;
+        subtasks.push(
+          new Subtask({
+            id: child.id as TaskId,
+            identifier: child.identifier,
+            title: child.title,
+            state: childState?.name ?? "Unknown",
+            stateType: mapStateType(childState?.type ?? "unstarted"),
+          }),
+        );
+      }
+    }
+  }
 
   return new Task({
     id: issue.id as TaskId,
@@ -122,6 +143,7 @@ export const mapIssueToTask = async (issue: Issue): Promise<Task> => {
     labels: labels?.nodes?.map((l) => l.name) ?? [],
     blockedBy,
     blocks,
+    subtasks,
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
   });

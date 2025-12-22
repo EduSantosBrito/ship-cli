@@ -82,6 +82,15 @@ const unregisterProcessCleanup = () => {
   processToCleanup = null;
 };
 
+interface ShipSubtask {
+  id: string;
+  identifier: string;
+  title: string;
+  state: string;
+  stateType: string;
+  isDone: boolean;
+}
+
 interface ShipTask {
   identifier: string;
   title: string;
@@ -92,6 +101,7 @@ interface ShipTask {
   labels: string[];
   url: string;
   branchName?: string;
+  subtasks?: ShipSubtask[];
 }
 
 // Stack types
@@ -711,6 +721,14 @@ const formatTaskDetails = (task: ShipTask): string => {
     output += `\n\n## Description\n\n${task.description}`;
   }
 
+  if (task.subtasks && task.subtasks.length > 0) {
+    output += `\n\n## Subtasks\n`;
+    for (const subtask of task.subtasks) {
+      const statusIndicator = subtask.isDone ? "[x]" : "[ ]";
+      output += `\n${statusIndicator} ${subtask.identifier}: ${subtask.title} (${subtask.state})`;
+    }
+  }
+
   return output;
 };
 
@@ -961,6 +979,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       case "stack-submit": {
         // Auto-subscribe using context session ID (from OpenCode) or explicit sessionId arg
         const subscribeSessionId = args.sessionId || contextSessionId;
+        
         const result = yield* ship.submitStack({
           draft: args.draft,
           title: args.title,

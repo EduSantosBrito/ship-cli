@@ -184,16 +184,34 @@ const runDaemonServer = (
           case "subscribe": {
             const { sessionId, prNumbers } = command;
             
+            yield* Effect.logInfo("Received subscribe command").pipe(
+              Effect.annotateLogs({ 
+                sessionId: sessionId ?? "undefined", 
+                prNumbers: prNumbers?.join(",") ?? "undefined" 
+              })
+            );
+            
             // Validate inputs
             if (!sessionId || sessionId.length === 0) {
+              yield* Effect.logWarning("Subscribe rejected: sessionId is required");
               return new ErrorResponse({ type: "error", error: "sessionId is required" });
             }
             if (!prNumbers || prNumbers.length === 0) {
+              yield* Effect.logWarning("Subscribe rejected: prNumbers is required");
               return new ErrorResponse({ type: "error", error: "prNumbers is required" });
             }
             if (!prNumbers.every((n) => typeof n === "number" && n > 0)) {
+              yield* Effect.logWarning("Subscribe rejected: prNumbers must be positive integers");
               return new ErrorResponse({ type: "error", error: "prNumbers must be positive integers" });
             }
+            
+            // Log registry state before update
+            const registryBefore = yield* Ref.get(registryRef);
+            yield* Effect.logInfo("Registry state before subscribe").pipe(
+              Effect.annotateLogs({ 
+                registrySize: String(HashMap.size(registryBefore))
+              })
+            );
             
             yield* Ref.update(registryRef, (registry) => {
               let updated = registry;
