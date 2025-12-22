@@ -457,25 +457,6 @@ const makeShipService = Effect.gen(function* () {
 
   // Webhook operations - uses module-level processToCleanup for persistence across tool calls
 
-  /** Check process readiness with retries instead of magic sleep */
-  const waitForProcessReady = (
-    proc: ReturnType<typeof Bun.spawn>,
-  ): Effect.Effect<boolean, never> => {
-    const checkOnce = Effect.sync(() => !proc.killed && proc.exitCode === null);
-
-    // Retry up to 5 times with 100ms spacing, stop early if process is running
-    return checkOnce.pipe(
-      Effect.flatMap((running) =>
-        running
-          ? Effect.succeed(true)
-          : Effect.sleep("100 millis").pipe(Effect.as(false)),
-      ),
-      Effect.repeat(Schedule.recurs(4)), // 5 total attempts
-      Effect.map(() => !proc.killed && proc.exitCode === null), // Final check
-      Effect.catchAll(() => Effect.succeed(false)),
-    );
-  };
-
   const startWebhook = (events?: string): Effect.Effect<WebhookStartResult, never> =>
     Effect.gen(function* () {
       // Check if already running using module-level state
@@ -500,14 +481,54 @@ const makeShipService = Effect.gen(function* () {
         stderr: "pipe",
       });
 
-      // Wait for process to be ready (or fail)
-      const isReady = yield* waitForProcessReady(proc);
+      // Collect stderr output to detect errors
+      let stderrOutput = "";
+      const stderrReader = (async () => {
+        const reader = proc.stderr.getReader();
+        const decoder = new TextDecoder();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            stderrOutput += decoder.decode(value, { stream: true });
+          }
+        } catch {
+          // Ignore read errors
+        }
+      })();
 
-      if (!isReady) {
-        const stderr = yield* Effect.promise(() => new Response(proc.stderr).text());
+      // Wait longer for the process to either:
+      // 1. Exit with error (e.g., OpenCode not running)
+      // 2. Start successfully and begin forwarding
+      yield* Effect.sleep("2 seconds");
+
+      // Check if process exited (indicates an error)
+      if (proc.exitCode !== null || proc.killed) {
+        // Wait for stderr to be fully read
+        yield* Effect.promise(() => stderrReader);
         return {
           started: false,
-          error: stderr || "Process exited immediately",
+          error: stderrOutput.trim() || "Process exited immediately",
+        };
+      }
+
+      // Check stderr for known error patterns (process might still be running but failed)
+      const errorPatterns = [
+        "OpenCode server is not running",
+        "No active OpenCode session",
+        "not installed",
+        "not authenticated",
+        "Permission denied",
+      ];
+      
+      const hasError = errorPatterns.some((pattern) => stderrOutput.includes(pattern));
+      if (hasError) {
+        // Kill the process since it's in a bad state
+        proc.kill();
+        yield* Effect.promise(() => stderrReader);
+        return {
+          started: false,
+          error: stderrOutput.trim(),
         };
       }
 
