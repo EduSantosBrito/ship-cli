@@ -241,3 +241,42 @@ export class OpenCodeSessionNotFoundError extends Data.TaggedError("OpenCodeSess
     });
   }
 }
+
+// === Workspace Errors (jj workspace) ===
+
+/** Generic workspace operation error */
+export class WorkspaceError extends Data.TaggedError("WorkspaceError")<{
+  readonly message: string;
+  readonly name?: string;
+  readonly path?: string;
+  readonly cause?: unknown;
+}> {}
+
+/** Workspace already exists with the specified name */
+export class WorkspaceExistsError extends Data.TaggedError("WorkspaceExistsError")<{
+  readonly message: string;
+  readonly name: string;
+  readonly path?: string;
+}> {
+  static forName(name: string, path?: string) {
+    const pathMsg = path ? ` at ${path}` : "";
+    return new WorkspaceExistsError({
+      message: `Workspace '${name}' already exists${pathMsg}`,
+      name,
+      ...(path !== undefined ? { path } : {}),
+    });
+  }
+}
+
+/** Workspace not found with the specified name */
+export class WorkspaceNotFoundError extends Data.TaggedError("WorkspaceNotFoundError")<{
+  readonly message: string;
+  readonly name: string;
+}> {
+  static forName(name: string) {
+    return new WorkspaceNotFoundError({
+      message: `Workspace '${name}' not found`,
+      name,
+    });
+  }
+}

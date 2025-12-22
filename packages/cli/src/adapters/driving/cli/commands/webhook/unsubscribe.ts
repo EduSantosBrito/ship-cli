@@ -77,7 +77,9 @@ export const unsubscribeCommand = Command.make(
       } else if (result.unsubscribed) {
         yield* Console.log(`Unsubscribed session ${session} from PRs: ${prs.join(", ")}`);
       } else {
-        yield* Console.error(`Failed to unsubscribe: ${"error" in result ? result.error : "Unknown error"}`);
+        yield* Console.error(
+          `Failed to unsubscribe: ${"error" in result ? result.error : "Unknown error"}`,
+        );
       }
     }),
 );

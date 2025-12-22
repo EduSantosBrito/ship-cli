@@ -37,7 +37,9 @@ const eventsOption = Options.text("events").pipe(
 
 const sessionOption = Options.text("session").pipe(
   Options.withAlias("s"),
-  Options.withDescription("OpenCode session ID to send events to (default: auto-detect active session)"),
+  Options.withDescription(
+    "OpenCode session ID to send events to (default: auto-detect active session)",
+  ),
   Options.optional,
 );
 
@@ -73,18 +75,14 @@ export const forwardCommand = Command.make(
       // 2. Get current repo
       const repo = yield* prService.getCurrentRepo();
       if (!repo) {
-        yield* Console.error(
-          "Not in a git repository or no GitHub remote configured.",
-        );
+        yield* Console.error("Not in a git repository or no GitHub remote configured.");
         return;
       }
 
       // 3. Check if OpenCode is running
       const openCodeAvailable = yield* openCodeService.isAvailable();
       if (!openCodeAvailable) {
-        yield* Console.error(
-          "OpenCode server is not running. Start OpenCode first.",
-        );
+        yield* Console.error("OpenCode server is not running. Start OpenCode first.");
         return;
       }
 
@@ -107,7 +105,9 @@ export const forwardCommand = Command.make(
               Effect.flatMap((activeSession) =>
                 activeSession
                   ? Effect.succeed(activeSession.id)
-                  : Effect.fail("No active OpenCode session found. Start a session in OpenCode first."),
+                  : Effect.fail(
+                      "No active OpenCode session found. Start a session in OpenCode first.",
+                    ),
               ),
             );
 
@@ -125,7 +125,10 @@ export const forwardCommand = Command.make(
       const targetSessionId = sessionIdResult.id;
 
       // 5. Parse events
-      const eventList = events.split(",").map((e) => e.trim()).filter(Boolean);
+      const eventList = events
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean);
       if (eventList.length === 0) {
         yield* Console.error("No events specified. Use --events to specify events to forward.");
         return;
@@ -143,12 +146,12 @@ export const forwardCommand = Command.make(
       const cleanupWebhook = (webhook: CliWebhook, repoName: string) =>
         Effect.gen(function* () {
           yield* Console.log("\nShutting down...");
-          yield* webhookService.deactivateWebhook(repoName, webhook.id).pipe(
-            Effect.catchAll(() => Effect.void),
-          );
-          yield* webhookService.deleteWebhook(repoName, webhook.id).pipe(
-            Effect.catchAll(() => Effect.void),
-          );
+          yield* webhookService
+            .deactivateWebhook(repoName, webhook.id)
+            .pipe(Effect.catchAll(() => Effect.void));
+          yield* webhookService
+            .deleteWebhook(repoName, webhook.id)
+            .pipe(Effect.catchAll(() => Effect.void));
           yield* Console.log("Webhook cleaned up.");
         });
 
@@ -163,11 +166,11 @@ export const forwardCommand = Command.make(
             yield* Console.log(`Connecting to WebSocket...`);
 
             // Activate the webhook
-            yield* webhookService.activateWebhook(repo, webhook.id).pipe(
-              Effect.catchAll((e) =>
-                Console.error(`Warning: Failed to activate webhook: ${e}`),
-              ),
-            );
+            yield* webhookService
+              .activateWebhook(repo, webhook.id)
+              .pipe(
+                Effect.catchAll((e) => Console.error(`Warning: Failed to activate webhook: ${e}`)),
+              );
 
             // Print startup info
             yield* Console.log("");
@@ -186,9 +189,7 @@ export const forwardCommand = Command.make(
                   const message = formatWebhookEvent(event);
 
                   // Log received event
-                  const eventDesc = event.action
-                    ? `${event.event}.${event.action}`
-                    : event.event;
+                  const eventDesc = event.action ? `${event.event}.${event.action}` : event.event;
                   yield* log(`Received: ${eventDesc}`);
 
                   // Send to OpenCode
@@ -216,15 +217,9 @@ export const forwardCommand = Command.make(
         (webhook, exit) =>
           cleanupWebhook(webhook, repo).pipe(
             Effect.tap(() =>
-              exit._tag === "Failure"
-                ? Console.error(`Exited due to: ${exit.cause}`)
-                : Effect.void,
+              exit._tag === "Failure" ? Console.error(`Exited due to: ${exit.cause}`) : Effect.void,
             ),
           ),
-      ).pipe(
-        Effect.catchAll((e) =>
-          Console.error(`Failed to create webhook: ${e}`),
-        ),
-      );
+      ).pipe(Effect.catchAll((e) => Console.error(`Failed to create webhook: ${e}`)));
     }),
 );

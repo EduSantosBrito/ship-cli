@@ -15,6 +15,9 @@ import {
   JjRevisionError,
   JjSquashError,
   JjImmutableError,
+  WorkspaceError,
+  WorkspaceExistsError,
+  WorkspaceNotFoundError,
 } from "../../../domain/Errors.js";
 
 /** Union of all VCS error types that can be mapped */
@@ -27,7 +30,10 @@ export type JjError =
   | JjBookmarkError
   | JjRevisionError
   | JjSquashError
-  | JjImmutableError;
+  | JjImmutableError
+  | WorkspaceError
+  | WorkspaceExistsError
+  | WorkspaceNotFoundError;
 
 /**
  * Error patterns for jj CLI output
@@ -165,7 +171,8 @@ const ERROR_PATTERNS: ReadonlyArray<ErrorPattern> = [
     pattern: /Commit (\S+) is immutable/i,
     createError: (_output, match) =>
       new JjImmutableError({
-        message: "Cannot modify immutable commit. This is typically a protected commit like main/master.",
+        message:
+          "Cannot modify immutable commit. This is typically a protected commit like main/master.",
         commitId: match[1],
       }),
   },
@@ -215,6 +222,33 @@ const ERROR_PATTERNS: ReadonlyArray<ErrorPattern> = [
     createError: (output) =>
       new JjRevisionError({
         message: output.trim() || "Revision not found.",
+      }),
+  },
+
+  // Workspace errors (jj workspace)
+  {
+    pattern: /Workspace '([^']+)' already exists/i,
+    createError: (_output, match) => WorkspaceExistsError.forName(match[1]),
+  },
+  {
+    pattern: /already exists at: (.+)/i,
+    createError: (_output, match) => WorkspaceExistsError.forName("unknown", match[1]),
+  },
+  {
+    pattern: /No workspace named '([^']+)'/i,
+    createError: (_output, match) => WorkspaceNotFoundError.forName(match[1]),
+  },
+  {
+    pattern: /Workspace '([^']+)' doesn't exist/i,
+    createError: (_output, match) => WorkspaceNotFoundError.forName(match[1]),
+  },
+
+  // Catch-all for generic workspace errors
+  {
+    pattern: /workspace/i,
+    createError: (output) =>
+      new WorkspaceError({
+        message: output.trim() || "Workspace operation failed",
       }),
   },
 ];

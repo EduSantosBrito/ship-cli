@@ -30,53 +30,51 @@ const formatUptime = (seconds: number): string => {
 
 // === Command ===
 
-export const statusCommand = Command.make(
-  "status",
-  { json: jsonOption },
-  ({ json }) =>
-    Effect.gen(function* () {
-      const daemonService = yield* DaemonService;
+export const statusCommand = Command.make("status", { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    const daemonService = yield* DaemonService;
 
-      // Check if daemon is running
-      const running = yield* daemonService.isRunning();
-      if (!running) {
-        if (json) {
-          yield* Console.log(JSON.stringify({ running: false }));
-        } else {
-          yield* Console.log("Webhook daemon is not running.");
-          yield* Console.log("");
-          yield* Console.log("Start it with: ship webhook start");
-        }
-        return;
-      }
-
-      // Get daemon status
-      const statusResult = yield* daemonService.getStatus().pipe(
-        Effect.map((s) => ({ success: true as const, status: s })),
-        Effect.catchTag("DaemonNotRunningError", () =>
-          Effect.succeed({ success: false as const, error: "Daemon not running" }),
-        ),
-        Effect.catchAll((e) =>
-          Console.error(`Failed to get daemon status: ${e}`).pipe(
-            Effect.as({ success: false as const, error: String(e) }),
-          ),
-        ),
-      );
-
-      if (!statusResult.success) {
-        if (json) {
-          yield* Console.log(JSON.stringify({ running: false, error: "Daemon not responding" }));
-        } else {
-          yield* Console.log("Daemon appears to be running but not responding.");
-        }
-        return;
-      }
-
-      const status = statusResult.status;
-
-      // JSON output
+    // Check if daemon is running
+    const running = yield* daemonService.isRunning();
+    if (!running) {
       if (json) {
-        yield* Console.log(JSON.stringify({
+        yield* Console.log(JSON.stringify({ running: false }));
+      } else {
+        yield* Console.log("Webhook daemon is not running.");
+        yield* Console.log("");
+        yield* Console.log("Start it with: ship webhook start");
+      }
+      return;
+    }
+
+    // Get daemon status
+    const statusResult = yield* daemonService.getStatus().pipe(
+      Effect.map((s) => ({ success: true as const, status: s })),
+      Effect.catchTag("DaemonNotRunningError", () =>
+        Effect.succeed({ success: false as const, error: "Daemon not running" }),
+      ),
+      Effect.catchAll((e) =>
+        Console.error(`Failed to get daemon status: ${e}`).pipe(
+          Effect.as({ success: false as const, error: String(e) }),
+        ),
+      ),
+    );
+
+    if (!statusResult.success) {
+      if (json) {
+        yield* Console.log(JSON.stringify({ running: false, error: "Daemon not responding" }));
+      } else {
+        yield* Console.log("Daemon appears to be running but not responding.");
+      }
+      return;
+    }
+
+    const status = statusResult.status;
+
+    // JSON output
+    if (json) {
+      yield* Console.log(
+        JSON.stringify({
           running: status.running,
           pid: status.pid,
           repo: status.repo,
@@ -86,41 +84,44 @@ export const statusCommand = Command.make(
             sessionId: sub.sessionId,
             prNumbers: sub.prNumbers,
           })),
-        }));
-        return;
-      }
+        }),
+      );
+      return;
+    }
 
-      // Display status
-      yield* Console.log("Webhook Daemon Status");
-      yield* Console.log("─".repeat(40));
+    // Display status
+    yield* Console.log("Webhook Daemon Status");
+    yield* Console.log("─".repeat(40));
+    yield* Console.log("");
+    yield* Console.log(`Status: ${status.running ? "Running" : "Stopped"}`);
+    if (status.pid) {
+      yield* Console.log(`PID: ${status.pid}`);
+    }
+    if (status.repo) {
+      yield* Console.log(`Repository: ${status.repo}`);
+    }
+    yield* Console.log(
+      `GitHub WebSocket: ${status.connectedToGitHub ? "Connected" : "Disconnected"}`,
+    );
+    if (status.uptime !== undefined) {
+      yield* Console.log(`Uptime: ${formatUptime(status.uptime)}`);
+    }
+
+    yield* Console.log("");
+    yield* Console.log("Subscriptions");
+    yield* Console.log("─".repeat(40));
+
+    if (status.subscriptions.length === 0) {
+      yield* Console.log("No active subscriptions.");
       yield* Console.log("");
-      yield* Console.log(`Status: ${status.running ? "Running" : "Stopped"}`);
-      if (status.pid) {
-        yield* Console.log(`PID: ${status.pid}`);
-      }
-      if (status.repo) {
-        yield* Console.log(`Repository: ${status.repo}`);
-      }
-      yield* Console.log(`GitHub WebSocket: ${status.connectedToGitHub ? "Connected" : "Disconnected"}`);
-      if (status.uptime !== undefined) {
-        yield* Console.log(`Uptime: ${formatUptime(status.uptime)}`);
-      }
-
-      yield* Console.log("");
-      yield* Console.log("Subscriptions");
-      yield* Console.log("─".repeat(40));
-
-      if (status.subscriptions.length === 0) {
-        yield* Console.log("No active subscriptions.");
+      yield* Console.log("Agents can subscribe using the ship tool:");
+      yield* Console.log("  ship tool: action=webhook-start");
+    } else {
+      for (const sub of status.subscriptions) {
         yield* Console.log("");
-        yield* Console.log("Agents can subscribe using the ship tool:");
-        yield* Console.log("  ship tool: action=webhook-start");
-      } else {
-        for (const sub of status.subscriptions) {
-          yield* Console.log("");
-          yield* Console.log(`Session: ${sub.sessionId}`);
-          yield* Console.log(`  PRs: ${sub.prNumbers.join(", ")}`);
-        }
+        yield* Console.log(`Session: ${sub.sessionId}`);
+        yield* Console.log(`  PRs: ${sub.prNumbers.join(", ")}`);
       }
-    }),
+    }
+  }),
 );

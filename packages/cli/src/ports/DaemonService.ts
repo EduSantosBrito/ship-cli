@@ -180,7 +180,10 @@ export interface DaemonService {
    * Start the daemon (in current process - for CLI use)
    * Returns an Effect that runs until shutdown is requested
    */
-  readonly startDaemon: (repo: string, events: ReadonlyArray<string>) => Effect.Effect<void, DaemonErrors>;
+  readonly startDaemon: (
+    repo: string,
+    events: ReadonlyArray<string>,
+  ) => Effect.Effect<void, DaemonErrors>;
 }
 
 export const DaemonService = Context.GenericTag<DaemonService>("DaemonService");

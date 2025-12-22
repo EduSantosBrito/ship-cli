@@ -205,8 +205,7 @@ const make = Effect.gen(function* () {
             // If not in a git repo or no remote configured, return null
             if (
               e instanceof PrError &&
-              (e.message.includes("not a git repository") ||
-                e.message.includes("no git remotes"))
+              (e.message.includes("not a git repository") || e.message.includes("no git remotes"))
             ) {
               return Effect.succeed({ success: false as const });
             }
