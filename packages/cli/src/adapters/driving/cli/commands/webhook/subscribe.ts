@@ -45,7 +45,9 @@ export const subscribeCommand = Command.make(
         if (json) {
           yield* Console.log(JSON.stringify({ subscribed: false, error: "Daemon not running" }));
         } else {
-          yield* Console.error("Webhook daemon is not running. Start it with 'ship webhook start'.");
+          yield* Console.error(
+            "Webhook daemon is not running. Start it with 'ship webhook start'.",
+          );
         }
         return;
       }
@@ -78,7 +80,9 @@ export const subscribeCommand = Command.make(
       } else if (result.subscribed) {
         yield* Console.log(`Subscribed session ${session} to PRs: ${prs.join(", ")}`);
       } else {
-        yield* Console.error(`Failed to subscribe: ${"error" in result ? result.error : "Unknown error"}`);
+        yield* Console.error(
+          `Failed to subscribe: ${"error" in result ? result.error : "Unknown error"}`,
+        );
       }
     }),
 );

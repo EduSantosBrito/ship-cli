@@ -96,7 +96,7 @@ const WsEventReceivedSchema = Schema.Struct({
  * Schema for the acknowledgment response we send back to GitHub.
  * This is required for the bidirectional protocol - without sending
  * this response, GitHub will stop sending events after the first one.
- * 
+ *
  * Note: The Body field must be base64-encoded because Go's encoding/json
  * marshals []byte as base64. The GitHub server expects this format.
  */
@@ -398,7 +398,10 @@ const make = Effect.gen(function* () {
 
       // Extract event info from headers
       const eventType =
-        normalizedHeaders["X-GitHub-Event"] ?? normalizedHeaders["x-github-event"] ?? normalizedHeaders["X-Github-Event"] ?? "unknown";
+        normalizedHeaders["X-GitHub-Event"] ??
+        normalizedHeaders["x-github-event"] ??
+        normalizedHeaders["X-Github-Event"] ??
+        "unknown";
       const deliveryId =
         wsEvent.delivery_id ??
         normalizedHeaders["X-GitHub-Delivery"] ??
@@ -408,7 +411,7 @@ const make = Effect.gen(function* () {
 
       // Parse the body - GitHub sends it as base64-encoded JSON string
       let payload: unknown = wsEvent.body;
-      
+
       if (typeof payload === "string") {
         // Try parsing as JSON first
         try {
@@ -423,7 +426,7 @@ const make = Effect.gen(function* () {
           }
         }
       }
-      
+
       // Try to extract action from payload if it exists
       const action =
         payload &&
@@ -446,7 +449,7 @@ const make = Effect.gen(function* () {
   /**
    * Create the acknowledgment response to send back to GitHub.
    * This is required for the bidirectional protocol.
-   * 
+   *
    * The Body must be base64-encoded because Go's encoding/json marshals
    * []byte as base64, and the GitHub server expects this format.
    */
@@ -474,7 +477,7 @@ const make = Effect.gen(function* () {
 
   /**
    * Create a single WebSocket connection and stream events until disconnect.
-   * 
+   *
    * IMPORTANT: This implements the bidirectional GitHub CLI webhook protocol.
    * After receiving each event, we must send back an acknowledgment response
    * or GitHub will stop sending events.
@@ -508,7 +511,10 @@ const make = Effect.gen(function* () {
             .runRaw((data: string | Uint8Array) =>
               Effect.gen(function* () {
                 yield* Effect.logDebug("WebSocket received raw data").pipe(
-                  Effect.annotateLogs("dataLength", String(typeof data === "string" ? data.length : data.byteLength)),
+                  Effect.annotateLogs(
+                    "dataLength",
+                    String(typeof data === "string" ? data.length : data.byteLength),
+                  ),
                 );
 
                 // Parse the incoming event

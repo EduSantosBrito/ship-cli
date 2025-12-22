@@ -76,7 +76,13 @@ interface SubmitOutput {
 
 export const submitCommand = Command.make(
   "submit",
-  { json: jsonOption, draft: draftOption, title: titleOption, body: bodyOption, subscribe: subscribeOption },
+  {
+    json: jsonOption,
+    draft: draftOption,
+    title: titleOption,
+    body: bodyOption,
+    subscribe: subscribeOption,
+  },
   ({ json, draft, title, body, subscribe }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
@@ -268,9 +274,7 @@ export const submitCommand = Command.make(
         const daemonRunning = yield* daemonService.isRunning();
         if (daemonRunning) {
           // Get all PRs in the stack by getting all bookmarks from trunk to current
-          const stackLog = yield* vcs.getLog().pipe(
-            Effect.catchAll(() => Effect.succeed([])),
-          );
+          const stackLog = yield* vcs.getLog().pipe(Effect.catchAll(() => Effect.succeed([])));
 
           // Get bookmarks from stack (excluding current bookmark)
           const stackBookmarks = stackLog

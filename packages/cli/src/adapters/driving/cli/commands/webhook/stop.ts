@@ -11,30 +11,25 @@ import { DaemonService, DaemonNotRunningError } from "../../../../../ports/Daemo
 
 // === Command ===
 
-export const stopCommand = Command.make(
-  "stop",
-  {},
-  () =>
-    Effect.gen(function* () {
-      const daemonService = yield* DaemonService;
+export const stopCommand = Command.make("stop", {}, () =>
+  Effect.gen(function* () {
+    const daemonService = yield* DaemonService;
 
-      // Check if daemon is running
-      const running = yield* daemonService.isRunning();
-      if (!running) {
-        yield* Console.log("Webhook daemon is not running.");
-        return;
-      }
+    // Check if daemon is running
+    const running = yield* daemonService.isRunning();
+    if (!running) {
+      yield* Console.log("Webhook daemon is not running.");
+      return;
+    }
 
-      // Send shutdown signal
-      yield* Console.log("Stopping webhook daemon...");
-      yield* daemonService.shutdown().pipe(
-        Effect.tap(() => Console.log("Shutdown signal sent.")),
-        Effect.catchTag("DaemonNotRunningError", (e: DaemonNotRunningError) =>
-          Console.log(e.message),
-        ),
-        Effect.catchAll((e) =>
-          Console.error(`Failed to stop daemon: ${e}`),
-        ),
-      );
-    }),
+    // Send shutdown signal
+    yield* Console.log("Stopping webhook daemon...");
+    yield* daemonService.shutdown().pipe(
+      Effect.tap(() => Console.log("Shutdown signal sent.")),
+      Effect.catchTag("DaemonNotRunningError", (e: DaemonNotRunningError) =>
+        Console.log(e.message),
+      ),
+      Effect.catchAll((e) => Console.error(`Failed to stop daemon: ${e}`)),
+    );
+  }),
 );

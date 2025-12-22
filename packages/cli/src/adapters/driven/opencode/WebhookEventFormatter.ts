@@ -43,7 +43,10 @@ export const formatWebhookEvent = (event: WebhookEvent): string => {
 
 // === Event Formatters ===
 
-function formatPullRequestEvent(action: string | undefined, payload: Record<string, unknown>): string {
+function formatPullRequestEvent(
+  action: string | undefined,
+  payload: Record<string, unknown>,
+): string {
   const pr = payload.pull_request as Record<string, unknown> | undefined;
   const repo = payload.repository as Record<string, unknown> | undefined;
   const sender = payload.sender as Record<string, unknown> | undefined;
@@ -123,7 +126,10 @@ URL: ${prUrl}`;
   }
 }
 
-function formatPullRequestReviewEvent(action: string | undefined, payload: Record<string, unknown>): string {
+function formatPullRequestReviewEvent(
+  action: string | undefined,
+  payload: Record<string, unknown>,
+): string {
   const review = payload.review as Record<string, unknown> | undefined;
   const pr = payload.pull_request as Record<string, unknown> | undefined;
   const repo = payload.repository as Record<string, unknown> | undefined;
@@ -137,7 +143,12 @@ function formatPullRequestReviewEvent(action: string | undefined, payload: Recor
   const reviewBody = review?.body ?? "";
   const prUrl = pr?.html_url ?? "";
 
-  const stateEmoji = reviewState === "approved" ? "approved" : reviewState === "changes_requested" ? "requested changes on" : "reviewed";
+  const stateEmoji =
+    reviewState === "approved"
+      ? "approved"
+      : reviewState === "changes_requested"
+        ? "requested changes on"
+        : "reviewed";
 
   let message = `[GitHub] @${senderLogin} ${stateEmoji} PR #${prNumber}
 
@@ -158,7 +169,10 @@ URL: ${prUrl}`;
   return message;
 }
 
-function formatPullRequestReviewCommentEvent(_action: string | undefined, payload: Record<string, unknown>): string {
+function formatPullRequestReviewCommentEvent(
+  _action: string | undefined,
+  payload: Record<string, unknown>,
+): string {
   const comment = payload.comment as Record<string, unknown> | undefined;
   const pr = payload.pull_request as Record<string, unknown> | undefined;
   const repo = payload.repository as Record<string, unknown> | undefined;
@@ -182,7 +196,10 @@ Comment:
 ${truncate(String(commentBody), 500)}`;
 }
 
-function formatIssueCommentEvent(_action: string | undefined, payload: Record<string, unknown>): string {
+function formatIssueCommentEvent(
+  _action: string | undefined,
+  payload: Record<string, unknown>,
+): string {
   const comment = payload.comment as Record<string, unknown> | undefined;
   const issue = payload.issue as Record<string, unknown> | undefined;
   const repo = payload.repository as Record<string, unknown> | undefined;
@@ -220,7 +237,7 @@ function formatCheckRunEvent(action: string | undefined, payload: Record<string,
   if (action === "completed") {
     const passed = conclusion === "success";
     const statusIcon = passed ? "passed" : "failed";
-    
+
     let message = `[GitHub] Check "${name}" ${statusIcon}
 
 Repository: ${repoName}
@@ -241,7 +258,10 @@ Status: ${status}
 URL: ${htmlUrl}`;
 }
 
-function formatCheckSuiteEvent(action: string | undefined, payload: Record<string, unknown>): string {
+function formatCheckSuiteEvent(
+  action: string | undefined,
+  payload: Record<string, unknown>,
+): string {
   const checkSuite = payload.check_suite as Record<string, unknown> | undefined;
   const repo = payload.repository as Record<string, unknown> | undefined;
 
@@ -253,7 +273,7 @@ function formatCheckSuiteEvent(action: string | undefined, payload: Record<strin
   if (action === "completed") {
     const passed = conclusion === "success";
     const statusIcon = passed ? "All checks passed" : "Some checks failed";
-    
+
     return `[GitHub] ${statusIcon} on ${headBranch}
 
 Repository: ${repoName}
@@ -317,7 +337,11 @@ Title: ${issueTitle}
 URL: ${issueUrl}`;
 }
 
-function formatGenericEvent(eventType: string, action: string | undefined, payload: Record<string, unknown>): string {
+function formatGenericEvent(
+  eventType: string,
+  action: string | undefined,
+  payload: Record<string, unknown>,
+): string {
   const repo = payload.repository as Record<string, unknown> | undefined;
   const sender = payload.sender as Record<string, unknown> | undefined;
 

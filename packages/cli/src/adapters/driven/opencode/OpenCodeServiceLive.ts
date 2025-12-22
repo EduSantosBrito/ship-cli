@@ -33,7 +33,10 @@ import {
 const DEFAULT_SERVER_URL = "http://127.0.0.1:4096";
 
 // Retry policy for network operations: exponential backoff with max 3 retries
-const networkRetryPolicy = Schedule.intersect(Schedule.exponential(Duration.millis(500)), Schedule.recurs(3));
+const networkRetryPolicy = Schedule.intersect(
+  Schedule.exponential(Duration.millis(500)),
+  Schedule.recurs(3),
+);
 
 // Timeout for network operations (shorter than other services since OpenCode is local)
 const NETWORK_TIMEOUT = Duration.seconds(10);
@@ -169,7 +172,9 @@ const make = Effect.gen(function* () {
    * OpenCode returns timestamps as Unix milliseconds, we convert to ISO strings
    * for the domain model.
    */
-  const toSession = (response: typeof SessionResponseSchema.Type): Effect.Effect<Session, OpenCodeError> =>
+  const toSession = (
+    response: typeof SessionResponseSchema.Type,
+  ): Effect.Effect<Session, OpenCodeError> =>
     Schema.decode(SessionId)(response.id).pipe(
       Effect.map(
         (id) =>
@@ -182,7 +187,9 @@ const make = Effect.gen(function* () {
             share: response.share,
           }),
       ),
-      Effect.mapError((e) => new OpenCodeError({ message: `Invalid session ID: ${e.message}`, cause: e })),
+      Effect.mapError(
+        (e) => new OpenCodeError({ message: `Invalid session ID: ${e.message}`, cause: e }),
+      ),
     );
 
   // === Public API ===
@@ -201,7 +208,10 @@ const make = Effect.gen(function* () {
       const sessions: Session[] = [];
       for (const response of responses) {
         const validated = yield* Schema.decodeUnknown(SessionResponseSchema)(response).pipe(
-          Effect.mapError((e) => new OpenCodeError({ message: `Invalid session response: ${e.message}`, cause: e })),
+          Effect.mapError(
+            (e) =>
+              new OpenCodeError({ message: `Invalid session response: ${e.message}`, cause: e }),
+          ),
         );
         const session = yield* toSession(validated);
         sessions.push(session);
@@ -217,7 +227,11 @@ const make = Effect.gen(function* () {
       // Validate the response
       const validated = yield* Schema.decodeUnknown(SessionStatusResponseSchema)(statuses).pipe(
         Effect.mapError(
-          (e) => new OpenCodeError({ message: `Invalid session status response: ${e.message}`, cause: e }),
+          (e) =>
+            new OpenCodeError({
+              message: `Invalid session status response: ${e.message}`,
+              cause: e,
+            }),
         ),
       );
 
@@ -226,7 +240,10 @@ const make = Effect.gen(function* () {
 
   const getSession = (sessionId: SessionId): Effect.Effect<Session, OpenCodeErrors> =>
     Effect.gen(function* () {
-      const response = yield* request<typeof SessionResponseSchema.Type>("GET", `/session/${sessionId}`).pipe(
+      const response = yield* request<typeof SessionResponseSchema.Type>(
+        "GET",
+        `/session/${sessionId}`,
+      ).pipe(
         Effect.catchIf(
           (e) => e._tag === "OpenCodeError" && e.message.includes("Not found"),
           () => Effect.fail(OpenCodeSessionNotFoundError.forId(sessionId)),
@@ -234,13 +251,18 @@ const make = Effect.gen(function* () {
       );
 
       const validated = yield* Schema.decodeUnknown(SessionResponseSchema)(response).pipe(
-        Effect.mapError((e) => new OpenCodeError({ message: `Invalid session response: ${e.message}`, cause: e })),
+        Effect.mapError(
+          (e) => new OpenCodeError({ message: `Invalid session response: ${e.message}`, cause: e }),
+        ),
       );
 
       return yield* toSession(validated);
     });
 
-  const sendPromptAsync = (sessionId: SessionId, message: string): Effect.Effect<void, OpenCodeErrors> =>
+  const sendPromptAsync = (
+    sessionId: SessionId,
+    message: string,
+  ): Effect.Effect<void, OpenCodeErrors> =>
     request<void>("POST", `/session/${sessionId}/prompt_async`, {
       parts: [{ type: "text", text: message }],
     }).pipe(
@@ -264,13 +286,17 @@ const make = Effect.gen(function* () {
       if (busySessions.length > 0) {
         // Return the most recently updated busy session
         return (
-          busySessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0] ?? null
+          busySessions.sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          )[0] ?? null
         );
       }
 
       // Second priority: return the most recently updated session
       return (
-        [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0] ?? null
+        [...sessions].sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        )[0] ?? null
       );
     });
 

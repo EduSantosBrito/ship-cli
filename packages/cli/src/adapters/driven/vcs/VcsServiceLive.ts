@@ -12,6 +12,7 @@ import {
   PushResult,
   TrunkInfo,
   SyncResult,
+  WorkspaceInfo,
   type VcsErrors,
 } from "../../../ports/VcsService.js";
 import {
@@ -317,6 +318,164 @@ const make = Effect.gen(function* () {
       return yield* getCurrentChange();
     });
 
+  // === Workspace Operations (jj workspace) ===
+
+  /**
+   * Template for jj workspace list output.
+   * Returns JSON-like format: name|path|changeId|shortChangeId|description
+   */
+  const JJ_WORKSPACE_TEMPLATE =
+    'self.name() ++ "|" ++ self.working_copy_id() ++ "|" ++ self.working_copy_id().short(8) ++ "|" ++ self.working_copy_description().first_line() ++ "\\n"';
+
+  /**
+   * Parse jj workspace list output into WorkspaceInfo objects.
+   *
+   * Output format (with our template):
+   * default|abc123...|abc12345|description here
+   * feature|def456...|def45678|another description
+   */
+  const parseWorkspaceList = (
+    output: string,
+    mainRepoPath: string,
+  ): ReadonlyArray<WorkspaceInfo> => {
+    const workspaces: WorkspaceInfo[] = [];
+    const lines = output.trim().split("\n").filter(Boolean);
+
+    for (const line of lines) {
+      const parts = line.split("|");
+      if (parts.length >= 4) {
+        const name = parts[0];
+        const changeId = parts[1];
+        const shortChangeId = parts[2];
+        const description = parts.slice(3).join("|"); // Description might contain |
+
+        // Determine path: default workspace is at mainRepoPath, others in .jj/working-copies/<name>
+        // Actually jj stores workspace paths internally, but we need to compute them
+        // For now, use a heuristic: workspace path is typically sibling of main repo
+        const path = name === "default" ? mainRepoPath : `${mainRepoPath}/../${name}`;
+
+        workspaces.push(
+          new WorkspaceInfo({
+            name,
+            path,
+            changeId,
+            shortChangeId,
+            description: description || "(no description)",
+            isDefault: name === "default",
+          }),
+        );
+      }
+    }
+
+    return workspaces;
+  };
+
+  /**
+   * Create a workspace with proper resource management.
+   *
+   * Uses Effect.acquireRelease pattern to ensure cleanup on failure:
+   * - If workspace creation succeeds but subsequent operations fail,
+   *   the workspace is automatically forgotten to avoid leaving orphaned state.
+   *
+   * @param name - Workspace name for identification
+   * @param path - Path where the workspace will be created
+   * @param revision - Optional revision to checkout (defaults to @-)
+   */
+  const createWorkspace = (
+    name: string,
+    path: string,
+    revision?: string,
+  ): Effect.Effect<WorkspaceInfo, VcsErrors> =>
+    Effect.acquireUseRelease(
+      // Acquire: Create the workspace
+      Effect.gen(function* () {
+        yield* Effect.logDebug(`Creating workspace '${name}' at ${path}`);
+
+        const args = ["workspace", "add", path, "--name", name];
+        if (revision) {
+          args.push("-r", revision);
+        } else {
+          // Default to parent of current change so the workspace starts fresh
+          args.push("-r", "@-");
+        }
+
+        yield* runJj(...args);
+        return name;
+      }),
+      // Use: Get info about the created workspace
+      (createdName) =>
+        Effect.gen(function* () {
+          const workspaces = yield* listWorkspaces();
+          const created = workspaces.find((ws) => ws.name === createdName);
+
+          if (!created) {
+            return yield* new VcsError({
+              message: `Workspace created but not found in list: ${createdName}`,
+            });
+          }
+
+          yield* Effect.logDebug(
+            `Workspace '${created.name}' created successfully at ${created.path}`,
+          );
+          return created;
+        }),
+      // Release: Clean up on failure
+      (createdName, exit) =>
+        Effect.gen(function* () {
+          if (exit._tag === "Failure") {
+            yield* Effect.logDebug(`Cleaning up workspace '${createdName}' due to failure`);
+            yield* forgetWorkspace(createdName).pipe(
+              Effect.catchAll(() => Effect.void), // Ignore cleanup errors
+            );
+          }
+        }),
+    );
+
+  const listWorkspaces = (): Effect.Effect<ReadonlyArray<WorkspaceInfo>, VcsErrors> =>
+    Effect.gen(function* () {
+      // Get the main repo root for path resolution
+      const repoRoot = yield* runJj("workspace", "root");
+      const mainRepoPath = repoRoot.trim();
+
+      // Use template to get structured output
+      const output = yield* runJj("workspace", "list", "-T", JJ_WORKSPACE_TEMPLATE);
+      return parseWorkspaceList(output, mainRepoPath);
+    });
+
+  const forgetWorkspace = (name: string): Effect.Effect<void, VcsErrors> =>
+    Effect.gen(function* () {
+      yield* Effect.logDebug(`Forgetting workspace '${name}'`);
+      yield* runJj("workspace", "forget", name);
+    });
+
+  const getWorkspaceRoot = (): Effect.Effect<string, VcsErrors> =>
+    Effect.gen(function* () {
+      const output = yield* runJj("workspace", "root");
+      return output.trim();
+    });
+
+  const getCurrentWorkspaceName = (): Effect.Effect<string, VcsErrors> =>
+    Effect.gen(function* () {
+      // Get workspaces and find which one has current directory
+      const currentRoot = yield* getWorkspaceRoot();
+      const workspaces = yield* listWorkspaces();
+
+      const current = workspaces.find((ws) => {
+        // Normalize paths for comparison
+        const wsPath = ws.path.replace(/\/$/, "");
+        const curPath = currentRoot.replace(/\/$/, "");
+        return wsPath === curPath || curPath.endsWith(ws.name);
+      });
+
+      return current?.name ?? "default";
+    });
+
+  const isNonDefaultWorkspace = (): Effect.Effect<boolean, VcsErrors> =>
+    Effect.gen(function* () {
+      const name = yield* getCurrentWorkspaceName();
+      return name !== "default";
+    });
+
   return {
     isAvailable,
     isRepo,
@@ -335,6 +494,13 @@ const make = Effect.gen(function* () {
     getParentChange,
     squash,
     abandon,
+    // Workspace operations (jj workspace)
+    createWorkspace,
+    listWorkspaces,
+    forgetWorkspace,
+    getWorkspaceRoot,
+    getCurrentWorkspaceName,
+    isNonDefaultWorkspace,
   };
 });
 

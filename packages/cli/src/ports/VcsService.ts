@@ -12,6 +12,9 @@ import type {
   JjRevisionError,
   JjSquashError,
   JjImmutableError,
+  WorkspaceError,
+  WorkspaceExistsError,
+  WorkspaceNotFoundError,
 } from "../domain/Errors.js";
 
 /** Union of all VCS error types */
@@ -24,7 +27,10 @@ export type VcsErrors =
   | JjBookmarkError
   | JjRevisionError
   | JjSquashError
-  | JjImmutableError;
+  | JjImmutableError
+  | WorkspaceError
+  | WorkspaceExistsError
+  | WorkspaceNotFoundError;
 
 // === VCS Domain Types ===
 
@@ -63,6 +69,22 @@ export class SyncResult extends Schema.Class<SyncResult>("SyncResult")({
   trunkChangeId: Schema.String,
   stackSize: Schema.Number,
   conflicted: Schema.Boolean,
+}) {}
+
+/** Information about a jj workspace */
+export class WorkspaceInfo extends Schema.Class<WorkspaceInfo>("WorkspaceInfo")({
+  /** Workspace name (e.g., "default", "feature-x") */
+  name: Schema.String,
+  /** Absolute path to the workspace directory */
+  path: Schema.String,
+  /** Current change ID in this workspace */
+  changeId: Schema.String,
+  /** Short change ID for display */
+  shortChangeId: Schema.String,
+  /** Description of the current change */
+  description: Schema.String,
+  /** True if this is the default workspace */
+  isDefault: Schema.Boolean,
 }) {}
 
 export interface VcsService {
@@ -161,6 +183,51 @@ export interface VcsService {
    * @returns The new working copy change after abandonment
    */
   readonly abandon: (changeId?: string) => Effect.Effect<Change, VcsErrors>;
+
+  // === Workspace Operations (jj workspace) ===
+
+  /**
+   * Create a new jj workspace
+   * @param name - Workspace name (used for identification)
+   * @param path - Path where workspace will be created
+   * @param revision - Optional revision to checkout (defaults to parent of current @)
+   * @returns Information about the created workspace
+   */
+  readonly createWorkspace: (
+    name: string,
+    path: string,
+    revision?: string,
+  ) => Effect.Effect<WorkspaceInfo, VcsErrors>;
+
+  /**
+   * List all workspaces in the repository
+   * @returns Array of workspace information
+   */
+  readonly listWorkspaces: () => Effect.Effect<ReadonlyArray<WorkspaceInfo>, VcsErrors>;
+
+  /**
+   * Forget a workspace (stop tracking it, files remain on disk)
+   * @param name - Workspace name to forget
+   */
+  readonly forgetWorkspace: (name: string) => Effect.Effect<void, VcsErrors>;
+
+  /**
+   * Get the root path of current workspace
+   * @returns Absolute path to the workspace root
+   */
+  readonly getWorkspaceRoot: () => Effect.Effect<string, VcsErrors>;
+
+  /**
+   * Get the current workspace name
+   * @returns Name of the current workspace (e.g., "default", "feature-x")
+   */
+  readonly getCurrentWorkspaceName: () => Effect.Effect<string, VcsErrors>;
+
+  /**
+   * Check if current directory is in a non-default workspace
+   * @returns True if in a non-default workspace
+   */
+  readonly isNonDefaultWorkspace: () => Effect.Effect<boolean, VcsErrors>;
 }
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");

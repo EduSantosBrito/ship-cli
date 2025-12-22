@@ -23,58 +23,58 @@ const eventsOption = Options.text("events").pipe(
   Options.withDescription(
     "Comma-separated list of events to subscribe to (e.g., pull_request,pull_request_review)",
   ),
-  Options.withDefault("pull_request,pull_request_review,pull_request_review_comment,issue_comment,check_run"),
+  Options.withDefault(
+    "pull_request,pull_request_review,pull_request_review_comment,issue_comment,check_run",
+  ),
 );
 
 // === Command ===
 
-export const startCommand = Command.make(
-  "start",
-  { events: eventsOption },
-  ({ events }) =>
-    Effect.gen(function* () {
-      const prService = yield* PrService;
-      const daemonService = yield* DaemonService;
+export const startCommand = Command.make("start", { events: eventsOption }, ({ events }) =>
+  Effect.gen(function* () {
+    const prService = yield* PrService;
+    const daemonService = yield* DaemonService;
 
-      // 1. Check if gh is available
-      const ghAvailable = yield* prService.isAvailable();
-      if (!ghAvailable) {
-        yield* Console.error(
-          "GitHub CLI (gh) is not installed or not authenticated. Run 'gh auth login' first.",
-        );
-        return;
-      }
-
-      // 2. Get current repo
-      const repo = yield* prService.getCurrentRepo();
-      if (!repo) {
-        yield* Console.error(
-          "Not in a git repository or no GitHub remote configured.",
-        );
-        return;
-      }
-
-      // 3. Parse events
-      const eventList = events.split(",").map((e) => e.trim()).filter(Boolean);
-      if (eventList.length === 0) {
-        yield* Console.error("No events specified. Use --events to specify events to subscribe to.");
-        return;
-      }
-
-      // 4. Start the daemon
-      yield* Console.log(`Starting webhook daemon for ${repo}...`);
-      yield* Console.log(`Events: ${eventList.join(", ")}`);
-      yield* Console.log("");
-      yield* Console.log("Press Ctrl+C to stop");
-      yield* Console.log("");
-
-      yield* daemonService.startDaemon(repo, eventList).pipe(
-        Effect.tapError((e) => {
-          if (e._tag === "DaemonAlreadyRunningError") {
-            return Console.error(e.message);
-          }
-          return Console.error(`Failed to start daemon: ${e}`);
-        }),
+    // 1. Check if gh is available
+    const ghAvailable = yield* prService.isAvailable();
+    if (!ghAvailable) {
+      yield* Console.error(
+        "GitHub CLI (gh) is not installed or not authenticated. Run 'gh auth login' first.",
       );
-    }),
+      return;
+    }
+
+    // 2. Get current repo
+    const repo = yield* prService.getCurrentRepo();
+    if (!repo) {
+      yield* Console.error("Not in a git repository or no GitHub remote configured.");
+      return;
+    }
+
+    // 3. Parse events
+    const eventList = events
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+    if (eventList.length === 0) {
+      yield* Console.error("No events specified. Use --events to specify events to subscribe to.");
+      return;
+    }
+
+    // 4. Start the daemon
+    yield* Console.log(`Starting webhook daemon for ${repo}...`);
+    yield* Console.log(`Events: ${eventList.join(", ")}`);
+    yield* Console.log("");
+    yield* Console.log("Press Ctrl+C to stop");
+    yield* Console.log("");
+
+    yield* daemonService.startDaemon(repo, eventList).pipe(
+      Effect.tapError((e) => {
+        if (e._tag === "DaemonAlreadyRunningError") {
+          return Console.error(e.message);
+        }
+        return Console.error(`Failed to start daemon: ${e}`);
+      }),
+    );
+  }),
 );

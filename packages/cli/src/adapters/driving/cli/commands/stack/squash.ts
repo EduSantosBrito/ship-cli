@@ -59,7 +59,10 @@ export const squashCommand = Command.make(
       }
 
       if (!parentResult.parent) {
-        yield* outputError("Cannot squash: current change has no parent in the stack (already at trunk)", json);
+        yield* outputError(
+          "Cannot squash: current change has no parent in the stack (already at trunk)",
+          json,
+        );
         return;
       }
 

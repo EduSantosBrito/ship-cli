@@ -130,6 +130,29 @@ interface StackCreateResult {
   created: boolean;
   changeId?: string;
   bookmark?: string;
+  workspace?: {
+    name: string;
+    path: string;
+    created: boolean;
+  };
+  error?: string;
+}
+
+// Workspace types
+interface WorkspaceOutput {
+  name: string;
+  path: string;
+  changeId: string;
+  description: string;
+  isDefault: boolean;
+  stackName: string | null;
+  taskId: string | null;
+}
+
+interface RemoveWorkspaceResult {
+  removed: boolean;
+  name: string;
+  filesDeleted?: boolean;
   error?: string;
 }
 
@@ -327,6 +350,7 @@ interface ShipService {
   readonly createStackChange: (input: {
     message?: string;
     bookmark?: string;
+    noWorkspace?: boolean;
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
   readonly describeStackChange: (message: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
   readonly syncStack: () => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
@@ -346,14 +370,34 @@ interface ShipService {
   readonly getDaemonStatus: () => Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError>;
   readonly subscribeToPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
   readonly unsubscribeFromPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
+  // Workspace operations
+  readonly listWorkspaces: () => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
+  readonly removeWorkspace: (name: string, deleteFiles?: boolean) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
 
+/**
+ * Parse JSON with type assertion.
+ *
+ * Note: This uses a type assertion rather than Schema.decodeUnknown for simplicity.
+ * The CLI is the source of truth for these types, and we trust its JSON output.
+ * For a more robust solution, consider importing shared schemas from the CLI package.
+ *
+ * @param raw - Raw JSON string from CLI output
+ * @returns Parsed object with asserted type T
+ */
 const parseJson = <T>(raw: string): Effect.Effect<T, JsonParseError> =>
   Effect.try({
-    try: () => JSON.parse(raw) as T,
-    catch: (cause) => new JsonParseError({ raw, cause }),
+    try: () => {
+      const parsed = JSON.parse(raw);
+      // Basic runtime validation - ensure we got an object or array
+      if (parsed === null || (typeof parsed !== "object" && !Array.isArray(parsed))) {
+        throw new Error(`Expected object or array, got ${typeof parsed}`);
+      }
+      return parsed as T;
+    },
+    catch: (cause) => new JsonParseError({ raw: raw.slice(0, 500), cause }), // Truncate raw for readability
   });
 
 const makeShipService = Effect.gen(function* () {
@@ -450,11 +494,12 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackStatus>(output);
     });
 
-  const createStackChange = (input: { message?: string; bookmark?: string }) =>
+  const createStackChange = (input: { message?: string; bookmark?: string; noWorkspace?: boolean }) =>
     Effect.gen(function* () {
       const args = ["stack", "create", "--json"];
       if (input.message) args.push("--message", input.message);
       if (input.bookmark) args.push("--bookmark", input.bookmark);
+      if (input.noWorkspace) args.push("--no-workspace");
       const output = yield* shell.run(args);
       return yield* parseJson<StackCreateResult>(output);
     });
@@ -665,6 +710,25 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<WebhookUnsubscribeResult>(output);
     });
 
+  // Workspace operations
+  const listWorkspaces = (): Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "workspaces", "--json"]);
+      return yield* parseJson<WorkspaceOutput[]>(output);
+    });
+
+  const removeWorkspace = (
+    name: string,
+    deleteFiles?: boolean,
+  ): Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const args = ["stack", "remove-workspace", "--json"];
+      if (deleteFiles) args.push("--delete");
+      args.push(name);
+      const output = yield* shell.run(args);
+      return yield* parseJson<RemoveWorkspaceResult>(output);
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -692,6 +756,8 @@ const makeShipService = Effect.gen(function* () {
     getDaemonStatus,
     subscribeToPRs,
     unsubscribeFromPRs,
+    listWorkspaces,
+    removeWorkspace,
   } satisfies ShipService;
 });
 
@@ -760,6 +826,10 @@ type ToolArgs = {
   draft?: boolean;
   body?: string;
   changeId?: string;
+  // Workspace-specific args
+  noWorkspace?: boolean; // For stack-create to skip workspace creation
+  name?: string; // For remove-workspace (workspace name)
+  deleteFiles?: boolean; // For remove-workspace
   // Webhook-specific args
   events?: string;
   // Daemon webhook subscription args
@@ -935,6 +1005,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
         const result = yield* ship.createStackChange({
           message: args.message,
           bookmark: args.bookmark,
+          noWorkspace: args.noWorkspace,
         });
         if (!result.created) {
           return `Error: ${result.error || "Failed to create change"}`;
@@ -942,6 +1013,9 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
         let output = `Created change: ${result.changeId}`;
         if (result.bookmark) {
           output += `\nCreated bookmark: ${result.bookmark}`;
+        }
+        if (result.workspace?.created) {
+          output += `\nCreated workspace: ${result.workspace.name} at ${result.workspace.path}`;
         }
         return output;
       }
@@ -1034,6 +1108,37 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
           return `Error: ${result.error || "Failed to abandon"}`;
         }
         return `Abandoned ${result.changeId?.slice(0, 8) || "change"}\nWorking copy now at: ${result.newWorkingCopy?.slice(0, 8) || "unknown"}`;
+      }
+
+      // Workspace operations
+      case "stack-workspaces": {
+        const workspaces = yield* ship.listWorkspaces();
+        if (workspaces.length === 0) {
+          return "No workspaces found.";
+        }
+        return `Workspaces (${workspaces.length}):\n\n${workspaces
+          .map((ws: WorkspaceOutput) => {
+            const defaultMark = ws.isDefault ? " (default)" : "";
+            const stack = ws.stackName ? ` stack:${ws.stackName}` : "";
+            const task = ws.taskId ? ` task:${ws.taskId}` : "";
+            return `${ws.name}${defaultMark}${stack}${task}\n  Change: ${ws.changeId} - ${ws.description}\n  Path: ${ws.path}`;
+          })
+          .join("\n\n")}`;
+      }
+
+      case "stack-remove-workspace": {
+        if (!args.name) {
+          return "Error: name is required for stack-remove-workspace action";
+        }
+        const result = yield* ship.removeWorkspace(args.name, args.deleteFiles);
+        if (!result.removed) {
+          return `Error: ${result.error || "Failed to remove workspace"}`;
+        }
+        let output = `Removed workspace: ${result.name}`;
+        if (result.filesDeleted !== undefined) {
+          output += result.filesDeleted ? "\nFiles deleted." : "\nFiles remain on disk.";
+        }
+        return output;
       }
 
       // Webhook operations
@@ -1178,12 +1283,14 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-submit",
           "stack-squash",
           "stack-abandon",
+          "stack-workspaces",
+          "stack-remove-workspace",
           "webhook-daemon-status",
           "webhook-subscribe",
           "webhook-unsubscribe",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
         ),
       taskId: createTool.schema
         .string()
@@ -1227,6 +1334,18 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("Bookmark name for stack-create action"),
+      noWorkspace: createTool.schema
+        .boolean()
+        .optional()
+        .describe("Skip workspace creation - for stack-create action (by default, workspace is created for isolated development)"),
+      name: createTool.schema
+        .string()
+        .optional()
+        .describe("Workspace name - required for stack-remove-workspace action"),
+      deleteFiles: createTool.schema
+        .boolean()
+        .optional()
+        .describe("Also delete the workspace directory from disk - for stack-remove-workspace action"),
       draft: createTool.schema
         .boolean()
         .optional()

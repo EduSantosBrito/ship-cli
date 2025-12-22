@@ -18,6 +18,8 @@ import { syncCommand } from "./sync.js";
 import { submitCommand } from "./submit.js";
 import { squashCommand } from "./squash.js";
 import { abandonCommand } from "./abandon.js";
+import { workspacesCommand } from "./workspaces.js";
+import { removeWorkspaceCommand } from "./remove-workspace.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -28,12 +30,14 @@ Usage: ship stack <command> [options]
 Commands:
   log               View stack of changes from trunk to current
   status            Show current change status
-  create            Create a new change
+  create            Create a new change (workspace by default, --no-workspace to skip)
   describe          Update change description
   sync              Fetch and rebase onto trunk
   submit            Push and create/update PR
   squash            Squash current change into parent
   abandon           Abandon a change
+  workspaces        List jj workspaces
+  remove-workspace  Remove a jj workspace
 
 Run 'ship stack <command> --help' for more information.`),
 );
@@ -49,5 +53,7 @@ export const stackCommand = stack.pipe(
     submitCommand,
     squashCommand,
     abandonCommand,
+    workspacesCommand,
+    removeWorkspaceCommand,
   ]),
 );

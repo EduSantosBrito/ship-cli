@@ -107,8 +107,10 @@ const sendCommand = (command: IpcCommand): Effect.Effect<typeof IpcResponse.Type
     });
 
     client.on("error", (err) => {
-      if ((err as NodeJS.ErrnoException).code === "ECONNREFUSED" || 
-          (err as NodeJS.ErrnoException).code === "ENOENT") {
+      if (
+        (err as NodeJS.ErrnoException).code === "ECONNREFUSED" ||
+        (err as NodeJS.ErrnoException).code === "ENOENT"
+      ) {
         resume(Effect.fail(DaemonNotRunningError.default));
       } else {
         resume(Effect.fail(new DaemonError({ message: `IPC error: ${err.message}`, cause: err })));
@@ -138,7 +140,7 @@ const runDaemonServer = (
     const shutdownDeferred = yield* Deferred.make<void>();
     const connectedRef = yield* Ref.make(false);
     const webhookRef = yield* Ref.make<CliWebhook | null>(null);
-    
+
     // Create a queue for IPC requests to be processed within the Effect runtime
     const commandQueue = yield* Queue.unbounded<IpcRequest>();
 
@@ -151,7 +153,7 @@ const runDaemonServer = (
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
         yield* Effect.logInfo("Running cleanup finalizer");
-        
+
         // Remove socket file
         yield* Effect.sync(() => {
           if (Fs.existsSync(DAEMON_SOCKET_PATH)) {
@@ -172,9 +174,9 @@ const runDaemonServer = (
           yield* webhookService.deactivateWebhook(repo, webhook.id).pipe(Effect.ignore);
           yield* webhookService.deleteWebhook(repo, webhook.id).pipe(Effect.ignore);
         }
-        
+
         yield* Effect.logInfo("Cleanup completed");
-      }).pipe(Effect.ignore)
+      }).pipe(Effect.ignore),
     );
 
     // Handle IPC command - pure Effect, no side effects
@@ -183,14 +185,14 @@ const runDaemonServer = (
         switch (command.type) {
           case "subscribe": {
             const { sessionId, prNumbers } = command;
-            
+
             yield* Effect.logInfo("Received subscribe command").pipe(
-              Effect.annotateLogs({ 
-                sessionId: sessionId ?? "undefined", 
-                prNumbers: prNumbers?.join(",") ?? "undefined" 
-              })
+              Effect.annotateLogs({
+                sessionId: sessionId ?? "undefined",
+                prNumbers: prNumbers?.join(",") ?? "undefined",
+              }),
             );
-            
+
             // Validate inputs
             if (!sessionId || sessionId.length === 0) {
               yield* Effect.logWarning("Subscribe rejected: sessionId is required");
@@ -202,33 +204,37 @@ const runDaemonServer = (
             }
             if (!prNumbers.every((n) => typeof n === "number" && n > 0)) {
               yield* Effect.logWarning("Subscribe rejected: prNumbers must be positive integers");
-              return new ErrorResponse({ type: "error", error: "prNumbers must be positive integers" });
+              return new ErrorResponse({
+                type: "error",
+                error: "prNumbers must be positive integers",
+              });
             }
-            
+
             // Log registry state before update
             const registryBefore = yield* Ref.get(registryRef);
             yield* Effect.logInfo("Registry state before subscribe").pipe(
-              Effect.annotateLogs({ 
-                registrySize: String(HashMap.size(registryBefore))
-              })
+              Effect.annotateLogs({
+                registrySize: String(HashMap.size(registryBefore)),
+              }),
             );
-            
+
             yield* Ref.update(registryRef, (registry) => {
               let updated = registry;
               for (const pr of prNumbers) {
                 const existing = HashMap.get(updated, pr);
-                const sessions = existing._tag === "Some" 
-                  ? HashSet.add(existing.value, sessionId)
-                  : HashSet.make(sessionId);
+                const sessions =
+                  existing._tag === "Some"
+                    ? HashSet.add(existing.value, sessionId)
+                    : HashSet.make(sessionId);
                 updated = HashMap.set(updated, pr, sessions);
               }
               return updated;
             });
-            
+
             yield* Effect.logInfo("Subscribed session to PRs").pipe(
-              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(",") })
+              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(",") }),
             );
-            
+
             return new SuccessResponse({
               type: "success",
               message: `Subscribed session ${sessionId} to PRs: ${prNumbers.join(", ")}`,
@@ -252,11 +258,11 @@ const runDaemonServer = (
               }
               return updated;
             });
-            
+
             yield* Effect.logInfo("Unsubscribed session from PRs").pipe(
-              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(",") })
+              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(",") }),
             );
-            
+
             return new SuccessResponse({
               type: "success",
               message: `Unsubscribed session ${sessionId} from PRs: ${prNumbers.join(", ")}`,
@@ -266,11 +272,11 @@ const runDaemonServer = (
           case "status": {
             const registry = yield* Ref.get(registryRef);
             const connected = yield* Ref.get(connectedRef);
-            
+
             // Build subscriptions list
             const subscriptions: SessionSubscription[] = [];
             const sessionPrs = new Map<string, number[]>();
-            
+
             for (const [pr, sessions] of HashMap.entries(registry)) {
               for (const sessionId of HashSet.values(sessions)) {
                 const prs = sessionPrs.get(sessionId) ?? [];
@@ -278,7 +284,7 @@ const runDaemonServer = (
                 sessionPrs.set(sessionId, prs);
               }
             }
-            
+
             for (const [sessionId, prs] of sessionPrs.entries()) {
               subscriptions.push(
                 new SessionSubscription({
@@ -328,8 +334,8 @@ const runDaemonServer = (
           const request = yield* Queue.take(commandQueue);
           const response = yield* handleCommand(request.command);
           yield* Effect.sync(() => request.respond(response));
-        })
-      )
+        }),
+      ),
     );
 
     // Start IPC server using acquireRelease for proper cleanup
@@ -345,14 +351,14 @@ const runDaemonServer = (
 
           socket.on("data", (chunk) => {
             data += chunk.toString();
-            
+
             // Check for complete message (newline-delimited)
             const lines = data.split("\n");
             data = lines.pop() ?? "";
 
             for (const line of lines) {
               if (!line.trim()) continue;
-              
+
               const parseResult = Schema.decodeUnknownEither(IpcCommand)(JSON.parse(line));
               if (parseResult._tag === "Left") {
                 const response = new ErrorResponse({
@@ -372,16 +378,18 @@ const runDaemonServer = (
                   socket.end();
                 },
               };
-              
+
               // Enqueue - handle shutdown gracefully
               try {
                 Queue.unsafeOffer(commandQueue, request);
               } catch {
                 // Queue is shut down, respond with error
-                request.respond(new ErrorResponse({
-                  type: "error",
-                  error: "Daemon is shutting down",
-                }));
+                request.respond(
+                  new ErrorResponse({
+                    type: "error",
+                    error: "Daemon is shutting down",
+                  }),
+                );
               }
             }
           });
@@ -396,13 +404,15 @@ const runDaemonServer = (
       (srv) =>
         Effect.async<void>((resume) => {
           srv.close(() => resume(Effect.void));
-        })
+        }),
     );
 
     // Start listening
     yield* Effect.async<void, DaemonError>((resume) => {
       server.on("error", (err) => {
-        resume(Effect.fail(new DaemonError({ message: `IPC server error: ${err.message}`, cause: err })));
+        resume(
+          Effect.fail(new DaemonError({ message: `IPC server error: ${err.message}`, cause: err })),
+        );
       });
 
       server.listen(DAEMON_SOCKET_PATH, () => {
@@ -411,7 +421,7 @@ const runDaemonServer = (
     });
 
     yield* Effect.logInfo("IPC server listening").pipe(
-      Effect.annotateLogs({ path: DAEMON_SOCKET_PATH })
+      Effect.annotateLogs({ path: DAEMON_SOCKET_PATH }),
     );
 
     // Create webhook and connect to GitHub using acquireRelease
@@ -426,15 +436,15 @@ const runDaemonServer = (
         Effect.gen(function* () {
           yield* webhookService.deactivateWebhook(repo, wh.id).pipe(Effect.ignore);
           yield* webhookService.deleteWebhook(repo, wh.id).pipe(Effect.ignore);
-        })
+        }),
     );
-    
+
     yield* Ref.set(webhookRef, webhook);
     yield* webhookService.activateWebhook(repo, webhook.id);
     yield* Ref.set(connectedRef, true);
 
     yield* Effect.logInfo("Connected to GitHub webhook").pipe(
-      Effect.annotateLogs({ repo, events: events.join(",") })
+      Effect.annotateLogs({ repo, events: events.join(",") }),
     );
 
     // Check if event should be forwarded to the agent
@@ -501,13 +511,13 @@ const runDaemonServer = (
     const routeEvent = (event: WebhookEvent): Effect.Effect<void, never> =>
       Effect.gen(function* () {
         yield* Effect.logInfo("Routing webhook event").pipe(
-          Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
+          Effect.annotateLogs({ event: event.event, action: event.action ?? "none" }),
         );
 
         // Filter to only actionable events
         if (!shouldForwardEvent(event)) {
           yield* Effect.logDebug("Event filtered out (not actionable)").pipe(
-            Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
+            Effect.annotateLogs({ event: event.event, action: event.action ?? "none" }),
           );
           return;
         }
@@ -515,21 +525,21 @@ const runDaemonServer = (
         const prNumber = extractPrNumber(event);
         if (prNumber === null) {
           yield* Effect.logInfo("Event has no PR number, skipping").pipe(
-            Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
+            Effect.annotateLogs({ event: event.event, action: event.action ?? "none" }),
           );
           return;
         }
 
         yield* Effect.logInfo("Extracted PR number").pipe(
-          Effect.annotateLogs({ prNumber: String(prNumber) })
+          Effect.annotateLogs({ prNumber: String(prNumber) }),
         );
 
         const registry = yield* Ref.get(registryRef);
         const sessions = HashMap.get(registry, prNumber);
-        
+
         if (sessions._tag === "None" || HashSet.size(sessions.value) === 0) {
           yield* Effect.logInfo("No subscribers for PR").pipe(
-            Effect.annotateLogs({ prNumber: String(prNumber), event: event.event })
+            Effect.annotateLogs({ prNumber: String(prNumber), event: event.event }),
           );
           return;
         }
@@ -538,10 +548,10 @@ const runDaemonServer = (
         const eventDesc = event.action ? `${event.event}.${event.action}` : event.event;
 
         yield* Effect.logInfo("Forwarding to sessions").pipe(
-          Effect.annotateLogs({ 
-            prNumber: String(prNumber), 
-            sessionCount: String(HashSet.size(sessions.value)) 
-          })
+          Effect.annotateLogs({
+            prNumber: String(prNumber),
+            sessionCount: String(HashSet.size(sessions.value)),
+          }),
         );
 
         // Forward to all sessions concurrently
@@ -552,51 +562,45 @@ const runDaemonServer = (
               Effect.flatMap((sid) => openCodeService.sendPromptAsync(sid, message)),
               Effect.tap(() =>
                 Effect.logInfo("Forwarded event to session").pipe(
-                  Effect.annotateLogs({ event: eventDesc, prNumber: String(prNumber), sessionId })
-                )
+                  Effect.annotateLogs({ event: eventDesc, prNumber: String(prNumber), sessionId }),
+                ),
               ),
               Effect.catchAll((e) =>
                 Effect.logWarning("Failed to forward to session").pipe(
-                  Effect.annotateLogs({ sessionId, error: String(e) })
-                )
-              )
+                  Effect.annotateLogs({ sessionId, error: String(e) }),
+                ),
+              ),
             ),
-          { concurrency: "unbounded" }
+          { concurrency: "unbounded" },
         );
       });
 
     // Stream webhook events and route them
     yield* Effect.logInfo("Starting webhook event stream consumer");
-    const eventStreamFiber = yield* webhookService
-      .connectAndStream(webhook.wsUrl)
-      .pipe(
-        Stream.tap((event) => 
-          Effect.logInfo("Received webhook event").pipe(
-            Effect.annotateLogs({ 
-              event: event.event, 
-              action: event.action ?? "none",
-              deliveryId: event.deliveryId 
-            })
-          )
+    const eventStreamFiber = yield* webhookService.connectAndStream(webhook.wsUrl).pipe(
+      Stream.tap((event) =>
+        Effect.logInfo("Received webhook event").pipe(
+          Effect.annotateLogs({
+            event: event.event,
+            action: event.action ?? "none",
+            deliveryId: event.deliveryId,
+          }),
         ),
-        Stream.tap((event) => routeEvent(event)),
-        Stream.tapError((e) =>
-          Ref.set(connectedRef, false).pipe(
-            Effect.tap(() => 
-              Effect.logError("WebSocket error").pipe(
-                Effect.annotateLogs({ error: String(e) })
-              )
-            ),
+      ),
+      Stream.tap((event) => routeEvent(event)),
+      Stream.tapError((e) =>
+        Ref.set(connectedRef, false).pipe(
+          Effect.tap(() =>
+            Effect.logError("WebSocket error").pipe(Effect.annotateLogs({ error: String(e) })),
           ),
         ),
-        Stream.retry(
-          Schedule.exponential(Duration.seconds(5)).pipe(
-            Schedule.intersect(Schedule.recurs(10)),
-          ),
-        ),
-        Stream.runDrain,
-        Effect.fork,
-      );
+      ),
+      Stream.retry(
+        Schedule.exponential(Duration.seconds(5)).pipe(Schedule.intersect(Schedule.recurs(10))),
+      ),
+      Stream.runDrain,
+      Effect.fork,
+    );
 
     yield* Effect.logInfo("Webhook daemon started");
 

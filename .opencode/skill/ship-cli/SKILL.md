@@ -44,12 +44,14 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking 
 |--------|-------------|-----------------|
 | `stack-log` | View stack of changes from trunk to current | - |
 | `stack-status` | Show current change status | - |
-| `stack-create` | Create a new jj change with bookmark | message (optional), bookmark (optional) |
+| `stack-create` | Create new jj change (workspace by default) | message (optional), bookmark (optional), noWorkspace (optional) |
 | `stack-describe` | Update change description | message |
 | `stack-sync` | Fetch and rebase onto trunk | - |
 | `stack-submit` | Push and create/update PR (auto-subscribes to webhook events) | draft (optional) |
 | `stack-squash` | Squash current change into parent | message |
 | `stack-abandon` | Abandon current change | changeId (optional) |
+| `stack-workspaces` | List all jj workspaces | - |
+| `stack-remove-workspace` | Remove a jj workspace | name, deleteFiles (optional) |
 
 ### Webhook Actions (GitHub Event Routing)
 
@@ -108,8 +110,10 @@ Task management and VCS operations are **separate**. You control when each happe
 3. **Start the task**: `ship` tool with action `start`, taskId=`<id>`
    - This ONLY updates Linear status to "In Progress"
    - Does NOT create VCS changes
-4. **Create VCS change**: `ship` tool with action `stack-create`, message=`"<id>: <title>"`, bookmark=`<branch-name>`
+4. **Create VCS change (workspace created automatically)**: `ship` tool with action `stack-create`, message=`"<id>: <title>"`, bookmark=`<branch-name>`
    - Get branch name from `start` output or `show` action
+   - **Workspace is created by default** for isolated development
+   - Inform the user to run the `cd` command shown in the output to switch to the workspace
 
 ### Doing the Work
 
@@ -118,12 +122,18 @@ Task management and VCS operations are **separate**. You control when each happe
 
 ### Submitting Work
 
+**These steps are MANDATORY. Do not skip any of them.**
+
 7. **Sync before submit**: `ship` tool with action `stack-sync`
+   - Ensures your changes are rebased on latest trunk
 8. **Submit PR**: `ship` tool with action `stack-submit`
    - **IMPORTANT**: This automatically subscribes you to webhook events for all stack PRs
    - You will receive notifications when the PR is merged, CI fails, or reviews are added
    - No need to manually call `webhook-subscribe` - it happens automatically
 9. **Mark complete**: `ship` tool with action `done`, taskId=`<id>`
+   - **ONLY after PR is submitted** - the PR URL should be visible in step 8 output
+
+**WARNING**: If you mark a task as `done` without running `stack-sync` and `stack-submit`, the code changes will NOT be pushed and no PR will exist. This is a critical error.
 
 ---
 
@@ -228,7 +238,11 @@ Always sync:
 ship tool: action=`stack-create`, message="BRI-123: Add feature", bookmark="user/bri-123-add-feature"
 ```
 
-Creates a new jj change with the given description and bookmark (branch name).
+Creates a new jj change with the given description and bookmark (branch name). **By default, a jj workspace is created** in a sibling directory (e.g., `../bri-123-add-feature`) for isolated development.
+
+After creation, inform the user to `cd` into the workspace path shown in the output.
+
+To skip workspace creation (e.g., when continuing work in an existing workspace), use `noWorkspace=true`.
 
 ### Submit PR
 
@@ -254,13 +268,29 @@ This means you will automatically receive GitHub event notifications for:
 
 ## Post-Task Completion
 
-After completing a task:
+**CRITICAL: You MUST complete these VCS steps before marking a task as done.**
 
-1. **Review changes** - Summarize what was modified
-2. **Quality checks** - Run lint, format, typecheck
-3. **Sync** - `ship` tool with action `stack-sync`
-4. **Submit PR** - `ship` tool with action `stack-submit`
-5. **Mark complete** - `ship` tool with action `done`
+After completing code changes for a task:
+
+1. **Quality checks** - Run lint, format, typecheck to ensure code is clean
+2. **Sync with trunk** - `ship` tool with action `stack-sync`
+   - This fetches latest changes and rebases your stack
+3. **Submit PR** - `ship` tool with action `stack-submit`
+   - This pushes your changes and creates/updates the PR
+   - Auto-subscribes you to webhook events for the PR
+4. **Mark complete** - `ship` tool with action `done`, taskId=`<id>`
+   - Only do this AFTER the PR is submitted
+
+**DO NOT skip steps 2-3.** The PR must exist before marking the task complete. If you mark a task done without submitting the PR, the work is not actually delivered.
+
+### Example Flow
+
+```
+# After finishing code changes...
+ship tool: action=`stack-sync`           # Rebase onto latest trunk
+ship tool: action=`stack-submit`         # Push and create PR
+ship tool: action=`done`, taskId=`BRI-123`  # Now mark complete
+```
 
 ---
 
@@ -269,8 +299,8 @@ After completing a task:
 When working on dependent changes (stacked PRs):
 
 ```
-trunk ← PR A (#34) ← PR B (#35) ← PR C (#36)
-              ↑           ↑           ↑
+trunk <- PR A (#34) <- PR B (#35) <- PR C (#36)
+              ^           ^           ^
            merged      rebases    rebases
 ```
 
@@ -280,3 +310,70 @@ trunk ← PR A (#34) ← PR B (#35) ← PR C (#36)
 4. Run `stack-submit` to update the PRs with rebased commits
 
 This keeps your stack always up-to-date with trunk.
+
+---
+
+## Workspace Workflow (MANDATORY)
+
+**Workspaces are created by default.** When you create a new stack with `stack-create`, a jj workspace is automatically created in a sibling directory for isolated development.
+
+### Why Workspaces Are Required
+
+Without workspaces, multiple agents editing the same files will cause:
+- File conflicts and overwrites
+- Inconsistent state between agents
+- Failed builds and tests
+- Lost work
+
+Each agent MUST work in its own isolated workspace.
+
+### Create Stack (Workspace is Default)
+
+**Workspace is created automatically when creating a new stack:**
+
+```
+ship tool: action=`stack-create`, message="BRI-123: Feature X", bookmark="user/bri-123-feature-x"
+```
+
+This creates:
+1. A new jj workspace at `../bri-123-feature-x` (sibling directory)
+2. A bookmark for the stack
+
+Output will include: `Workspace: ../bri-123-feature-x`
+
+**IMPORTANT**: After creating a workspace, inform the user they need to run the `cd` command to switch to the workspace directory. The agent cannot change the user's shell directory.
+
+### Skip Workspace Creation
+
+Only skip workspace creation when continuing work in an existing workspace:
+
+```
+ship tool: action=`stack-create`, message="Follow-up change", noWorkspace=true
+```
+
+### List Workspaces
+
+```
+ship tool: action=`stack-workspaces`
+```
+
+Shows all jj workspaces with their current change and task associations.
+
+### Remove Workspace
+
+```
+ship tool: action=`stack-remove-workspace`, name="bri-123-feature-x"
+```
+
+To also delete the files from disk:
+
+```
+ship tool: action=`stack-remove-workspace`, name="bri-123-feature-x", deleteFiles=true
+```
+
+### Automatic Cleanup
+
+Workspaces are automatically cleaned up when:
+- `stack-abandon` is called on a change with an associated workspace
+
+This behavior can be disabled via config: `workspace.autoCleanup: false`
