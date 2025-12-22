@@ -21,14 +21,16 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking.
 
 ## Available Actions
 
+### Task Management
+
 | Action | Description | Required params |
 |--------|-------------|-----------------|
 | `ready` | Tasks you can work on (no blockers) | - |
 | `blocked` | Tasks waiting on dependencies | - |
 | `list` | All tasks (with optional filters) | - |
 | `show` | Task details | taskId |
-| `start` | Begin working on task | taskId |
-| `done` | Mark task complete | taskId |
+| `start` | Mark task as In Progress (Linear only) | taskId |
+| `done` | Mark task as complete | taskId |
 | `create` | Create new task | title |
 | `update` | Update task | taskId + fields |
 | `block` | Add blocking relationship | blocker, blocked |
@@ -42,21 +44,51 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking.
 |--------|-------------|-----------------|
 | `stack-log` | View stack of changes from trunk to current | - |
 | `stack-status` | Show current change status | - |
-| `stack-create` | Create a new change | message (optional), bookmark (optional) |
+| `stack-create` | Create a new jj change with bookmark | message (optional), bookmark (optional) |
 | `stack-describe` | Update change description | message |
 | `stack-sync` | Fetch and rebase onto trunk | - |
 | `stack-submit` | Push and create/update PR | draft (optional), title (optional), body (optional) |
 
 ---
 
-## Workflow
+## Workflow (Explicit Steps)
 
-1. **Sync with trunk**: `ship` tool with action `stack-sync` (ensures you're on latest code)
-2. Check available work: `ship` tool with action `ready`
-3. Start a task: `ship` tool with action `start` and taskId (creates change + bookmark)
-4. Do the work
-5. Submit changes: `ship` tool with action `stack-submit`
-6. Mark complete: `ship` tool with action `done` and taskId
+Task management and VCS operations are **separate**. You control when each happens.
+
+### Starting Work on a Task
+
+1. **Sync with trunk**: `ship` tool with action `stack-sync`
+2. **Find a task**: `ship` tool with action `ready`
+3. **Start the task**: `ship` tool with action `start`, taskId=`<id>`
+   - This ONLY updates Linear status to "In Progress"
+   - Does NOT create VCS changes
+4. **Create VCS change**: `ship` tool with action `stack-create`, message=`"<id>: <title>"`, bookmark=`<branch-name>`
+   - Get branch name from `start` output or `show` action
+
+### Doing the Work
+
+5. Make code changes
+6. Run quality checks (lint, format, typecheck)
+
+### Submitting Work
+
+7. **Sync before submit**: `ship` tool with action `stack-sync`
+8. **Submit PR**: `ship` tool with action `stack-submit`
+9. **Mark complete**: `ship` tool with action `done`, taskId=`<id>`
+
+---
+
+## Why Explicit Control?
+
+The agent decides when to:
+- **Start a task** - Update Linear status, but maybe not create a branch yet
+- **Create a change** - When ready to write code
+- **Submit** - When changes are ready for review
+
+This prevents:
+- Orphaned branches when investigation doesn't lead to code changes
+- Confusion about which change belongs to which task
+- Automatic operations that may not be wanted
 
 ---
 
@@ -117,18 +149,38 @@ Use ship tool with:
 
 ---
 
-## Stack Workflow (VCS)
+## Stack Workflow Details
 
-Use stack actions to manage changes with jj:
+### Sync (fetch + rebase)
 
-1. **Sync before starting**: `ship` tool with action `stack-sync` (fetch + rebase onto trunk)
-2. **Check stack status**: `ship` tool with action `stack-status`
-3. **Create new change**: `ship` tool with action `stack-create`, message="Description"
-4. **Update description**: `ship` tool with action `stack-describe`, message="New description"
-5. **Sync before submitting**: `ship` tool with action `stack-sync` (rebase onto latest trunk)
-6. **Submit for review**: `ship` tool with action `stack-submit`
+```
+ship tool: action=`stack-sync`
+```
 
-**Always sync before starting work and before submitting** to avoid merge conflicts and ensure clean PRs.
+Always sync:
+- Before starting new work (get latest trunk)
+- Before submitting (ensure clean rebase)
+
+### Create Change
+
+```
+ship tool: action=`stack-create`, message="BRI-123: Add feature", bookmark="user/bri-123-add-feature"
+```
+
+Creates a new jj change with the given description and bookmark (branch name).
+
+### Submit PR
+
+```
+ship tool: action=`stack-submit`
+```
+
+Options:
+- `draft=true` - Create as draft PR
+- `title="..."` - Override PR title
+- `body="..."` - Override PR body
+
+If PR already exists and title/body provided, it will update the existing PR.
 
 ---
 
@@ -138,5 +190,6 @@ After completing a task:
 
 1. **Review changes** - Summarize what was modified
 2. **Quality checks** - Run lint, format, typecheck
-3. **Submit PR** - Use `ship` tool with action `stack-submit`
-4. **Mark complete** - Use `ship` tool with action `done`
+3. **Sync** - `ship` tool with action `stack-sync`
+4. **Submit PR** - `ship` tool with action `stack-submit`
+5. **Mark complete** - `ship` tool with action `done`
