@@ -3,120 +3,65 @@ import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { TaskFilter, type Task } from "../../../../domain/Task.js";
-
-const formatTaskCompact = (task: Task): string => {
-  const priority = task.priority === "urgent" ? "!" : task.priority === "high" ? "^" : "";
-  return `${priority}${task.identifier}: ${task.title} [${task.state.name}]`;
-};
-
-const formatTaskFull = (task: Task): string[] => {
-  const lines: string[] = [];
-  const priority = task.priority === "urgent" ? "!" : task.priority === "high" ? "^" : "";
-
-  lines.push(`### ${priority}${task.identifier}: ${task.title}`);
-  lines.push(`**Status:** ${task.state.name} | **Priority:** ${task.priority}`);
-
-  if (task.labels.length > 0) {
-    lines.push(`**Labels:** ${task.labels.join(", ")}`);
-  }
-
-  if (Option.isSome(task.branchName)) {
-    lines.push(`**Branch:** \`${task.branchName.value}\``);
-  }
-
-  if (task.blockedBy.length > 0) {
-    lines.push(`**Blocked by:** ${task.blockedBy.join(", ")}`);
-  }
-
-  if (task.blocks.length > 0) {
-    lines.push(`**Blocks:** ${task.blocks.join(", ")}`);
-  }
-
-  if (Option.isSome(task.description) && task.description.value.trim()) {
-    lines.push("");
-    lines.push(task.description.value);
-  }
-
-  lines.push(`**URL:** ${task.url}`);
-
-  return lines;
-};
 
 export const primeCommand = Command.make("prime", {}, () =>
   Effect.gen(function* () {
     const config = yield* ConfigRepository;
-    const issueRepo = yield* IssueRepository;
-
     const cfg = yield* config.load();
-    const projectId = Option.getOrUndefined(cfg.linear.projectId);
 
-    // Get ready and blocked tasks
-    const [readyTasks, blockedTasks] = yield* Effect.all([
-      issueRepo.getReadyTasks(cfg.linear.teamId, projectId),
-      issueRepo.getBlockedTasks(cfg.linear.teamId, projectId),
-    ]);
-
-    // Get in-progress tasks (filter by "started" state type)
-    const filter = new TaskFilter({
-      status: Option.some("in_progress"),
-      priority: Option.none(),
-      projectId: cfg.linear.projectId,
-      assignedToMe: false,
-    });
-    const allTasks = yield* issueRepo.listTasks(cfg.linear.teamId, filter);
-
-    // Filter to only "started" state type tasks
-    const inProgressTasks = allTasks.filter((t: Task) => t.state.type === "started");
-
-    // Build context output (plain markdown, no XML tags - plugin wraps it)
     const lines: string[] = [];
 
-    lines.push(`Team: ${cfg.linear.teamKey}`);
+    // Configuration info
+    lines.push("# Ship CLI Context");
+    lines.push("");
+    lines.push(`**Team:** ${cfg.linear.teamKey}`);
     if (Option.isSome(cfg.linear.projectId)) {
-      lines.push(`Project: ${cfg.linear.projectId.value}`);
+      lines.push(`**Project:** ${cfg.linear.projectId.value}`);
     }
 
-    // Show in-progress tasks with FULL details (description, acceptance criteria, etc.)
-    if (inProgressTasks.length > 0) {
-      lines.push("");
-      lines.push("## Current Work (In Progress)");
-      lines.push("");
-      for (const task of inProgressTasks) {
-        lines.push(...formatTaskFull(task));
-        lines.push("");
-        lines.push("---");
-        lines.push("");
-      }
-    }
+    // Available commands
+    lines.push("");
+    lines.push("## Available Commands");
+    lines.push("");
+    lines.push("### Task Management");
+    lines.push("- `ship ready` - List tasks ready to work on (no blockers)");
+    lines.push("- `ship blocked` - List tasks waiting on dependencies");
+    lines.push("- `ship list` - List all tasks with optional filters");
+    lines.push("- `ship show <id>` - Show task details");
+    lines.push("- `ship create <title>` - Create a new task");
+    lines.push("- `ship start <id>` - Start working on a task");
+    lines.push("- `ship done <id>` - Mark task as complete");
+    lines.push("- `ship update <id>` - Update task details");
+    lines.push("");
+    lines.push("### Task Relationships");
+    lines.push("- `ship block <blocker> <blocked>` - Mark a task as blocking another");
+    lines.push("- `ship unblock <blocker> <blocked>` - Remove blocking relationship");
+    lines.push("- `ship relate <id1> <id2>` - Link two tasks as related");
 
-    // Show ready tasks with compact format (just titles)
-    if (readyTasks.length > 0) {
-      lines.push("");
-      lines.push("## Ready to Work");
-      for (const task of readyTasks.slice(0, 10)) {
-        lines.push(`- ${formatTaskCompact(task)}`);
-      }
-      if (readyTasks.length > 10) {
-        lines.push(`  ... and ${readyTasks.length - 10} more`);
-      }
-    }
-
-    // Show blocked tasks with blockers info
-    if (blockedTasks.length > 0) {
-      lines.push("");
-      lines.push("## Blocked");
-      for (const task of blockedTasks.slice(0, 5)) {
-        lines.push(`- ${formatTaskCompact(task)}`);
-        if (task.blockedBy.length > 0) {
-          lines.push(`  Blocked by: ${task.blockedBy.join(", ")}`);
-        }
-      }
-      if (blockedTasks.length > 5) {
-        lines.push(`  ... and ${blockedTasks.length - 5} more`);
-      }
-    }
+    // Post-task completion flow
+    lines.push("");
+    lines.push("## Post-Task Completion Flow");
+    lines.push("");
+    lines.push(
+      "After completing a task, follow this procedure. **Ask the user for permission before starting**, explaining what you're about to do.",
+    );
+    lines.push("");
+    lines.push("### 1. Review Changes");
+    lines.push("Summarize what was changed, which files were modified, and why.");
+    lines.push("");
+    lines.push("### 2. Quality Checks");
+    lines.push(
+      "Run the project's lint, format, and typecheck commands. Check package.json scripts or the project's documentation to find the correct commands.",
+    );
+    lines.push("");
+    lines.push("### 3. Version Control");
+    lines.push("Commit and push changes using the project's VCS workflow:");
+    lines.push("- Check current status and changed files");
+    lines.push("- Write a descriptive commit message referencing the task");
+    lines.push("- Push changes and create a pull request");
+    lines.push("");
+    lines.push("### 4. Mark Task Complete");
+    lines.push("Use `ship done <task-id>` to mark the task as done in Linear.");
 
     yield* Console.log(lines.join("\n"));
   }),
