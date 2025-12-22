@@ -195,3 +195,37 @@ export class RateLimitError extends Data.TaggedError("RateLimitError")<{
   readonly message: string;
   readonly retryAfter?: number;
 }> {}
+
+// === OpenCode Errors ===
+
+/** Generic OpenCode service error */
+export class OpenCodeError extends Data.TaggedError("OpenCodeError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+/** OpenCode server is not running or unreachable */
+export class OpenCodeNotRunningError extends Data.TaggedError("OpenCodeNotRunningError")<{
+  readonly message: string;
+  readonly serverUrl?: string;
+}> {
+  static forUrl(serverUrl: string) {
+    return new OpenCodeNotRunningError({
+      message: `OpenCode server is not running at ${serverUrl}. Start it with 'opencode' or 'opencode serve'.`,
+      serverUrl,
+    });
+  }
+}
+
+/** OpenCode session not found */
+export class OpenCodeSessionNotFoundError extends Data.TaggedError("OpenCodeSessionNotFoundError")<{
+  readonly message: string;
+  readonly sessionId?: string;
+}> {
+  static forId(sessionId: string) {
+    return new OpenCodeSessionNotFoundError({
+      message: `Session not found: ${sessionId}`,
+      sessionId,
+    });
+  }
+}
