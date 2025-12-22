@@ -51,6 +51,19 @@ export class Dependency extends Schema.Class<Dependency>("Dependency")({
   relatedTaskId: TaskId,
 }) {}
 
+// Lightweight representation of a subtask for display purposes
+export class Subtask extends Schema.Class<Subtask>("Subtask")({
+  id: TaskId,
+  identifier: Schema.String, // e.g., "ENG-124"
+  title: Schema.String,
+  state: Schema.String, // State name (e.g., "In Progress")
+  stateType: WorkflowStateType, // For determining completion status
+}) {
+  get isDone(): boolean {
+    return this.stateType === "completed" || this.stateType === "canceled";
+  }
+}
+
 // Workflow state from Linear (custom states)
 export class WorkflowState extends Schema.Class<WorkflowState>("WorkflowState")({
   id: Schema.String,
@@ -73,6 +86,7 @@ export class Task extends Schema.Class<Task>("Task")({
   labels: Schema.Array(Schema.String),
   blockedBy: Schema.Array(TaskId),
   blocks: Schema.Array(TaskId),
+  subtasks: Schema.Array(Subtask),
   createdAt: Schema.Date,
   updatedAt: Schema.Date,
 }) {
@@ -84,6 +98,11 @@ export class Task extends Schema.Class<Task>("Task")({
   // Helper to check if task is actionable (not done)
   get isActionable(): boolean {
     return !this.isDone;
+  }
+
+  // Helper to check if task has subtasks
+  get hasSubtasks(): boolean {
+    return this.subtasks.length > 0;
   }
 }
 

@@ -294,15 +294,19 @@ export const submitCommand = Command.make(
 
           // Subscribe to all PRs
           if (prNumbers.length > 0) {
-            yield* daemonService.subscribe(sessionId, prNumbers).pipe(
+            const subscribeResult = yield* daemonService.subscribe(sessionId, prNumbers).pipe(
+              Effect.map(() => true),
               Effect.tapError((e) =>
                 Effect.logWarning("Failed to subscribe to stack PRs").pipe(
                   Effect.annotateLogs({ error: String(e), prNumbers: prNumbers.join(",") }),
                 ),
               ),
-              Effect.catchAll(() => Effect.void),
+              Effect.catchAll(() => Effect.succeed(false)),
             );
-            output.subscribed = { sessionId, prNumbers };
+            // Only report subscription if it actually succeeded
+            if (subscribeResult) {
+              output.subscribed = { sessionId, prNumbers };
+            }
           }
         }
       }

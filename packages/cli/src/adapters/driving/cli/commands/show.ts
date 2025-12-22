@@ -49,6 +49,15 @@ const formatTask = (task: Task): string[] => {
     lines.push(`Blocks: ${task.blocks.join(", ")}`);
   }
 
+  if (task.subtasks.length > 0) {
+    lines.push("");
+    lines.push("Subtasks:");
+    for (const subtask of task.subtasks) {
+      const statusIndicator = subtask.isDone ? "✓" : "○";
+      lines.push(`  ${statusIndicator} ${subtask.identifier}: ${subtask.title} (${subtask.state})`);
+    }
+  }
+
   return lines;
 };
 
@@ -81,6 +90,14 @@ export const showCommand = Command.make(
           branchName: Option.getOrNull(task.branchName),
           blockedBy: task.blockedBy,
           blocks: task.blocks,
+          subtasks: task.subtasks.map((s) => ({
+            id: s.id,
+            identifier: s.identifier,
+            title: s.title,
+            state: s.state,
+            stateType: s.stateType,
+            isDone: s.isDone,
+          })),
           createdAt: task.createdAt.toISOString(),
           updatedAt: task.updatedAt.toISOString(),
         };
