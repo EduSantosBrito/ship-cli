@@ -158,7 +158,8 @@ const make = Effect.gen(function* () {
   const push = (bookmark: string): Effect.Effect<PushResult, VcsErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
-        yield* runJj("git", "push", "-b", bookmark);
+        // Use --allow-new to support pushing new bookmarks for the first time
+        yield* runJj("git", "push", "-b", bookmark, "--allow-new");
         // Get the current change to return the change ID
         const current = yield* getCurrentChange();
         return new PushResult({
