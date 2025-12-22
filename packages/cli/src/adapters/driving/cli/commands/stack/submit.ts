@@ -12,9 +12,10 @@
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Console from "effect/Console";
 import { checkVcsAvailability, outputError } from "./shared.js";
-import { PrService, CreatePrInput } from "../../../../../ports/PrService.js";
+import { PrService, CreatePrInput, UpdatePrInput } from "../../../../../ports/PrService.js";
 
 // === Options ===
 
@@ -127,6 +128,18 @@ export const submitCommand = Command.make(
         return;
       }
 
+      // Get trunk info for base branch
+      const trunkResult = yield* vcs.getTrunkInfo().pipe(
+        Effect.map((trunk) => ({ success: true as const, trunk })),
+        Effect.catchAll(() => Effect.succeed({ success: false as const })),
+      );
+      // Default to "main" if trunk detection fails
+      const baseBranch = trunkResult.success ? "main" : "main"; // trunk() revset resolves to main/master
+
+      // Resolve PR title and body using Option.getOrElse
+      const prTitle = Option.getOrElse(title, () => change.description.split("\n")[0] || bookmark);
+      const prBody = Option.getOrElse(body, () => change.description);
+
       // Check if PR already exists for this branch
       const existingPr = yield* prService.getPrByBranch(bookmark).pipe(
         Effect.catchAll(() => Effect.succeed(null)),
@@ -135,29 +148,65 @@ export const submitCommand = Command.make(
       let output: SubmitOutput;
 
       if (existingPr) {
-        // PR already exists
-        output = {
-          pushed: true,
-          bookmark,
-          pr: {
-            url: existingPr.url,
-            number: existingPr.number,
-            status: "exists",
-          },
-        };
+        // PR already exists - check if we need to update it
+        const hasUpdates = Option.isSome(title) || Option.isSome(body);
+        
+        if (hasUpdates) {
+          // Update the PR with new title/body
+          const updateInput = new UpdatePrInput({
+            title: Option.isSome(title) ? prTitle : undefined,
+            body: Option.isSome(body) ? prBody : undefined,
+          });
+
+          const updateResult = yield* prService.updatePr(existingPr.number, updateInput).pipe(
+            Effect.map((pr) => ({ success: true as const, pr })),
+            Effect.catchAll((e) =>
+              Effect.succeed({ success: false as const, error: String(e) }),
+            ),
+          );
+
+          if (!updateResult.success) {
+            output = {
+              pushed: true,
+              bookmark,
+              pr: {
+                url: existingPr.url,
+                number: existingPr.number,
+                status: "exists",
+              },
+              error: `Pushed but failed to update PR: ${updateResult.error}`,
+            };
+          } else {
+            output = {
+              pushed: true,
+              bookmark,
+              pr: {
+                url: updateResult.pr.url,
+                number: updateResult.pr.number,
+                status: "updated",
+              },
+            };
+          }
+        } else {
+          // No updates needed, just report exists
+          output = {
+            pushed: true,
+            bookmark,
+            pr: {
+              url: existingPr.url,
+              number: existingPr.number,
+              status: "exists",
+            },
+          };
+        }
       } else {
         // Create new PR
-        const prTitle = title._tag === "Some" ? title.value : change.description.split("\n")[0] || bookmark;
-        const prBody = body._tag === "Some" ? body.value : change.description;
-
-        // Add draft suffix to title if draft mode
-        const finalTitle = draft ? `[Draft] ${prTitle}` : prTitle;
-
         const createInput = new CreatePrInput({
-          title: finalTitle,
+          title: prTitle,
           body: prBody,
           head: bookmark,
-          base: "main",
+          base: baseBranch,
+          draft,
         });
 
         const createResult = yield* prService.createPr(createInput).pipe(
