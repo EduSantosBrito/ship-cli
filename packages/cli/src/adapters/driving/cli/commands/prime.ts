@@ -6,6 +6,13 @@ import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 
 export const primeCommand = Command.make("prime", {}, () =>
   Effect.gen(function* () {
+    // Deprecation warning
+    yield* Console.warn(
+      "\n⚠️  DEPRECATED: 'ship prime' is deprecated and will be removed in a future version.\n" +
+        "   Use the ship-cli skill instead (.opencode/skill/ship-cli/SKILL.md)\n" +
+        "   The skill is auto-discovered by OpenCode and provides the same guidance.\n",
+    );
+
     const config = yield* ConfigRepository;
     const cfg = yield* config.load();
 

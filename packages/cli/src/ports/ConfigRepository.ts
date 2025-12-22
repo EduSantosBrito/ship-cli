@@ -14,6 +14,7 @@ export interface ConfigRepository {
   readonly getConfigDir: () => Effect.Effect<string, never>;
   readonly ensureConfigDir: () => Effect.Effect<void, ConfigError>;
   readonly ensureGitignore: () => Effect.Effect<void, ConfigError>;
+  readonly ensureOpencodeSkill: () => Effect.Effect<void, ConfigError>;
   readonly delete: () => Effect.Effect<void, ConfigError>;
 }
 
