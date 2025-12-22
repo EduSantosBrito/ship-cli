@@ -41,6 +41,12 @@ export interface PrService {
   readonly isAvailable: () => Effect.Effect<boolean, never>;
 
   /**
+   * Get current repository in "owner/repo" format.
+   * Returns null if not in a git repo or no remote configured.
+   */
+  readonly getCurrentRepo: () => Effect.Effect<string | null, PrErrors>;
+
+  /**
    * Create a new pull request
    */
   readonly createPr: (input: CreatePrInput) => Effect.Effect<PullRequest, PrErrors>;

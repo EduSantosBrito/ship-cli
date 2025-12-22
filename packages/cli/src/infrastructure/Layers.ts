@@ -8,6 +8,8 @@ import { ProjectRepositoryLive } from "../adapters/driven/linear/ProjectReposito
 import { IssueRepositoryLive } from "../adapters/driven/linear/IssueRepositoryLive.js";
 import { VcsServiceLive } from "../adapters/driven/vcs/VcsServiceLive.js";
 import { PrServiceLive } from "../adapters/driven/github/PrServiceLive.js";
+import { WebhookServiceLive } from "../adapters/driven/github/WebhookServiceLive.js";
+import { OpenCodeServiceLive } from "../adapters/driven/opencode/OpenCodeServiceLive.js";
 
 // Layer dependencies:
 // ConfigRepositoryLive: FileSystem + Path -> ConfigRepository
@@ -18,6 +20,8 @@ import { PrServiceLive } from "../adapters/driven/github/PrServiceLive.js";
 // IssueRepositoryLive: LinearClientService -> IssueRepository
 // VcsServiceLive: CommandExecutor -> VcsService
 // PrServiceLive: CommandExecutor -> PrService
+// WebhookServiceLive: CommandExecutor -> WebhookService
+// OpenCodeServiceLive: (no dependencies) -> OpenCodeService
 
 // Build the layer chain - each layer provides what the next needs
 // ConfigRepository provides what AuthService needs
@@ -34,11 +38,16 @@ const RepositoryLayers = Layer.mergeAll(
   IssueRepositoryLive,
 );
 
-// VcsService and PrService depend on CommandExecutor (from NodeContext)
+// VcsService, PrService, WebhookService depend on CommandExecutor (from NodeContext)
+// OpenCodeService has no dependencies
 // Merge them with the other services
-const AllServices = Layer.mergeAll(RepositoryLayers, VcsServiceLive, PrServiceLive).pipe(
-  Layer.provideMerge(ConfigAuthAndLinear),
-);
+const AllServices = Layer.mergeAll(
+  RepositoryLayers,
+  VcsServiceLive,
+  PrServiceLive,
+  WebhookServiceLive,
+  OpenCodeServiceLive,
+).pipe(Layer.provideMerge(ConfigAuthAndLinear));
 
 // Full application layer for Phase 1 (Linear + Config + Auth)
 // Use provideMerge to:

@@ -195,6 +195,40 @@ const make = Effect.gen(function* () {
       return authCode === 0;
     });
 
+  const getCurrentRepo = (): Effect.Effect<string | null, PrErrors> =>
+    withNetworkRetry(
+      Effect.gen(function* () {
+        // Use gh repo view --json nameWithOwner to get the repo in owner/repo format
+        const result = yield* runGh("repo", "view", "--json", "nameWithOwner").pipe(
+          Effect.map((output) => ({ success: true as const, output })),
+          Effect.catchAll((e) => {
+            // If not in a git repo or no remote configured, return null
+            if (
+              e instanceof PrError &&
+              (e.message.includes("not a git repository") ||
+                e.message.includes("no git remotes"))
+            ) {
+              return Effect.succeed({ success: false as const });
+            }
+            return Effect.fail(e);
+          }),
+        );
+
+        if (!result.success) {
+          return null;
+        }
+
+        // Parse the JSON output
+        const parsed = yield* Effect.try({
+          try: () => JSON.parse(result.output) as { nameWithOwner: string },
+          catch: (e) => new PrError({ message: `Failed to parse repo info: ${e}`, cause: e }),
+        });
+
+        return parsed.nameWithOwner;
+      }),
+      "getCurrentRepo",
+    );
+
   const createPr = (input: CreatePrInput): Effect.Effect<PullRequest, PrErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
@@ -324,6 +358,7 @@ const make = Effect.gen(function* () {
 
   return {
     isAvailable,
+    getCurrentRepo,
     createPr,
     updatePr,
     openInBrowser,

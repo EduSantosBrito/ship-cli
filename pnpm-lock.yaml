@@ -20,6 +20,9 @@ importers:
       '@clack/prompts':
         specifier: ^0.11.0
         version: 0.11.0
+      ws:
+        specifier: ^8.18.3
+        version: 8.18.3
     devDependencies:
       '@effect/cli':
         specifier: ^0.69.0
