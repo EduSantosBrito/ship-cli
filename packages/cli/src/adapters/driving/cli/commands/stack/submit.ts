@@ -5,6 +5,10 @@
  * 1. Gets current change and its bookmark
  * 2. Pushes bookmark to remote
  * 3. Creates or updates a PR on GitHub
+ * 4. If --subscribe is provided, subscribes to all PRs in the stack for webhook events
+ *
+ * When used via the OpenCode plugin, the session ID is automatically provided from the
+ * tool context, enabling automatic subscription to stack PRs without explicit --subscribe.
  *
  * This is the key command for submitting work, following Graphite's `gt submit` pattern.
  */
@@ -18,6 +22,7 @@ import * as Console from "effect/Console";
 import { pipe } from "effect/Function";
 import { checkVcsAvailability, outputError } from "./shared.js";
 import { PrService, CreatePrInput, UpdatePrInput } from "../../../../../ports/PrService.js";
+import { DaemonService } from "../../../../../ports/DaemonService.js";
 
 // === Options ===
 
@@ -43,6 +48,12 @@ const bodyOption = Options.text("body").pipe(
   Options.optional,
 );
 
+const subscribeOption = Options.text("subscribe").pipe(
+  Options.withAlias("s"),
+  Options.withDescription("OpenCode session ID to subscribe to all stack PRs"),
+  Options.optional,
+);
+
 // === Output Types ===
 
 interface SubmitOutput {
@@ -55,14 +66,18 @@ interface SubmitOutput {
     status: "created" | "updated" | "exists";
   };
   error?: string;
+  subscribed?: {
+    sessionId: string;
+    prNumbers: number[];
+  };
 }
 
 // === Command ===
 
 export const submitCommand = Command.make(
   "submit",
-  { json: jsonOption, draft: draftOption, title: titleOption, body: bodyOption },
-  ({ json, draft, title, body }) =>
+  { json: jsonOption, draft: draftOption, title: titleOption, body: bodyOption, subscribe: subscribeOption },
+  ({ json, draft, title, body, subscribe }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -244,6 +259,54 @@ export const submitCommand = Command.make(
         }
       }
 
+      // If subscribe option provided and we have a PR, subscribe to all stack PRs
+      if (Option.isSome(subscribe) && output.pr) {
+        const sessionId = subscribe.value;
+        const daemonService = yield* DaemonService;
+
+        // Check if daemon is running
+        const daemonRunning = yield* daemonService.isRunning();
+        if (daemonRunning) {
+          // Get all PRs in the stack by getting all bookmarks from trunk to current
+          const stackLog = yield* vcs.getLog().pipe(
+            Effect.catchAll(() => Effect.succeed([])),
+          );
+
+          // Get bookmarks from stack (excluding current bookmark)
+          const stackBookmarks = stackLog
+            .filter((c) => c.bookmarks.length > 0 && c.bookmarks[0] !== bookmark)
+            .map((c) => c.bookmarks[0]!)
+            .filter(Boolean);
+
+          // Fetch PR numbers concurrently for all bookmarks in the stack
+          const stackPrNumbers = yield* Effect.forEach(
+            stackBookmarks,
+            (stackBookmark) =>
+              prService.getPrByBranch(stackBookmark).pipe(
+                Effect.map((pr) => (pr ? pr.number : null)),
+                Effect.catchAll(() => Effect.succeed(null as number | null)),
+              ),
+            { concurrency: 5 },
+          ).pipe(Effect.map((nums) => nums.filter((n): n is number => n !== null)));
+
+          // Combine current PR with stack PRs
+          const prNumbers = [output.pr.number, ...stackPrNumbers];
+
+          // Subscribe to all PRs
+          if (prNumbers.length > 0) {
+            yield* daemonService.subscribe(sessionId, prNumbers).pipe(
+              Effect.tapError((e) =>
+                Effect.logWarning("Failed to subscribe to stack PRs").pipe(
+                  Effect.annotateLogs({ error: String(e), prNumbers: prNumbers.join(",") }),
+                ),
+              ),
+              Effect.catchAll(() => Effect.void),
+            );
+            output.subscribed = { sessionId, prNumbers };
+          }
+        }
+      }
+
       // Output result
       if (json) {
         yield* Console.log(JSON.stringify(output, null, 2));
@@ -263,6 +326,9 @@ export const submitCommand = Command.make(
                 : "Updated PR";
           yield* Console.log(`${statusMsg}: #${output.pr.number}`);
           yield* Console.log(`URL: ${output.pr.url}`);
+        }
+        if (output.subscribed) {
+          yield* Console.log(`Subscribed to PRs: ${output.subscribed.prNumbers.join(", ")}`);
         }
       }
     }),

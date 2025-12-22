@@ -1,8 +1,8 @@
 /**
  * Ship OpenCode Plugin
  *
- * Provides the `ship` tool for Linear task management.
- * Instructions/guidance are handled by the ship-linear skill (.opencode/skill/ship-linear/SKILL.md)
+ * Provides the `ship` tool for Linear task management and stacked changes workflow.
+ * Instructions/guidance are handled by the ship-cli skill (.opencode/skill/ship-cli/SKILL.md)
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
@@ -11,7 +11,6 @@ import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
-import * as Schedule from "effect/Schedule";
 
 // =============================================================================
 // Types & Errors
@@ -150,6 +149,10 @@ interface StackSubmitResult {
     status: "created" | "updated" | "exists";
   };
   error?: string;
+  subscribed?: {
+    sessionId: string;
+    prNumbers: number[];
+  };
 }
 
 interface StackSquashResult {
@@ -307,7 +310,6 @@ interface ShipService {
   readonly addBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
   readonly removeBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
   readonly relateTask: (taskId: string, relatedTaskId: string) => Effect.Effect<void, ShipCommandError>;
-  readonly getPrimeContext: () => Effect.Effect<string, ShipCommandError>;
   // Stack operations
   readonly getStackLog: () => Effect.Effect<StackChange[], ShipCommandError | JsonParseError>;
   readonly getStackStatus: () => Effect.Effect<StackStatus, ShipCommandError | JsonParseError>;
@@ -321,6 +323,7 @@ interface ShipService {
     draft?: boolean;
     title?: string;
     body?: string;
+    subscribe?: string; // OpenCode session ID to subscribe to all stack PRs
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
   readonly squashStack: (message: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
   readonly abandonStack: (changeId?: string) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
@@ -422,8 +425,6 @@ const makeShipService = Effect.gen(function* () {
   const relateTask = (taskId: string, relatedTaskId: string) =>
     shell.run(["relate", taskId, relatedTaskId]).pipe(Effect.asVoid);
 
-  const getPrimeContext = () => shell.run(["prime"]);
-
   // Stack operations
   const getStackLog = () =>
     Effect.gen(function* () {
@@ -458,12 +459,13 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackSyncResult>(output);
     });
 
-  const submitStack = (input: { draft?: boolean; title?: string; body?: string }) =>
+  const submitStack = (input: { draft?: boolean; title?: string; body?: string; subscribe?: string }) =>
     Effect.gen(function* () {
       const args = ["stack", "submit", "--json"];
       if (input.draft) args.push("--draft");
       if (input.title) args.push("--title", input.title);
       if (input.body) args.push("--body", input.body);
+      if (input.subscribe) args.push("--subscribe", input.subscribe);
       const output = yield* shell.run(args);
       return yield* parseJson<StackSubmitResult>(output);
     });
@@ -664,7 +666,6 @@ const makeShipService = Effect.gen(function* () {
     addBlocker,
     removeBlocker,
     relateTask,
-    getPrimeContext,
     getStackLog,
     getStackStatus,
     createStackChange,
@@ -746,7 +747,8 @@ type ToolArgs = {
 };
 
 const executeAction = (
-  args: ToolArgs
+  args: ToolArgs,
+  contextSessionId?: string, // Session ID from OpenCode tool context
 ): Effect.Effect<string, ShipCommandError | JsonParseError | ShipNotConfiguredError, ShipService> =>
   Effect.gen(function* () {
     const ship = yield* ShipService;
@@ -868,10 +870,6 @@ const executeAction = (
         return `Linked ${args.taskId} ↔ ${args.relatedTaskId} as related`;
       }
 
-      case "prime": {
-        return yield* ship.getPrimeContext();
-      }
-
       // Stack operations
       case "stack-log": {
         const changes = yield* ship.getStackLog();
@@ -961,10 +959,13 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       }
 
       case "stack-submit": {
+        // Auto-subscribe using context session ID (from OpenCode) or explicit sessionId arg
+        const subscribeSessionId = args.sessionId || contextSessionId;
         const result = yield* ship.submitStack({
           draft: args.draft,
           title: args.title,
           body: args.body,
+          subscribe: subscribeSessionId,
         });
         if (result.error) {
           if (result.pushed) {
@@ -972,15 +973,22 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
           }
           return `Error: ${result.error}`;
         }
+        let output = "";
         if (result.pr) {
           const statusMsg = result.pr.status === "created"
             ? "Created PR"
             : result.pr.status === "exists"
               ? "PR already exists"
               : "Updated PR";
-          return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
+          output = `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
+        } else {
+          output = `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
         }
-        return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
+        // Add subscription info if auto-subscribed
+        if (result.subscribed) {
+          output += `\n\nAuto-subscribed to stack PRs: ${result.subscribed.prNumbers.join(", ")}`;
+        }
+        return output;
       }
 
       case "stack-squash": {
@@ -1135,7 +1143,6 @@ Run 'ship init' in the terminal first if not configured.`,
           "block",
           "unblock",
           "relate",
-          "prime",
           "status",
           "stack-log",
           "stack-status",
@@ -1145,15 +1152,12 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-submit",
           "stack-squash",
           "stack-abandon",
-          "webhook-start",
-          "webhook-stop",
-          "webhook-status",
+          "webhook-daemon-status",
           "webhook-subscribe",
           "webhook-unsubscribe",
-          "webhook-daemon-status",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), stack-squash (squash into parent), stack-abandon (abandon change), webhook-start (start legacy forwarding), webhook-stop (stop legacy forwarding), webhook-status (legacy status), webhook-subscribe (subscribe to PR events via daemon), webhook-unsubscribe (unsubscribe from PR events), webhook-daemon-status (check daemon status)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
         ),
       taskId: createTool.schema
         .string()
@@ -1219,9 +1223,10 @@ Run 'ship init' in the terminal first if not configured.`,
         .describe("PR numbers to subscribe/unsubscribe - for webhook-subscribe/unsubscribe actions"),
     },
 
-    async execute(args) {
+    async execute(args, context) {
+      // Pass context.sessionID for auto-subscription in stack-submit
       const result = await runEffect(
-        executeAction(args).pipe(
+        executeAction(args, context.sessionID).pipe(
           Effect.catchAll((error) => {
             if (error._tag === "ShipNotConfiguredError") {
               return Effect.succeed(`Ship is not configured in this project.
