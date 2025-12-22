@@ -355,8 +355,16 @@ const runDaemonServer = (
                 },
               };
               
-              // Use runSync since this is a synchronous enqueue operation
-              Queue.unsafeOffer(commandQueue, request);
+              // Enqueue - handle shutdown gracefully
+              try {
+                Queue.unsafeOffer(commandQueue, request);
+              } catch {
+                // Queue is shut down, respond with error
+                request.respond(new ErrorResponse({
+                  type: "error",
+                  error: "Daemon is shutting down",
+                }));
+              }
             }
           });
 
