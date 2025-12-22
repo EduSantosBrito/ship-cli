@@ -8,6 +8,10 @@
 import * as Command from "@effect/cli/Command";
 import * as Console from "effect/Console";
 import { forwardCommand } from "./forward.js";
+import { startCommand } from "./start.js";
+import { stopCommand } from "./stop.js";
+import { statusCommand } from "./status.js";
+import { subscribeCommand } from "./subscribe.js";
 
 // Webhook parent command
 const webhook = Command.make("webhook", {}, () =>
@@ -16,12 +20,23 @@ const webhook = Command.make("webhook", {}, () =>
 Usage: ship webhook <command> [options]
 
 Commands:
-  forward           Forward GitHub events to OpenCode agent
+  start             Start the webhook daemon
+  stop              Stop the webhook daemon
+  status            Show daemon status and subscriptions
+  subscribe         Subscribe a session to PR events
+  forward           Forward GitHub events to OpenCode agent (legacy)
+
+The daemon maintains a single WebSocket connection to GitHub and routes
+events to subscribed OpenCode sessions based on PR number.
+
+Agents can subscribe to specific PRs using the ship tool actions:
+  webhook-start     Start receiving events for current session
+  webhook-stop      Stop receiving events for current session
 
 Run 'ship webhook <command> --help' for more information.`),
 );
 
 // Combine webhook subcommands
 export const webhookCommand = webhook.pipe(
-  Command.withSubcommands([forwardCommand]),
+  Command.withSubcommands([startCommand, stopCommand, statusCommand, subscribeCommand, forwardCommand]),
 );
