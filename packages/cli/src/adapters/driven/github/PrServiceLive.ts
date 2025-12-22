@@ -28,6 +28,7 @@ import {
   PullRequest,
   PrId,
   type CreatePrInput,
+  type UpdatePrInput,
   type PrErrors,
 } from "../../../ports/PrService.js";
 
@@ -226,6 +227,7 @@ const make = Effect.gen(function* () {
           input.head,
           "--base",
           input.base,
+          ...(input.draft ? ["--draft"] : []),
         ];
 
         // Create the PR (output is the PR URL)
@@ -245,6 +247,40 @@ const make = Effect.gen(function* () {
         return yield* toPullRequest(ghPr);
       }),
       "createPr",
+    );
+
+  const updatePr = (
+    prNumber: number,
+    input: UpdatePrInput,
+  ): Effect.Effect<PullRequest, PrErrors> =>
+    withNetworkRetry(
+      Effect.gen(function* () {
+        // Build the command arguments for updating the PR
+        const updateArgs = ["pr", "edit", String(prNumber)];
+        if (input.title) {
+          updateArgs.push("--title", input.title);
+        }
+        if (input.body) {
+          updateArgs.push("--body", input.body);
+        }
+
+        // Update the PR
+        yield* runGh(...updateArgs);
+
+        // Fetch the updated PR details
+        const viewArgs = [
+          "pr",
+          "view",
+          String(prNumber),
+          "--json",
+          "id,number,title,url,state,headRefName,baseRefName",
+        ];
+
+        const output = yield* runGh(...viewArgs);
+        const ghPr = yield* parseGhJson(output, GhPrJsonSchema);
+        return yield* toPullRequest(ghPr);
+      }),
+      "updatePr",
     );
 
   const openInBrowser = (url: string): Effect.Effect<void, PrError> =>
@@ -312,6 +348,7 @@ const make = Effect.gen(function* () {
   return {
     isAvailable,
     createPr,
+    updatePr,
     openInBrowser,
     getPrByBranch,
   };

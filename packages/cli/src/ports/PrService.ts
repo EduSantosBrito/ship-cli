@@ -23,6 +23,12 @@ export class CreatePrInput extends Schema.Class<CreatePrInput>("CreatePrInput")(
   body: Schema.String,
   head: Schema.String, // branch name
   base: Schema.optionalWith(Schema.String, { default: () => "main" }),
+  draft: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+}) {}
+
+export class UpdatePrInput extends Schema.Class<UpdatePrInput>("UpdatePrInput")({
+  title: Schema.optional(Schema.String),
+  body: Schema.optional(Schema.String),
 }) {}
 
 /** Union of all PR error types */
@@ -38,6 +44,11 @@ export interface PrService {
    * Create a new pull request
    */
   readonly createPr: (input: CreatePrInput) => Effect.Effect<PullRequest, PrErrors>;
+
+  /**
+   * Update an existing pull request
+   */
+  readonly updatePr: (prNumber: number, input: UpdatePrInput) => Effect.Effect<PullRequest, PrErrors>;
 
   /**
    * Open PR URL in browser
