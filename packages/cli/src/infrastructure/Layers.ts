@@ -10,6 +10,7 @@ import { VcsServiceLive } from "../adapters/driven/vcs/VcsServiceLive.js";
 import { PrServiceLive } from "../adapters/driven/github/PrServiceLive.js";
 import { WebhookServiceLive } from "../adapters/driven/github/WebhookServiceLive.js";
 import { OpenCodeServiceLive } from "../adapters/driven/opencode/OpenCodeServiceLive.js";
+import { DaemonServiceLive } from "../adapters/driven/daemon/DaemonServiceLive.js";
 
 // Layer dependencies:
 // ConfigRepositoryLive: FileSystem + Path -> ConfigRepository
@@ -40,14 +41,18 @@ const RepositoryLayers = Layer.mergeAll(
 
 // VcsService, PrService, WebhookService depend on CommandExecutor (from NodeContext)
 // OpenCodeService has no dependencies
-// Merge them with the other services
-const AllServices = Layer.mergeAll(
+// First merge services that don't have inter-service dependencies
+const BaseServices = Layer.mergeAll(
   RepositoryLayers,
   VcsServiceLive,
   PrServiceLive,
   WebhookServiceLive,
   OpenCodeServiceLive,
 ).pipe(Layer.provideMerge(ConfigAuthAndLinear));
+
+// DaemonService depends on WebhookService and OpenCodeService
+// Provide it after those services are available
+const AllServices = DaemonServiceLive.pipe(Layer.provideMerge(BaseServices));
 
 // Full application layer for Phase 1 (Linear + Config + Auth)
 // Use provideMerge to:
