@@ -14,6 +14,7 @@ import {
   JjBookmarkError,
   JjRevisionError,
   JjSquashError,
+  JjImmutableError,
 } from "../../../domain/Errors.js";
 
 /** Union of all VCS error types that can be mapped */
@@ -25,7 +26,8 @@ export type JjError =
   | JjFetchError
   | JjBookmarkError
   | JjRevisionError
-  | JjSquashError;
+  | JjSquashError
+  | JjImmutableError;
 
 /**
  * Error patterns for jj CLI output
@@ -155,6 +157,16 @@ const ERROR_PATTERNS: ReadonlyArray<ErrorPattern> = [
     createError: (output) =>
       new JjBookmarkError({
         message: output.trim() || "Bookmark not found.",
+      }),
+  },
+
+  // Immutable commit errors
+  {
+    pattern: /Commit (\S+) is immutable/i,
+    createError: (_output, match) =>
+      new JjImmutableError({
+        message: "Cannot modify immutable commit. This is typically a protected commit like main/master.",
+        commitId: match[1],
       }),
   },
 

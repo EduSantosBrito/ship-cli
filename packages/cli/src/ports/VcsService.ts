@@ -11,6 +11,7 @@ import type {
   JjBookmarkError,
   JjRevisionError,
   JjSquashError,
+  JjImmutableError,
 } from "../domain/Errors.js";
 
 /** Union of all VCS error types */
@@ -22,7 +23,8 @@ export type VcsErrors =
   | JjFetchError
   | JjBookmarkError
   | JjRevisionError
-  | JjSquashError;
+  | JjSquashError
+  | JjImmutableError;
 
 // === VCS Domain Types ===
 
@@ -151,6 +153,14 @@ export interface VcsService {
    * @returns The parent change (now containing squashed content)
    */
   readonly squash: (message: string) => Effect.Effect<Change, VcsErrors>;
+
+  /**
+   * Abandon a change (removes it from history)
+   * @param changeId - Optional change ID to abandon (defaults to current @).
+   *                   jj validates the change ID and returns an error if invalid.
+   * @returns The new working copy change after abandonment
+   */
+  readonly abandon: (changeId?: string) => Effect.Effect<Change, VcsErrors>;
 }
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");
