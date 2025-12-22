@@ -6,9 +6,17 @@
  */
 
 import * as Command from "@effect/cli/Command";
+import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import { DaemonService } from "../../../../../ports/DaemonService.js";
+
+// === Options ===
+
+const jsonOption = Options.boolean("json").pipe(
+  Options.withDescription("Output as JSON"),
+  Options.withDefault(false),
+);
 
 // === Helpers ===
 
@@ -24,17 +32,21 @@ const formatUptime = (seconds: number): string => {
 
 export const statusCommand = Command.make(
   "status",
-  {},
-  () =>
+  { json: jsonOption },
+  ({ json }) =>
     Effect.gen(function* () {
       const daemonService = yield* DaemonService;
 
       // Check if daemon is running
       const running = yield* daemonService.isRunning();
       if (!running) {
-        yield* Console.log("Webhook daemon is not running.");
-        yield* Console.log("");
-        yield* Console.log("Start it with: ship webhook start");
+        if (json) {
+          yield* Console.log(JSON.stringify({ running: false }));
+        } else {
+          yield* Console.log("Webhook daemon is not running.");
+          yield* Console.log("");
+          yield* Console.log("Start it with: ship webhook start");
+        }
         return;
       }
 
@@ -52,11 +64,31 @@ export const statusCommand = Command.make(
       );
 
       if (!statusResult.success) {
-        yield* Console.log("Daemon appears to be running but not responding.");
+        if (json) {
+          yield* Console.log(JSON.stringify({ running: false, error: "Daemon not responding" }));
+        } else {
+          yield* Console.log("Daemon appears to be running but not responding.");
+        }
         return;
       }
 
       const status = statusResult.status;
+
+      // JSON output
+      if (json) {
+        yield* Console.log(JSON.stringify({
+          running: status.running,
+          pid: status.pid,
+          repo: status.repo,
+          connectedToGitHub: status.connectedToGitHub,
+          uptime: status.uptime,
+          subscriptions: status.subscriptions.map((sub) => ({
+            sessionId: sub.sessionId,
+            prNumbers: sub.prNumbers,
+          })),
+        }));
+        return;
+      }
 
       // Display status
       yield* Console.log("Webhook Daemon Status");

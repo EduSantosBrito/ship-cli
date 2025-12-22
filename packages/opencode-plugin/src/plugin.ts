@@ -180,6 +180,29 @@ interface WebhookStopResult {
   error?: string;
 }
 
+interface WebhookSubscribeResult {
+  subscribed: boolean;
+  sessionId?: string;
+  prNumbers?: number[];
+  error?: string;
+}
+
+interface WebhookUnsubscribeResult {
+  unsubscribed: boolean;
+  sessionId?: string;
+  prNumbers?: number[];
+  error?: string;
+}
+
+interface WebhookDaemonStatus {
+  running: boolean;
+  pid?: number;
+  repo?: string;
+  connectedToGitHub?: boolean;
+  subscriptions?: Array<{ sessionId: string; prNumbers: number[] }>;
+  uptime?: number;
+}
+
 // =============================================================================
 // Shell Service
 // =============================================================================
@@ -305,6 +328,10 @@ interface ShipService {
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
   readonly getWebhookStatus: () => Effect.Effect<{ running: boolean; pid?: number }, never>;
+  // Daemon-based webhook operations
+  readonly getDaemonStatus: () => Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError>;
+  readonly subscribeToPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
+  readonly unsubscribeFromPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -579,6 +606,51 @@ const makeShipService = Effect.gen(function* () {
       return { running: false };
     });
 
+  // Daemon-based webhook operations - communicate with the webhook daemon via CLI
+
+  const getDaemonStatus = (): Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      // First check if daemon is running by trying to get status
+      const output = yield* shell.run(["webhook", "status", "--json"]).pipe(
+        Effect.catchAll(() => Effect.succeed('{"running":false}')),
+      );
+      return yield* parseJson<WebhookDaemonStatus>(output);
+    });
+
+  const subscribeToPRs = (
+    sessionId: string,
+    prNumbers: number[],
+  ): Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const prNumbersStr = prNumbers.join(",");
+      const output = yield* shell.run([
+        "webhook",
+        "subscribe",
+        "--json",
+        "--session",
+        sessionId,
+        prNumbersStr,
+      ]);
+      return yield* parseJson<WebhookSubscribeResult>(output);
+    });
+
+  const unsubscribeFromPRs = (
+    sessionId: string,
+    prNumbers: number[],
+  ): Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const prNumbersStr = prNumbers.join(",");
+      const output = yield* shell.run([
+        "webhook",
+        "unsubscribe",
+        "--json",
+        "--session",
+        sessionId,
+        prNumbersStr,
+      ]);
+      return yield* parseJson<WebhookUnsubscribeResult>(output);
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -604,6 +676,9 @@ const makeShipService = Effect.gen(function* () {
     startWebhook,
     stopWebhook,
     getWebhookStatus,
+    getDaemonStatus,
+    subscribeToPRs,
+    unsubscribeFromPRs,
   } satisfies ShipService;
 });
 
@@ -665,6 +740,9 @@ type ToolArgs = {
   changeId?: string;
   // Webhook-specific args
   events?: string;
+  // Daemon webhook subscription args
+  sessionId?: string;
+  prNumbers?: number[];
 };
 
 const executeAction = (
@@ -953,6 +1031,62 @@ Use action 'webhook-stop' to stop forwarding.`;
         return "Webhook forwarding is not running.";
       }
 
+      // Daemon-based webhook operations
+      case "webhook-subscribe": {
+        if (!args.sessionId) {
+          return "Error: sessionId is required for webhook-subscribe action";
+        }
+        if (!args.prNumbers || args.prNumbers.length === 0) {
+          return "Error: prNumbers is required for webhook-subscribe action";
+        }
+        const result = yield* ship.subscribeToPRs(args.sessionId, args.prNumbers);
+        if (!result.subscribed) {
+          return `Error: ${result.error || "Failed to subscribe"}`;
+        }
+        return `Subscribed session ${args.sessionId} to PRs: ${args.prNumbers.join(", ")}
+
+The daemon will forward GitHub events for these PRs to your session.
+Use 'webhook-unsubscribe' to stop receiving events.`;
+      }
+
+      case "webhook-unsubscribe": {
+        if (!args.sessionId) {
+          return "Error: sessionId is required for webhook-unsubscribe action";
+        }
+        if (!args.prNumbers || args.prNumbers.length === 0) {
+          return "Error: prNumbers is required for webhook-unsubscribe action";
+        }
+        const result = yield* ship.unsubscribeFromPRs(args.sessionId, args.prNumbers);
+        if (!result.unsubscribed) {
+          return `Error: ${result.error || "Failed to unsubscribe"}`;
+        }
+        return `Unsubscribed session ${args.sessionId} from PRs: ${args.prNumbers.join(", ")}`;
+      }
+
+      case "webhook-daemon-status": {
+        const status = yield* ship.getDaemonStatus();
+        if (!status.running) {
+          return "Webhook daemon is not running.\n\nStart it with: ship webhook start";
+        }
+        let output = `Webhook Daemon Status
+─────────────────────────────────────────
+Status: Running
+PID: ${status.pid || "unknown"}
+Repository: ${status.repo || "unknown"}
+GitHub WebSocket: ${status.connectedToGitHub ? "Connected" : "Disconnected"}
+Uptime: ${status.uptime ? `${status.uptime}s` : "unknown"}
+
+Subscriptions:`;
+        if (!status.subscriptions || status.subscriptions.length === 0) {
+          output += "\n  No active subscriptions.";
+        } else {
+          for (const sub of status.subscriptions) {
+            output += `\n  Session ${sub.sessionId}: PRs ${sub.prNumbers.join(", ")}`;
+          }
+        }
+        return output;
+      }
+
       default:
         return `Unknown action: ${args.action}`;
     }
@@ -982,6 +1116,7 @@ Use this tool to:
 - Get AI-optimized context about current work
 - Manage stacked changes (jj workflow)
 - Start/stop GitHub webhook forwarding for real-time event notifications
+- Subscribe to PR events via the webhook daemon (multi-session support)
 
 Requires ship to be configured in the project (.ship/config.yaml).
 Run 'ship init' in the terminal first if not configured.`,
@@ -1013,9 +1148,12 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-start",
           "webhook-stop",
           "webhook-status",
+          "webhook-subscribe",
+          "webhook-unsubscribe",
+          "webhook-daemon-status",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), stack-squash (squash into parent), stack-abandon (abandon change), webhook-start (start GitHub event forwarding), webhook-stop (stop forwarding), webhook-status (check if running)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), stack-squash (squash into parent), stack-abandon (abandon change), webhook-start (start legacy forwarding), webhook-stop (stop legacy forwarding), webhook-status (legacy status), webhook-subscribe (subscribe to PR events via daemon), webhook-unsubscribe (unsubscribe from PR events), webhook-daemon-status (check daemon status)"
         ),
       taskId: createTool.schema
         .string()
@@ -1071,6 +1209,14 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("Comma-separated GitHub events to forward (e.g., 'pull_request,check_run') - for webhook-start action"),
+      sessionId: createTool.schema
+        .string()
+        .optional()
+        .describe("OpenCode session ID - for webhook-subscribe/unsubscribe actions"),
+      prNumbers: createTool.schema
+        .array(createTool.schema.number())
+        .optional()
+        .describe("PR numbers to subscribe/unsubscribe - for webhook-subscribe/unsubscribe actions"),
     },
 
     async execute(args) {
