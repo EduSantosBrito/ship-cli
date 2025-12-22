@@ -128,6 +128,61 @@ export class GhNotAuthenticatedError extends Data.TaggedError("GhNotAuthenticate
   });
 }
 
+// === Webhook Errors ===
+
+/** Generic webhook error */
+export class WebhookError extends Data.TaggedError("WebhookError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+/** WebSocket connection error */
+export class WebhookConnectionError extends Data.TaggedError("WebhookConnectionError")<{
+  readonly message: string;
+  readonly wsUrl?: string;
+  readonly cause?: unknown;
+}> {}
+
+/** Webhook permission denied (insufficient GitHub permissions) */
+export class WebhookPermissionError extends Data.TaggedError("WebhookPermissionError")<{
+  readonly message: string;
+  readonly repo?: string;
+}> {
+  static forRepo(repo: string) {
+    return new WebhookPermissionError({
+      message: `Insufficient permissions to create webhooks on ${repo}. You need admin access or the 'admin:repo_hook' scope.`,
+      repo,
+    });
+  }
+}
+
+/** Webhook already exists error (only one cli webhook allowed per repo) */
+export class WebhookAlreadyExistsError extends Data.TaggedError("WebhookAlreadyExistsError")<{
+  readonly message: string;
+  readonly repo?: string;
+}> {
+  static forRepo(repo: string) {
+    return new WebhookAlreadyExistsError({
+      message: `A webhook forwarder is already active for ${repo}. Only one user can forward webhooks at a time per repository.`,
+      repo,
+    });
+  }
+}
+
+/** GitHub API rate limit exceeded */
+export class WebhookRateLimitError extends Data.TaggedError("WebhookRateLimitError")<{
+  readonly message: string;
+  readonly retryAfter?: number;
+}> {
+  static fromHeaders(retryAfter?: number) {
+    const retryMsg = retryAfter ? ` Retry after ${retryAfter} seconds.` : "";
+    return new WebhookRateLimitError({
+      message: `GitHub API rate limit exceeded.${retryMsg}`,
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
+    });
+  }
+}
+
 // === Linear API Errors ===
 
 export class LinearApiError extends Data.TaggedError("LinearApiError")<{
