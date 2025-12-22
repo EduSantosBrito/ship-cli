@@ -299,6 +299,19 @@ const make = Effect.gen(function* () {
       return yield* getCurrentChange();
     });
 
+  const abandon = (changeId?: string): Effect.Effect<Change, VcsErrors> =>
+    Effect.gen(function* () {
+      // Run jj abandon with optional change ID
+      if (changeId) {
+        yield* runJj("abandon", changeId);
+      } else {
+        yield* runJj("abandon");
+      }
+
+      // After abandon, working copy moves to a new empty change
+      return yield* getCurrentChange();
+    });
+
   return {
     isAvailable,
     isRepo,
@@ -316,6 +329,7 @@ const make = Effect.gen(function* () {
     sync,
     getParentChange,
     squash,
+    abandon,
   };
 });
 

@@ -110,6 +110,12 @@ export class JjSquashError extends Data.TaggedError("JjSquashError")<{
   readonly cause?: unknown;
 }> {}
 
+/** Attempt to modify an immutable commit */
+export class JjImmutableError extends Data.TaggedError("JjImmutableError")<{
+  readonly message: string;
+  readonly commitId?: string;
+}> {}
+
 // === PR Errors ===
 
 export class PrError extends Data.TaggedError("PrError")<{

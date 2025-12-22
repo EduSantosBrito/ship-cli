@@ -160,6 +160,13 @@ interface StackSquashResult {
   error?: string;
 }
 
+interface StackAbandonResult {
+  abandoned: boolean;
+  changeId?: string;
+  newWorkingCopy?: string;
+  error?: string;
+}
+
 interface WebhookStartResult {
   started: boolean;
   pid?: number;
@@ -294,6 +301,7 @@ interface ShipService {
     body?: string;
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
   readonly squashStack: (message: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
+  readonly abandonStack: (changeId?: string) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
@@ -438,6 +446,14 @@ const makeShipService = Effect.gen(function* () {
     Effect.gen(function* () {
       const output = yield* shell.run(["stack", "squash", "--json", "-m", message]);
       return yield* parseJson<StackSquashResult>(output);
+    });
+
+  const abandonStack = (changeId?: string) =>
+    Effect.gen(function* () {
+      const args = ["stack", "abandon", "--json"];
+      if (changeId) args.push(changeId);
+      const output = yield* shell.run(args);
+      return yield* parseJson<StackAbandonResult>(output);
     });
 
   // Webhook operations - use Ref for thread-safe process tracking
@@ -590,6 +606,7 @@ const makeShipService = Effect.gen(function* () {
     syncStack,
     submitStack,
     squashStack,
+    abandonStack,
     startWebhook,
     stopWebhook,
     getWebhookStatus,
@@ -651,6 +668,7 @@ type ToolArgs = {
   bookmark?: string;
   draft?: boolean;
   body?: string;
+  changeId?: string;
   // Webhook-specific args
   events?: string;
 };
@@ -904,6 +922,14 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         return `Squashed into ${result.intoChangeId?.slice(0, 8) || "parent"}\nDescription: ${result.description?.split("\n")[0] || "(no description)"}`;
       }
 
+      case "stack-abandon": {
+        const result = yield* ship.abandonStack(args.changeId);
+        if (!result.abandoned) {
+          return `Error: ${result.error || "Failed to abandon"}`;
+        }
+        return `Abandoned ${result.changeId?.slice(0, 8) || "change"}\nWorking copy now at: ${result.newWorkingCopy?.slice(0, 8) || "unknown"}`;
+      }
+
       // Webhook operations
       case "webhook-start": {
         const result = yield* ship.startWebhook(args.events);
@@ -989,12 +1015,13 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-sync",
           "stack-submit",
           "stack-squash",
+          "stack-abandon",
           "webhook-start",
           "webhook-stop",
           "webhook-status",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), stack-squash (squash into parent), webhook-start (start GitHub event forwarding), webhook-stop (stop forwarding), webhook-status (check if running)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), stack-squash (squash into parent), stack-abandon (abandon change), webhook-start (start GitHub event forwarding), webhook-stop (stop forwarding), webhook-status (check if running)"
         ),
       taskId: createTool.schema
         .string()
@@ -1042,6 +1069,10 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("PR body - for stack-submit action (defaults to change description)"),
+      changeId: createTool.schema
+        .string()
+        .optional()
+        .describe("Change ID to abandon - for stack-abandon action (defaults to current @)"),
       events: createTool.schema
         .string()
         .optional()
