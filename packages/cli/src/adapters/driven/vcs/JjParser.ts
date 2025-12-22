@@ -40,10 +40,10 @@ const JjSignatureSchema = Schema.Struct({
   timestamp: Schema.String,
 });
 
-/** jj bookmark reference */
+/** jj bookmark reference - target can have null values for divergent bookmarks */
 const JjBookmarkSchema = Schema.Struct({
   name: Schema.String,
-  target: Schema.Array(Schema.String),
+  target: Schema.Array(Schema.NullOr(Schema.String)),
 });
 
 /** Raw jj commit JSON from json(self) or custom template */
