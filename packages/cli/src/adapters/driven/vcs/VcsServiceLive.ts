@@ -5,7 +5,15 @@ import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { JjNotInstalledError, VcsError } from "../../../domain/Errors.js";
-import { VcsService, ChangeId, Change, PushResult, TrunkInfo, SyncResult, type VcsErrors } from "../../../ports/VcsService.js";
+import {
+  VcsService,
+  ChangeId,
+  Change,
+  PushResult,
+  TrunkInfo,
+  SyncResult,
+  type VcsErrors,
+} from "../../../ports/VcsService.js";
 import {
   JJ_LOG_JSON_TEMPLATE,
   parseChanges,
@@ -182,9 +190,7 @@ const make = Effect.gen(function* () {
       return yield* parseChanges(output);
     });
 
-  const getLog = (
-    revset?: string,
-  ): Effect.Effect<ReadonlyArray<Change>, VcsErrors> =>
+  const getLog = (revset?: string): Effect.Effect<ReadonlyArray<Change>, VcsErrors> =>
     Effect.gen(function* () {
       const rev = revset ?? "@";
       const output = yield* runJj("log", "-r", rev, "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
@@ -218,13 +224,13 @@ const make = Effect.gen(function* () {
       // Get parent of current working copy using @- revset
       const output = yield* runJj("log", "-r", "@-", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
       const changes = yield* parseChanges(output);
-      
+
       if (changes.length === 0) {
         return null;
       }
-      
+
       const parent = changes[0];
-      
+
       // Check if parent is trunk (main/master) - if so, return null
       // We detect this by checking if the parent has no bookmarks that are user-created
       // (trunk has bookmarks like "main" or "master" but those are tracked remotes)
@@ -232,12 +238,12 @@ const make = Effect.gen(function* () {
         Effect.map((trunk) => ({ success: true as const, trunk })),
         Effect.catchAll(() => Effect.succeed({ success: false as const })),
       );
-      
+
       if (trunkResult.success && parent.id === trunkResult.trunk.id) {
         // Parent is trunk, so there's no "parent change" in the stack sense
         return null;
       }
-      
+
       return parent;
     });
 
@@ -248,7 +254,7 @@ const make = Effect.gen(function* () {
 
       // 2. Get current stack before rebase
       const stackBefore = yield* getStack();
-      
+
       // If no stack (already on trunk), we're done
       if (stackBefore.length === 0) {
         const trunk = yield* getTrunkInfo();
@@ -268,9 +274,7 @@ const make = Effect.gen(function* () {
       // 4. Rebase stack onto trunk
       const rebaseResult = yield* runJj("rebase", "-s", firstInStack.id, "-d", "main").pipe(
         Effect.map(() => ({ conflicted: false })),
-        Effect.catchTag("JjConflictError", () =>
-          Effect.succeed({ conflicted: true }),
-        ),
+        Effect.catchTag("JjConflictError", () => Effect.succeed({ conflicted: true })),
       );
 
       // 5. Get updated stack and trunk info

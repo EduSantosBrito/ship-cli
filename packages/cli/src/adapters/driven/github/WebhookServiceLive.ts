@@ -20,6 +20,8 @@ import * as Schedule from "effect/Schedule";
 import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
+import * as Socket from "@effect/platform/Socket";
+import * as WS from "ws";
 import {
   GhNotInstalledError,
   GhNotAuthenticatedError,
@@ -59,9 +61,28 @@ const GhWebhookResponseSchema = Schema.Struct({
 
 type GhWebhookResponse = typeof GhWebhookResponseSchema.Type;
 
+/**
+ * Schema for WebSocket messages received from GitHub.
+ * Based on the gh-webhook forward.go implementation:
+ * type wsEventReceived struct { Header http.Header; Body []byte }
+ */
+const WsEventReceivedSchema = Schema.Struct({
+  Header: Schema.Record({
+    key: Schema.String,
+    value: Schema.Union(Schema.String, Schema.Array(Schema.String)),
+  }),
+  Body: Schema.Unknown,
+});
+
 // Retry policy for network operations: exponential backoff with max 3 retries
 const networkRetryPolicy = Schedule.intersect(
   Schedule.exponential(Duration.millis(500)),
+  Schedule.recurs(3),
+);
+
+// Retry policy for WebSocket reconnection: exponential backoff with max 3 retries
+const wsReconnectPolicy = Schedule.intersect(
+  Schedule.exponential(Duration.seconds(5)),
   Schedule.recurs(3),
 );
 
@@ -168,14 +189,10 @@ const make = Effect.gen(function* () {
   /**
    * Parse JSON output from gh command
    */
-  const parseJson = <T>(
-    output: string,
-    schema: Schema.Schema<T>,
-  ): Effect.Effect<T, WebhookError> =>
+  const parseJson = <T>(output: string, schema: Schema.Schema<T>): Effect.Effect<T, WebhookError> =>
     Effect.try({
       try: () => JSON.parse(output),
-      catch: (e) =>
-        new WebhookError({ message: `Failed to parse gh output: ${e}`, cause: e }),
+      catch: (e) => new WebhookError({ message: `Failed to parse gh output: ${e}`, cause: e }),
     }).pipe(
       Effect.flatMap((json) =>
         Schema.decodeUnknown(schema)(json).pipe(
@@ -195,14 +212,15 @@ const make = Effect.gen(function* () {
    */
   const toCliWebhook = (response: GhWebhookResponse): Effect.Effect<CliWebhook, WebhookError> =>
     Schema.decode(WebhookId)(response.id).pipe(
-      Effect.map((id) =>
-        new CliWebhook({
-          id,
-          wsUrl: response.ws_url ?? "",
-          events: response.events,
-          active: response.active,
-          url: response.url,
-        }),
+      Effect.map(
+        (id) =>
+          new CliWebhook({
+            id,
+            wsUrl: response.ws_url ?? "",
+            events: response.events,
+            active: response.active,
+            url: response.url,
+          }),
       ),
       Effect.mapError(
         (e) => new WebhookError({ message: `Invalid webhook ID: ${e.message}`, cause: e }),
@@ -234,7 +252,8 @@ const make = Effect.gen(function* () {
 
         if (!response.ws_url) {
           return yield* new WebhookError({
-            message: "GitHub did not return a WebSocket URL. The webhook may have been created without the 'cli' name.",
+            message:
+              "GitHub did not return a WebSocket URL. The webhook may have been created without the 'cli' name.",
           });
         }
 
@@ -248,9 +267,7 @@ const make = Effect.gen(function* () {
     webhookId: WebhookId,
   ): Effect.Effect<void, WebhookErrors> =>
     withNetworkRetry(
-      runGhApi("PATCH", `/repos/${repo}/hooks/${webhookId}`, { active: true }).pipe(
-        Effect.asVoid,
-      ),
+      runGhApi("PATCH", `/repos/${repo}/hooks/${webhookId}`, { active: true }).pipe(Effect.asVoid),
       "activateWebhook",
     );
 
@@ -259,16 +276,11 @@ const make = Effect.gen(function* () {
     webhookId: WebhookId,
   ): Effect.Effect<void, WebhookErrors> =>
     withNetworkRetry(
-      runGhApi("PATCH", `/repos/${repo}/hooks/${webhookId}`, { active: false }).pipe(
-        Effect.asVoid,
-      ),
+      runGhApi("PATCH", `/repos/${repo}/hooks/${webhookId}`, { active: false }).pipe(Effect.asVoid),
       "deactivateWebhook",
     );
 
-  const deleteWebhook = (
-    repo: string,
-    webhookId: WebhookId,
-  ): Effect.Effect<void, WebhookErrors> =>
+  const deleteWebhook = (repo: string, webhookId: WebhookId): Effect.Effect<void, WebhookErrors> =>
     withNetworkRetry(
       runGhApi("DELETE", `/repos/${repo}/hooks/${webhookId}`).pipe(Effect.asVoid),
       "deleteWebhook",
@@ -291,15 +303,187 @@ const make = Effect.gen(function* () {
     );
 
   /**
+   * Get the GitHub auth token using gh CLI
+   */
+  const getAuthToken = (): Effect.Effect<string, WebhookErrors> => {
+    const cmd = Command.make("gh", "auth", "token");
+    return Command.string(cmd).pipe(
+      Effect.provideService(CommandExecutor.CommandExecutor, executor),
+      Effect.map((token) => token.trim()),
+      Effect.mapError((e) => {
+        const errorStr = String(e);
+        if (errorStr.includes("not logged in") || errorStr.includes("authentication")) {
+          return GhNotAuthenticatedError.default;
+        }
+        return new WebhookError({ message: `Failed to get auth token: ${errorStr}`, cause: e });
+      }),
+    );
+  };
+
+  /**
+   * Parse a WebSocket message into a WebhookEvent
+   */
+  const parseWsMessage = (data: string | Uint8Array): Effect.Effect<WebhookEvent, WebhookError> => {
+    const jsonStr = typeof data === "string" ? data : new TextDecoder().decode(data);
+
+    return Effect.gen(function* () {
+      // Parse the raw JSON
+      const raw = yield* Effect.try({
+        try: () => JSON.parse(jsonStr),
+        catch: (e) =>
+          new WebhookError({ message: `Failed to parse WebSocket message: ${e}`, cause: e }),
+      });
+
+      // Decode to our schema
+      const wsEvent = yield* Schema.decodeUnknown(WsEventReceivedSchema)(raw).pipe(
+        Effect.mapError(
+          (e) =>
+            new WebhookError({
+              message: `Invalid WebSocket message format: ${e.message}`,
+              cause: e,
+            }),
+        ),
+      );
+
+      // Extract headers - normalize to single values (take first if array)
+      const normalizedHeaders: Record<string, string> = {};
+      for (const [key, value] of Object.entries(wsEvent.Header)) {
+        normalizedHeaders[key] = Array.isArray(value) ? (value[0] ?? "") : value;
+      }
+
+      // Extract event info from headers
+      const eventType =
+        normalizedHeaders["X-GitHub-Event"] ?? normalizedHeaders["x-github-event"] ?? "unknown";
+      const deliveryId =
+        normalizedHeaders["X-GitHub-Delivery"] ??
+        normalizedHeaders["x-github-delivery"] ??
+        "unknown";
+
+      // Try to extract action from payload if it exists
+      const payload = wsEvent.Body;
+      const action =
+        payload &&
+        typeof payload === "object" &&
+        "action" in payload &&
+        typeof (payload as { action: unknown }).action === "string"
+          ? (payload as { action: string }).action
+          : undefined;
+
+      return new WebhookEvent({
+        event: eventType,
+        action,
+        deliveryId,
+        payload,
+        headers: normalizedHeaders,
+      });
+    });
+  };
+
+  /**
+   * Create a WebSocket constructor that includes the Authorization header.
+   * This wraps the standard WebSocket to pass authentication when connecting to GitHub.
+   */
+  const makeAuthenticatedWebSocketConstructor = (authToken: string) =>
+    Layer.succeed(
+      Socket.WebSocketConstructor,
+      (url: string, protocols?: string | Array<string>) => {
+        return new WS.WebSocket(url, protocols, {
+          headers: {
+            Authorization: authToken,
+          },
+        }) as unknown as globalThis.WebSocket;
+      },
+    );
+
+  /**
+   * Create a single WebSocket connection and stream events until disconnect.
+   * Uses Stream.asyncPush for proper Effect integration with resource management.
+   */
+  const createWebSocketStream = (
+    wsUrl: string,
+    authToken: string,
+  ): Stream.Stream<WebhookEvent, WebhookErrors> =>
+    Stream.asyncPush<WebhookEvent, WebhookErrors>((emit) =>
+      Effect.acquireRelease(
+        // Acquire: Create WebSocket connection
+        Socket.makeWebSocket(wsUrl).pipe(
+          Effect.provide(makeAuthenticatedWebSocketConstructor(authToken)),
+          Effect.mapError(
+            (e) =>
+              new WebhookConnectionError({
+                message: `Failed to connect to WebSocket: ${e}`,
+                wsUrl,
+                cause: e,
+              }),
+          ),
+          Effect.tap((socket) =>
+            // Start the socket handler - this runs in the background
+            socket
+              .runRaw((data: string | Uint8Array) =>
+                parseWsMessage(data).pipe(
+                  Effect.flatMap((event) => Effect.sync(() => emit.single(event))),
+                  Effect.catchAll((error) =>
+                    Effect.logError("Failed to parse webhook event").pipe(
+                      Effect.annotateLogs("error", error.message),
+                    ),
+                  ),
+                ),
+              )
+              .pipe(
+                Effect.catchAll((error) => {
+                  // Handle socket close/error
+                  if (Socket.SocketCloseError.is(error)) {
+                    // Normal close (1000) - end the stream gracefully
+                    if (error.code === 1000) {
+                      return Effect.sync(() => emit.end());
+                    }
+                    // Abnormal close - emit error for retry
+                    return Effect.sync(() =>
+                      emit.fail(
+                        new WebhookConnectionError({
+                          message: `WebSocket closed with code ${error.code}: ${error.closeReason ?? "unknown"}`,
+                          wsUrl,
+                          cause: error,
+                        }),
+                      ),
+                    );
+                  }
+                  // Other socket errors
+                  return Effect.sync(() =>
+                    emit.fail(
+                      new WebhookConnectionError({
+                        message: `WebSocket error: ${error}`,
+                        wsUrl,
+                        cause: error,
+                      }),
+                    ),
+                  );
+                }),
+                Effect.fork, // Fork the handler to run in background
+              ),
+          ),
+        ),
+        // Release: Close WebSocket on cleanup (will happen automatically via Scope)
+        () => Effect.void,
+      ),
+    );
+
+  /**
    * Connect to a webhook's WebSocket URL and stream events.
-   * This is a stub - actual WebSocket implementation is in BRI-74.
+   * Handles reconnection automatically on disconnect with fresh auth token on each retry.
    */
   const connectAndStream = (wsUrl: string): Stream.Stream<WebhookEvent, WebhookErrors> =>
-    Stream.fail(
-      new WebhookConnectionError({
-        message: "WebSocket streaming not yet implemented. See BRI-74.",
-        wsUrl,
-      }),
+    Stream.unwrap(
+      // Get fresh auth token for each connection attempt (including retries)
+      getAuthToken().pipe(Effect.map((authToken) => createWebSocketStream(wsUrl, authToken))),
+    ).pipe(
+      Stream.retry(
+        Schedule.intersect(
+          // Only retry on connection errors that indicate disconnect
+          Schedule.recurWhile<WebhookErrors>((error) => error._tag === "WebhookConnectionError"),
+          wsReconnectPolicy,
+        ),
+      ),
     );
 
   return {

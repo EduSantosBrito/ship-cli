@@ -35,69 +35,66 @@ interface SyncOutput {
 
 // === Command ===
 
-export const syncCommand = Command.make(
-  "sync",
-  { json: jsonOption },
-  ({ json }) =>
-    Effect.gen(function* () {
-      // Check VCS availability (jj installed and in repo)
-      const vcsCheck = yield* checkVcsAvailability();
-      if (!vcsCheck.available) {
-        yield* outputError(vcsCheck.error, json);
-        return;
-      }
-      const { vcs } = vcsCheck;
+export const syncCommand = Command.make("sync", { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    // Check VCS availability (jj installed and in repo)
+    const vcsCheck = yield* checkVcsAvailability();
+    if (!vcsCheck.available) {
+      yield* outputError(vcsCheck.error, json);
+      return;
+    }
+    const { vcs } = vcsCheck;
 
-      // Run sync operation - handle errors with preserved context
-      const syncResult = yield* vcs.sync().pipe(
-        Effect.map((result) => ({ success: true as const, result })),
-        Effect.catchAll((e) => {
-          const errorInfo =
-            e && typeof e === "object" && "_tag" in e
-              ? { tag: String(e._tag), message: "message" in e ? String(e.message) : String(e) }
-              : { tag: "UnknownError", message: String(e) };
-          return Effect.succeed({ success: false as const, error: errorInfo });
-        }),
-      );
+    // Run sync operation - handle errors with preserved context
+    const syncResult = yield* vcs.sync().pipe(
+      Effect.map((result) => ({ success: true as const, result })),
+      Effect.catchAll((e) => {
+        const errorInfo =
+          e && typeof e === "object" && "_tag" in e
+            ? { tag: String(e._tag), message: "message" in e ? String(e.message) : String(e) }
+            : { tag: "UnknownError", message: String(e) };
+        return Effect.succeed({ success: false as const, error: errorInfo });
+      }),
+    );
 
-      if (!syncResult.success) {
-        const errMsg = `Sync failed: [${syncResult.error.tag}] ${syncResult.error.message}`;
-        yield* outputError(errMsg, json);
-        return;
-      }
+    if (!syncResult.success) {
+      const errMsg = `Sync failed: [${syncResult.error.tag}] ${syncResult.error.message}`;
+      yield* outputError(errMsg, json);
+      return;
+    }
 
-      const result = syncResult.result;
+    const result = syncResult.result;
 
-      const output: SyncOutput = {
-        fetched: result.fetched,
-        rebased: result.rebased,
-        trunkChangeId: result.trunkChangeId,
-        stackSize: result.stackSize,
-        conflicted: result.conflicted,
-      };
+    const output: SyncOutput = {
+      fetched: result.fetched,
+      rebased: result.rebased,
+      trunkChangeId: result.trunkChangeId,
+      stackSize: result.stackSize,
+      conflicted: result.conflicted,
+    };
 
-      if (json) {
-        yield* Console.log(JSON.stringify(output, null, 2));
+    if (json) {
+      yield* Console.log(JSON.stringify(output, null, 2));
+    } else {
+      if (result.conflicted) {
+        yield* Console.log("Sync completed with conflicts!");
+        yield* Console.log(`  Fetched: yes`);
+        yield* Console.log(`  Rebased: yes (with conflicts)`);
+        yield* Console.log(`  Trunk:   ${result.trunkChangeId.slice(0, 12)}`);
+        yield* Console.log(`  Stack:   ${result.stackSize} change(s)`);
+        yield* Console.log("");
+        yield* Console.log("Resolve conflicts with 'jj status' and edit the conflicted files.");
+      } else if (!result.rebased) {
+        yield* Console.log("Already up to date.");
+        yield* Console.log(`  Trunk: ${result.trunkChangeId.slice(0, 12)}`);
+        yield* Console.log(`  Stack: ${result.stackSize} change(s)`);
       } else {
-        if (result.conflicted) {
-          yield* Console.log("Sync completed with conflicts!");
-          yield* Console.log(`  Fetched: yes`);
-          yield* Console.log(`  Rebased: yes (with conflicts)`);
-          yield* Console.log(`  Trunk:   ${result.trunkChangeId.slice(0, 12)}`);
-          yield* Console.log(`  Stack:   ${result.stackSize} change(s)`);
-          yield* Console.log("");
-          yield* Console.log("Resolve conflicts with 'jj status' and edit the conflicted files.");
-        } else if (!result.rebased) {
-          yield* Console.log("Already up to date.");
-          yield* Console.log(`  Trunk: ${result.trunkChangeId.slice(0, 12)}`);
-          yield* Console.log(`  Stack: ${result.stackSize} change(s)`);
-        } else {
-          yield* Console.log("Sync completed successfully.");
-          yield* Console.log(`  Fetched: yes`);
-          yield* Console.log(`  Rebased: yes`);
-          yield* Console.log(`  Trunk:   ${result.trunkChangeId.slice(0, 12)}`);
-          yield* Console.log(`  Stack:   ${result.stackSize} change(s)`);
-        }
+        yield* Console.log("Sync completed successfully.");
+        yield* Console.log(`  Fetched: yes`);
+        yield* Console.log(`  Rebased: yes`);
+        yield* Console.log(`  Trunk:   ${result.trunkChangeId.slice(0, 12)}`);
+        yield* Console.log(`  Stack:   ${result.stackSize} change(s)`);
       }
-    }),
+    }
+  }),
 );

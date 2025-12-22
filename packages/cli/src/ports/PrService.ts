@@ -48,7 +48,10 @@ export interface PrService {
   /**
    * Update an existing pull request
    */
-  readonly updatePr: (prNumber: number, input: UpdatePrInput) => Effect.Effect<PullRequest, PrErrors>;
+  readonly updatePr: (
+    prNumber: number,
+    input: UpdatePrInput,
+  ) => Effect.Effect<PullRequest, PrErrors>;
 
   /**
    * Open PR URL in browser

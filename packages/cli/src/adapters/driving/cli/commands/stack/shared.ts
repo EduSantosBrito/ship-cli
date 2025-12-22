@@ -31,11 +31,7 @@ export type VcsCheckResult =
  * // ... use vcs
  * ```
  */
-export const checkVcsAvailability = (): Effect.Effect<
-  VcsCheckResult,
-  never,
-  VcsService
-> =>
+export const checkVcsAvailability = (): Effect.Effect<VcsCheckResult, never, VcsService> =>
   Effect.gen(function* () {
     const vcs = yield* VcsService;
 
@@ -73,10 +69,5 @@ export const checkVcsAvailability = (): Effect.Effect<
 /**
  * Output an error message in text or JSON format
  */
-export const outputError = (
-  message: string,
-  json: boolean,
-): Effect.Effect<void, never> =>
-  json
-    ? Console.log(JSON.stringify({ error: message }))
-    : Console.log(`Error: ${message}`);
+export const outputError = (message: string, json: boolean): Effect.Effect<void, never> =>
+  json ? Console.log(JSON.stringify({ error: message })) : Console.log(`Error: ${message}`);

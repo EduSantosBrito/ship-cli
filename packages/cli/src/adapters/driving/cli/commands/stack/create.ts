@@ -59,9 +59,7 @@ export const createCommand = Command.make(
       const description = message._tag === "Some" ? message.value : "(no description)";
       const createResult = yield* vcs.createChange(description).pipe(
         Effect.map((changeId) => ({ success: true as const, changeId })),
-        Effect.catchAll((e) =>
-          Effect.succeed({ success: false as const, error: String(e) }),
-        ),
+        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
       );
 
       if (!createResult.success) {
@@ -76,9 +74,7 @@ export const createCommand = Command.make(
       if (bookmark._tag === "Some") {
         const bookmarkResult = yield* vcs.createBookmark(bookmark.value).pipe(
           Effect.map(() => ({ success: true as const })),
-          Effect.catchAll((e) =>
-            Effect.succeed({ success: false as const, error: String(e) }),
-          ),
+          Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
         );
 
         if (!bookmarkResult.success) {

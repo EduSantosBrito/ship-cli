@@ -96,7 +96,9 @@ export const startCommand = Command.make(
         yield* Console.log(`Started: ${updatedTask.identifier} - ${updatedTask.title}`);
         yield* Console.log(`Status: ${updatedTask.state.name}`);
         yield* Console.log(`\nTo create a VCS change, use:`);
-        yield* Console.log(`  ship stack create -m "${updatedTask.identifier}: ${updatedTask.title}" -b ${branchName}`);
+        yield* Console.log(
+          `  ship stack create -m "${updatedTask.identifier}: ${updatedTask.title}" -b ${branchName}`,
+        );
       }
     }),
 );
