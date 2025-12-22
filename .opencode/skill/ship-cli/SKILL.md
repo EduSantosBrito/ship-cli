@@ -187,6 +187,17 @@ Use ship tool with:
 - description="Add JWT-based auth flow"
 - priority=`high` (optional: urgent, high, medium, low)
 
+### Creating Subtasks
+
+To create a subtask under an existing parent task:
+
+Use ship tool with:
+- action=`create`
+- title="Implement login form"
+- parentId=`BRI-123` (the parent task identifier)
+
+CLI equivalent: `ship create --parent BRI-123 "Implement login form"`
+
 ---
 
 ## Task Quality

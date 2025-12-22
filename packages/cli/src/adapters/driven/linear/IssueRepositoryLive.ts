@@ -152,6 +152,10 @@ const make = Effect.gen(function* () {
           createInput.projectId = input.projectId.value;
         }
 
+        if (Option.isSome(input.parentId)) {
+          createInput.parentId = input.parentId.value;
+        }
+
         const issuePayload = yield* Effect.tryPromise({
           try: (signal) => withAbortSignal(client.createIssue(createInput), signal),
           catch: (e) => new LinearApiError({ message: `Failed to create issue: ${e}`, cause: e }),

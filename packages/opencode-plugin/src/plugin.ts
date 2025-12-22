@@ -307,6 +307,7 @@ interface ShipService {
     title: string;
     description?: string;
     priority?: string;
+    parentId?: string;
   }) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
   readonly updateTask: (
     taskId: string,
@@ -397,11 +398,12 @@ const makeShipService = Effect.gen(function* () {
 
   const completeTask = (taskId: string) => shell.run(["done", taskId]).pipe(Effect.asVoid);
 
-  const createTask = (input: { title: string; description?: string; priority?: string }) =>
+  const createTask = (input: { title: string; description?: string; priority?: string; parentId?: string }) =>
     Effect.gen(function* () {
       const args = ["create", "--json"];
       if (input.description) args.push("--description", input.description);
       if (input.priority) args.push("--priority", input.priority);
+      if (input.parentId) args.push("--parent", input.parentId);
       args.push(input.title);
 
       const output = yield* shell.run(args);
@@ -746,6 +748,7 @@ type ToolArgs = {
   blocker?: string;
   blocked?: string;
   relatedTaskId?: string;
+  parentId?: string; // For creating subtasks
   filter?: {
     status?: string;
     priority?: string;
@@ -844,7 +847,11 @@ const executeAction = (
           title: args.title,
           description: args.description,
           priority: args.priority,
+          parentId: args.parentId,
         });
+        if (args.parentId) {
+          return `Created subtask ${task.identifier}: ${task.title}\nParent: ${args.parentId}\nURL: ${task.url}`;
+        }
         return `Created task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
       }
 
@@ -1198,6 +1205,10 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("Related task ID - required for relate (use with taskId)"),
+      parentId: createTool.schema
+        .string()
+        .optional()
+        .describe("Parent task identifier (e.g., BRI-123) - for creating subtasks"),
       filter: createTool.schema
         .object({
           status: createTool.schema
