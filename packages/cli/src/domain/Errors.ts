@@ -104,6 +104,12 @@ export class JjRevisionError extends Data.TaggedError("JjRevisionError")<{
   readonly revision?: string;
 }> {}
 
+/** Squash operation failed */
+export class JjSquashError extends Data.TaggedError("JjSquashError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 // === PR Errors ===
 
 export class PrError extends Data.TaggedError("PrError")<{

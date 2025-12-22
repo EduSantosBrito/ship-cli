@@ -13,6 +13,7 @@ import {
   JjFetchError,
   JjBookmarkError,
   JjRevisionError,
+  JjSquashError,
 } from "../../../domain/Errors.js";
 
 /** Union of all VCS error types that can be mapped */
@@ -23,7 +24,8 @@ export type JjError =
   | JjPushError
   | JjFetchError
   | JjBookmarkError
-  | JjRevisionError;
+  | JjRevisionError
+  | JjSquashError;
 
 /**
  * Error patterns for jj CLI output
@@ -153,6 +155,29 @@ const ERROR_PATTERNS: ReadonlyArray<ErrorPattern> = [
     createError: (output) =>
       new JjBookmarkError({
         message: output.trim() || "Bookmark not found.",
+      }),
+  },
+
+  // Squash errors
+  {
+    pattern: /Cannot squash into the root commit/i,
+    createError: () =>
+      new JjSquashError({
+        message: "Cannot squash: target is the root commit.",
+      }),
+  },
+  {
+    pattern: /Cannot squash commits that have children/i,
+    createError: () =>
+      new JjSquashError({
+        message: "Cannot squash: commit has children. Squash the children first.",
+      }),
+  },
+  {
+    pattern: /Cannot squash .* into itself/i,
+    createError: () =>
+      new JjSquashError({
+        message: "Cannot squash a commit into itself.",
       }),
   },
 

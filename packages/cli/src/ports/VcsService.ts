@@ -10,6 +10,7 @@ import type {
   JjFetchError,
   JjBookmarkError,
   JjRevisionError,
+  JjSquashError,
 } from "../domain/Errors.js";
 
 /** Union of all VCS error types */
@@ -20,7 +21,8 @@ export type VcsErrors =
   | JjPushError
   | JjFetchError
   | JjBookmarkError
-  | JjRevisionError;
+  | JjRevisionError
+  | JjSquashError;
 
 // === VCS Domain Types ===
 
@@ -142,6 +144,13 @@ export interface VcsService {
    * Returns null if current change is on trunk (no parent in stack)
    */
   readonly getParentChange: () => Effect.Effect<Change | null, VcsErrors>;
+
+  /**
+   * Squash current change into its parent
+   * @param message - Message for the combined change (required to avoid editor)
+   * @returns The parent change (now containing squashed content)
+   */
+  readonly squash: (message: string) => Effect.Effect<Change, VcsErrors>;
 }
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");

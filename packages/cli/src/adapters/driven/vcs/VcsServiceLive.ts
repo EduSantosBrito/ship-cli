@@ -290,6 +290,15 @@ const make = Effect.gen(function* () {
       });
     });
 
+  const squash = (message: string): Effect.Effect<Change, VcsErrors> =>
+    Effect.gen(function* () {
+      // Run jj squash with message (required to avoid editor)
+      yield* runJj("squash", "-m", message);
+
+      // After squash, working copy moves to parent (which now has the squashed content)
+      return yield* getCurrentChange();
+    });
+
   return {
     isAvailable,
     isRepo,
@@ -306,6 +315,7 @@ const make = Effect.gen(function* () {
     rebase,
     sync,
     getParentChange,
+    squash,
   };
 });
 
