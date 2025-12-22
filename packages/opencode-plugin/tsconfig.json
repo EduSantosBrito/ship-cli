@@ -12,7 +12,8 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "lib": ["ESNext"],
-    "types": ["bun", "node"]
+    "types": ["bun", "node"],
+    "plugins": [{ "name": "@effect/language-service" }]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]

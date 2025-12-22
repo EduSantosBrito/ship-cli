@@ -27,6 +27,33 @@ const retryPolicy = Schedule.intersect(
 // Timeout for API calls: 30 seconds
 const API_TIMEOUT = Duration.seconds(30);
 
+/**
+ * Wraps a promise with abort signal support.
+ * When the signal is aborted, the returned promise rejects immediately.
+ * Note: The underlying promise continues to run, but we stop waiting for it.
+ */
+const withAbortSignal = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> => {
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const abortHandler = () => {
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", abortHandler, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abortHandler);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", abortHandler);
+        reject(error);
+      },
+    );
+  });
+};
+
 const withRetryAndTimeout = <A, E>(
   effect: Effect.Effect<A, E>,
   operation: string,
@@ -47,14 +74,14 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const client = yield* linearClient.client();
         const issue = yield* Effect.tryPromise({
-          try: () => client.issue(id),
+          try: (signal) => withAbortSignal(client.issue(id), signal),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
         if (!issue) {
           return yield* Effect.fail(new TaskNotFoundError({ taskId: id }));
         }
         return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(issue),
+          try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -77,13 +104,16 @@ const make = Effect.gen(function* () {
         const number = parseInt(numberStr, 10);
 
         const issues = yield* Effect.tryPromise({
-          try: () =>
-            client.issues({
-              filter: {
-                number: { eq: number },
-                team: { key: { eq: teamKey.toUpperCase() } },
-              },
-            }),
+          try: (signal) =>
+            withAbortSignal(
+              client.issues({
+                filter: {
+                  number: { eq: number },
+                  team: { key: { eq: teamKey.toUpperCase() } },
+                },
+              }),
+              signal,
+            ),
           catch: (e) => new LinearApiError({ message: `Failed to search issues: ${e}`, cause: e }),
         });
 
@@ -93,7 +123,7 @@ const make = Effect.gen(function* () {
         }
 
         return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(issue),
+          try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -123,7 +153,7 @@ const make = Effect.gen(function* () {
         }
 
         const issuePayload = yield* Effect.tryPromise({
-          try: () => client.createIssue(createInput),
+          try: (signal) => withAbortSignal(client.createIssue(createInput), signal),
           catch: (e) => new LinearApiError({ message: `Failed to create issue: ${e}`, cause: e }),
         });
 
@@ -132,8 +162,9 @@ const make = Effect.gen(function* () {
         }
 
         const issue = yield* Effect.tryPromise({
-          try: async () => {
-            const i = await issuePayload.issue;
+          try: async (signal) => {
+            if (!issuePayload.issue) throw new Error("Issue not returned");
+            const i = await withAbortSignal(issuePayload.issue, signal);
             if (!i) throw new Error("Issue not returned");
             return i;
           },
@@ -142,7 +173,7 @@ const make = Effect.gen(function* () {
         });
 
         return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(issue),
+          try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -173,7 +204,7 @@ const make = Effect.gen(function* () {
 
         if (Option.isSome(input.status)) {
           const issue = yield* Effect.tryPromise({
-            try: () => client.issue(id),
+            try: (signal) => withAbortSignal(client.issue(id), signal),
             catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
           });
 
@@ -187,12 +218,12 @@ const make = Effect.gen(function* () {
           }
 
           const team = yield* Effect.tryPromise({
-            try: () => teamFetch,
+            try: (signal) => withAbortSignal(teamFetch, signal),
             catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
           });
 
           const states = yield* Effect.tryPromise({
-            try: () => team.states(),
+            try: (signal) => withAbortSignal(team.states(), signal),
             catch: (e) => new LinearApiError({ message: `Failed to fetch states: ${e}`, cause: e }),
           });
 
@@ -205,7 +236,7 @@ const make = Effect.gen(function* () {
         }
 
         const result = yield* Effect.tryPromise({
-          try: () => client.updateIssue(id, updatePayload),
+          try: (signal) => withAbortSignal(client.updateIssue(id, updatePayload), signal),
           catch: (e) => new LinearApiError({ message: `Failed to update issue: ${e}`, cause: e }),
         });
 
@@ -214,8 +245,9 @@ const make = Effect.gen(function* () {
         }
 
         const updatedIssue = yield* Effect.tryPromise({
-          try: async () => {
-            const i = await result.issue;
+          try: async (signal) => {
+            if (!result.issue) throw new Error("Issue not returned");
+            const i = await withAbortSignal(result.issue, signal);
             if (!i) throw new Error("Issue not returned");
             return i;
           },
@@ -224,7 +256,7 @@ const make = Effect.gen(function* () {
         });
 
         return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(updatedIssue),
+          try: (signal) => withAbortSignal(mapIssueToTask(updatedIssue), signal),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -258,21 +290,21 @@ const make = Effect.gen(function* () {
 
         if (filter.assignedToMe) {
           const viewer = yield* Effect.tryPromise({
-            try: () => client.viewer,
+            try: (signal) => withAbortSignal(client.viewer, signal),
             catch: (e) => new LinearApiError({ message: `Failed to fetch viewer: ${e}`, cause: e }),
           });
           linearFilter.assignee = { id: { eq: viewer.id } };
         }
 
         const issues = yield* Effect.tryPromise({
-          try: () => client.issues({ filter: linearFilter }),
+          try: (signal) => withAbortSignal(client.issues({ filter: linearFilter }), signal),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
         return yield* Effect.all(
           issues.nodes.map((issue: Issue) =>
             Effect.tryPromise({
-              try: () => mapIssueToTask(issue),
+              try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
               catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
             }),
           ),
@@ -299,16 +331,16 @@ const make = Effect.gen(function* () {
         }
 
         const issues = yield* Effect.tryPromise({
-          try: () => client.issues({ filter }),
+          try: (signal) => withAbortSignal(client.issues({ filter }), signal),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
         const tasks = yield* Effect.all(
           issues.nodes.map((issue: Issue) =>
             Effect.tryPromise({
-              try: async () => {
-                const task = await mapIssueToTask(issue);
-                const relations = await issue.relations();
+              try: async (signal) => {
+                const task = await withAbortSignal(mapIssueToTask(issue), signal);
+                const relations = await withAbortSignal(issue.relations(), signal);
                 const blockedByRelations = relations?.nodes?.filter(
                   (r: IssueRelation) => r.type === "blocks",
                 );
@@ -345,22 +377,22 @@ const make = Effect.gen(function* () {
         }
 
         const issues = yield* Effect.tryPromise({
-          try: () => client.issues({ filter }),
+          try: (signal) => withAbortSignal(client.issues({ filter }), signal),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
         const tasks = yield* Effect.all(
           issues.nodes.map((issue: Issue) =>
             Effect.tryPromise({
-              try: async () => {
-                const relations = await issue.relations();
+              try: async (signal) => {
+                const relations = await withAbortSignal(issue.relations(), signal);
                 const blockedByRelations = relations?.nodes?.filter(
                   (r: IssueRelation) => r.type === "blocks",
                 );
                 if (!blockedByRelations || blockedByRelations.length === 0) {
                   return null;
                 }
-                return mapIssueToTask(issue);
+                return withAbortSignal(mapIssueToTask(issue), signal);
               },
               catch: (e) =>
                 new LinearApiError({ message: `Failed to process issue: ${e}`, cause: e }),
@@ -382,12 +414,15 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const result = yield* Effect.tryPromise({
-          try: () =>
-            client.createIssueRelation({
-              issueId: blockedId,
-              relatedIssueId: blockerId,
-              type: LinearDocument.IssueRelationType.Blocks,
-            }),
+          try: (signal) =>
+            withAbortSignal(
+              client.createIssueRelation({
+                issueId: blockedId,
+                relatedIssueId: blockerId,
+                type: LinearDocument.IssueRelationType.Blocks,
+              }),
+              signal,
+            ),
           catch: (e) =>
             new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
         });
@@ -410,7 +445,7 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const blocked = yield* Effect.tryPromise({
-          try: () => client.issue(blockedId),
+          try: (signal) => withAbortSignal(client.issue(blockedId), signal),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 
@@ -419,17 +454,19 @@ const make = Effect.gen(function* () {
         }
 
         const relations = yield* Effect.tryPromise({
-          try: () => blocked.relations(),
+          try: (signal) => withAbortSignal(blocked.relations(), signal),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch relations: ${e}`, cause: e }),
         });
 
         const relationToDelete = yield* Effect.tryPromise({
-          try: async () => {
+          try: async (signal) => {
             for (const r of relations?.nodes ?? []) {
               if (r.type === "blocks") {
-                const relatedIssue = await (r as IssueRelation & { relatedIssue: Promise<Issue> })
-                  .relatedIssue;
+                const relatedIssue = await withAbortSignal(
+                  (r as IssueRelation & { relatedIssue: Promise<Issue> }).relatedIssue,
+                  signal,
+                );
                 if (relatedIssue?.id === blockerId) {
                   return r;
                 }
@@ -445,7 +482,7 @@ const make = Effect.gen(function* () {
         }
 
         yield* Effect.tryPromise({
-          try: () => client.deleteIssueRelation(relationToDelete.id),
+          try: (signal) => withAbortSignal(client.deleteIssueRelation(relationToDelete.id), signal),
           catch: (e) =>
             new LinearApiError({ message: `Failed to delete relation: ${e}`, cause: e }),
         });
@@ -462,12 +499,15 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const result = yield* Effect.tryPromise({
-          try: () =>
-            client.createIssueRelation({
-              issueId: taskId,
-              relatedIssueId: relatedTaskId,
-              type: LinearDocument.IssueRelationType.Related,
-            }),
+          try: (signal) =>
+            withAbortSignal(
+              client.createIssueRelation({
+                issueId: taskId,
+                relatedIssueId: relatedTaskId,
+                type: LinearDocument.IssueRelationType.Related,
+              }),
+              signal,
+            ),
           catch: (e) =>
             new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
         });
@@ -487,7 +527,7 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const issue = yield* Effect.tryPromise({
-          try: () => client.issue(id),
+          try: (signal) => withAbortSignal(client.issue(id), signal),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 

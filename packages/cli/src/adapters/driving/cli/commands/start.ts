@@ -69,10 +69,7 @@ const createVcsChange = (
     const bookmarkResult = yield* vcs.createBookmark(branchName).pipe(Effect.either);
 
     if (bookmarkResult._tag === "Left") {
-      return VcsResult.partialFailure(
-        changeId,
-        `Bookmark failed: ${bookmarkResult.left.message}`,
-      );
+      return VcsResult.partialFailure(changeId, `Bookmark failed: ${bookmarkResult.left.message}`);
     }
 
     return VcsResult.created(changeId, branchName);
@@ -83,14 +80,16 @@ const formatVcsResultText = (
   fallbackInfo?: { message: string; branchName: string },
 ): string =>
   Match.value(result).pipe(
-    Match.tag("Created", ({ changeId, bookmark }) =>
-      `\nCreated jj change: ${changeId}\nCreated bookmark: ${bookmark}`,
+    Match.tag(
+      "Created",
+      ({ changeId, bookmark }) => `\nCreated jj change: ${changeId}\nCreated bookmark: ${bookmark}`,
     ),
     Match.tag("Skipped", ({ reason }) =>
       reason ? `\nWarning: ${reason}` : `\nVCS operations skipped (--no-vcs)`,
     ),
-    Match.tag("PartialFailure", ({ changeId, warning }) =>
-      `\nCreated jj change: ${changeId}\nWarning: ${warning}`,
+    Match.tag(
+      "PartialFailure",
+      ({ changeId, warning }) => `\nCreated jj change: ${changeId}\nWarning: ${warning}`,
     ),
     Match.tag("Failed", ({ warning }) =>
       fallbackInfo
