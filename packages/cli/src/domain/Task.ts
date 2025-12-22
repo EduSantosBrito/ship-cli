@@ -126,6 +126,7 @@ export class CreateTaskInput extends Schema.Class<CreateTaskInput>("CreateTaskIn
   priority: Schema.optionalWith(Priority, { default: () => "medium" as const }),
   type: Schema.optionalWith(TaskType, { default: () => "task" as const }),
   projectId: Schema.OptionFromNullOr(ProjectId),
+  parentId: Schema.OptionFromNullOr(TaskId), // For creating subtasks
 }) {}
 
 export class UpdateTaskInput extends Schema.Class<UpdateTaskInput>("UpdateTaskInput")({
