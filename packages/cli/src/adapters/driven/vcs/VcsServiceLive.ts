@@ -5,7 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { JjNotInstalledError, VcsError } from "../../../domain/Errors.js";
-import { VcsService, ChangeId, PushResult, TrunkInfo, SyncResult, type VcsErrors } from "../../../ports/VcsService.js";
+import { VcsService, ChangeId, Change, PushResult, TrunkInfo, SyncResult, type VcsErrors } from "../../../ports/VcsService.js";
 import {
   JJ_LOG_JSON_TEMPLATE,
   parseChanges,
@@ -142,10 +142,7 @@ const make = Effect.gen(function* () {
     return runJj("bookmark", "create", name).pipe(Effect.asVoid);
   };
 
-  const getCurrentChange = (): Effect.Effect<
-    import("../../../ports/VcsService.js").Change,
-    VcsErrors
-  > =>
+  const getCurrentChange = (): Effect.Effect<Change, VcsErrors> =>
     Effect.gen(function* () {
       const output = yield* runJj("log", "-r", "@", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
       const changes = yield* parseChanges(output);
@@ -171,10 +168,7 @@ const make = Effect.gen(function* () {
       "git push",
     );
 
-  const getStack = (): Effect.Effect<
-    ReadonlyArray<import("../../../ports/VcsService.js").Change>,
-    VcsErrors
-  > =>
+  const getStack = (): Effect.Effect<ReadonlyArray<Change>, VcsErrors> =>
     Effect.gen(function* () {
       // Get changes from trunk (main/master) to current working copy
       const output = yield* runJj(
@@ -190,7 +184,7 @@ const make = Effect.gen(function* () {
 
   const getLog = (
     revset?: string,
-  ): Effect.Effect<ReadonlyArray<import("../../../ports/VcsService.js").Change>, VcsErrors> =>
+  ): Effect.Effect<ReadonlyArray<Change>, VcsErrors> =>
     Effect.gen(function* () {
       const rev = revset ?? "@";
       const output = yield* runJj("log", "-r", rev, "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
@@ -218,6 +212,34 @@ const make = Effect.gen(function* () {
 
   const rebase = (source: ChangeId, destination = "main"): Effect.Effect<void, VcsErrors> =>
     runJj("rebase", "-s", source, "-d", destination).pipe(Effect.asVoid);
+
+  const getParentChange = (): Effect.Effect<Change | null, VcsErrors> =>
+    Effect.gen(function* () {
+      // Get parent of current working copy using @- revset
+      const output = yield* runJj("log", "-r", "@-", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
+      const changes = yield* parseChanges(output);
+      
+      if (changes.length === 0) {
+        return null;
+      }
+      
+      const parent = changes[0];
+      
+      // Check if parent is trunk (main/master) - if so, return null
+      // We detect this by checking if the parent has no bookmarks that are user-created
+      // (trunk has bookmarks like "main" or "master" but those are tracked remotes)
+      const trunkResult = yield* getTrunkInfo().pipe(
+        Effect.map((trunk) => ({ success: true as const, trunk })),
+        Effect.catchAll(() => Effect.succeed({ success: false as const })),
+      );
+      
+      if (trunkResult.success && parent.id === trunkResult.trunk.id) {
+        // Parent is trunk, so there's no "parent change" in the stack sense
+        return null;
+      }
+      
+      return parent;
+    });
 
   const sync = (): Effect.Effect<SyncResult, VcsErrors> =>
     Effect.gen(function* () {
@@ -279,6 +301,7 @@ const make = Effect.gen(function* () {
     getTrunkInfo,
     rebase,
     sync,
+    getParentChange,
   };
 });
 
