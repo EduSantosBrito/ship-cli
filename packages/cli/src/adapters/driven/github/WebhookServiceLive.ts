@@ -44,6 +44,9 @@ import {
 /**
  * Schema for GitHub webhook response
  * Note: ws_url is only present when name="cli"
+ *
+ * We use a permissive schema that only validates the fields we need,
+ * since GitHub may add new fields at any time.
  */
 const GhWebhookResponseSchema = Schema.Struct({
   id: Schema.Number,
@@ -53,10 +56,19 @@ const GhWebhookResponseSchema = Schema.Struct({
   config: Schema.Struct({
     content_type: Schema.optional(Schema.String),
     url: Schema.optional(Schema.String),
+    insecure_ssl: Schema.optional(Schema.String),
   }),
   url: Schema.String,
   // This is the magic field - only present for name="cli" webhooks
   ws_url: Schema.optional(Schema.String),
+  // Additional fields returned by GitHub (optional, we don't use them all)
+  type: Schema.optional(Schema.String),
+  created_at: Schema.optional(Schema.String),
+  updated_at: Schema.optional(Schema.String),
+  test_url: Schema.optional(Schema.String),
+  ping_url: Schema.optional(Schema.String),
+  deliveries_url: Schema.optional(Schema.String),
+  last_response: Schema.optional(Schema.Unknown),
 });
 
 type GhWebhookResponse = typeof GhWebhookResponseSchema.Type;
@@ -123,10 +135,23 @@ const make = Effect.gen(function* () {
     if (body) {
       for (const [key, value] of Object.entries(body)) {
         if (value !== undefined) {
-          // Use -f for strings, -F for non-strings (booleans, numbers, arrays)
           if (typeof value === "string") {
+            // Use -f for strings
             args.push("-f", `${key}=${value}`);
+          } else if (Array.isArray(value)) {
+            // Arrays must be passed as separate elements with key[]=value syntax
+            for (const item of value) {
+              args.push("-f", `${key}[]=${String(item)}`);
+            }
+          } else if (typeof value === "object" && value !== null) {
+            // Nested objects use key[subkey]=value syntax
+            for (const [subkey, subvalue] of Object.entries(value)) {
+              if (subvalue !== undefined) {
+                args.push("-f", `${key}[${subkey}]=${String(subvalue)}`);
+              }
+            }
           } else {
+            // Use -F for non-strings (booleans, numbers)
             args.push("-F", `${key}=${JSON.stringify(value)}`);
           }
         }

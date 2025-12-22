@@ -11,8 +11,6 @@ import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
-import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 
 // =============================================================================
@@ -42,15 +40,16 @@ interface ShipStatus {
   projectId?: string | null;
 }
 
-/** Webhook process info tracked in Ref */
-interface WebhookProcessInfo {
-  proc: ReturnType<typeof Bun.spawn>;
-  pid: number;
-}
-
 /**
- * Module-level process cleanup registration.
- * Ensures webhook processes are killed when the Node process exits.
+ * Webhook process management - module-level state for persistence across tool calls.
+ *
+ * Note: We previously attempted using Effect.Ref for state management, but it didn't
+ * persist across separate Effect runs (each tool call creates a new runtime/layer).
+ * Module-level state is a pragmatic solution for subprocess management.
+ *
+ * Future consideration: Refactor to use Effect Fibers with Effect.forkDaemon for
+ * in-process webhook forwarding, which would allow proper Effect resource management.
+ * See BRI-88 for details.
  */
 let cleanupRegistered = false;
 let processToCleanup: ReturnType<typeof Bun.spawn> | null = null;
@@ -456,13 +455,7 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackAbandonResult>(output);
     });
 
-  // Webhook operations - use Ref for thread-safe process tracking
-  // Create a Ref to track the webhook process atomically
-  const webhookProcessRef = yield* Ref.make<Option.Option<WebhookProcessInfo>>(Option.none());
-
-  /** Check if a process is still running */
-  const isProcessRunning = (info: WebhookProcessInfo): boolean =>
-    !info.proc.killed && info.proc.exitCode === null;
+  // Webhook operations - uses module-level processToCleanup for persistence across tool calls
 
   /** Check process readiness with retries instead of magic sleep */
   const waitForProcessReady = (
@@ -485,22 +478,12 @@ const makeShipService = Effect.gen(function* () {
 
   const startWebhook = (events?: string): Effect.Effect<WebhookStartResult, never> =>
     Effect.gen(function* () {
-      // Atomically check-and-set to prevent race conditions
-      const alreadyRunning = yield* Ref.modify(webhookProcessRef, (current) =>
-        Option.match(current, {
-          onNone: () => [Option.none<WebhookProcessInfo>(), current] as const,
-          onSome: (info) =>
-            isProcessRunning(info)
-              ? [Option.some(info), current] as const
-              : [Option.none<WebhookProcessInfo>(), Option.none<WebhookProcessInfo>()] as const,
-        }),
-      );
-
-      if (Option.isSome(alreadyRunning)) {
+      // Check if already running using module-level state
+      if (processToCleanup && !processToCleanup.killed && processToCleanup.exitCode === null) {
         return {
           started: false,
           error: "Webhook forwarding is already running",
-          pid: alreadyRunning.value.pid,
+          pid: processToCleanup.pid,
         };
       }
 
@@ -528,8 +511,7 @@ const makeShipService = Effect.gen(function* () {
         };
       }
 
-      // Store the process info atomically and register cleanup
-      yield* Ref.set(webhookProcessRef, Option.some({ proc, pid: proc.pid }));
+      // Register process for cleanup (uses module-level state)
       registerProcessCleanup(proc);
 
       return {
@@ -545,45 +527,36 @@ const makeShipService = Effect.gen(function* () {
     });
 
   const stopWebhook = (): Effect.Effect<WebhookStopResult, never> =>
-    Effect.gen(function* () {
-      // Atomically get and clear the process
-      const maybeProcess = yield* Ref.getAndSet(webhookProcessRef, Option.none());
-
-      return Option.match(maybeProcess, {
-        onNone: () => ({
+    Effect.sync(() => {
+      // Use module-level processToCleanup for persistence across Effect runs
+      if (!processToCleanup) {
+        return {
           stopped: false,
           wasRunning: false,
           error: "No webhook forwarding process is running",
-        }),
-        onSome: (info) => {
-          if (!isProcessRunning(info)) {
-            unregisterProcessCleanup();
-            return {
-              stopped: false,
-              wasRunning: false,
-              error: "Process was not running",
-            };
-          }
-          info.proc.kill();
-          unregisterProcessCleanup();
-          return {
-            stopped: true,
-            wasRunning: true,
-          };
-        },
-      });
+        };
+      }
+
+      const wasRunning = !processToCleanup.killed && processToCleanup.exitCode === null;
+      if (wasRunning) {
+        processToCleanup.kill();
+      }
+      unregisterProcessCleanup();
+
+      return {
+        stopped: wasRunning,
+        wasRunning,
+      };
     });
 
   const getWebhookStatus = (): Effect.Effect<{ running: boolean; pid?: number }, never> =>
-    Ref.get(webhookProcessRef).pipe(
-      Effect.map((maybeProcess) =>
-        Option.match(maybeProcess, {
-          onNone: () => ({ running: false }),
-          onSome: (info) =>
-            isProcessRunning(info) ? { running: true, pid: info.pid } : { running: false },
-        }),
-      ),
-    );
+    Effect.sync(() => {
+      // Use module-level processToCleanup for persistence across Effect runs
+      if (processToCleanup && !processToCleanup.killed && processToCleanup.exitCode === null) {
+        return { running: true, pid: processToCleanup.pid };
+      }
+      return { running: false };
+    });
 
   return {
     checkConfigured,
