@@ -1,11 +1,11 @@
 /**
  * Ship OpenCode Plugin
  *
- * Integrates the Ship CLI (Linear task management) with OpenCode.
- * Rewritten using Effect for consistency and reliability.
+ * Provides the `ship` tool for Linear task management.
+ * Instructions/guidance are handled by the ship-linear skill (.opencode/skill/ship-linear/SKILL.md)
  */
 
-import type { Plugin, PluginInput } from "@opencode-ai/plugin";
+import type { Plugin } from "@opencode-ai/plugin";
 import { tool as createTool } from "@opencode-ai/plugin";
 import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
@@ -16,8 +16,7 @@ import * as Layer from "effect/Layer";
 // Types & Errors
 // =============================================================================
 
-type OpencodeClient = PluginInput["client"];
-type BunShell = PluginInput["$"];
+type BunShell = Parameters<Plugin>[0]["$"];
 
 class ShipCommandError extends Data.TaggedError("ShipCommandError")<{
   readonly command: string;
@@ -57,9 +56,7 @@ interface ShipTask {
 // =============================================================================
 
 interface ShellService {
-  readonly run: (
-    args: string[]
-  ) => Effect.Effect<string, ShipCommandError>;
+  readonly run: (args: string[]) => Effect.Effect<string, ShipCommandError>;
 }
 
 const ShellService = Context.GenericTag<ShellService>("ShellService");
@@ -73,7 +70,6 @@ const makeShellService = (_$: BunShell): ShellService => {
   };
 
   const extractJson = (output: string): string => {
-    // When using pnpm, stdout may include pnpm's prefix lines before actual output
     const jsonMatch = output.match(/^\s*[\[{]/m);
     if (jsonMatch && jsonMatch.index !== undefined) {
       return output.slice(jsonMatch.index);
@@ -86,10 +82,9 @@ const makeShellService = (_$: BunShell): ShellService => {
       Effect.gen(function* () {
         const cmd = getCommand();
         const fullArgs = [...cmd, ...args];
-        
+
         const result = yield* Effect.tryPromise({
           try: async (signal) => {
-            // Use Bun.spawn with AbortSignal for proper interruption support
             const proc = Bun.spawn(fullArgs, {
               stdout: "pipe",
               stderr: "pipe",
@@ -118,7 +113,6 @@ const makeShellService = (_$: BunShell): ShellService => {
           });
         }
 
-        // Extract JSON if args include --json
         if (args.includes("--json")) {
           return extractJson(result.stdout);
         }
@@ -141,9 +135,7 @@ interface ShipService {
     priority?: string;
     mine?: boolean;
   }) => Effect.Effect<ShipTask[], ShipCommandError | JsonParseError>;
-  readonly getTask: (
-    taskId: string
-  ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
+  readonly getTask: (taskId: string) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
   readonly startTask: (taskId: string) => Effect.Effect<void, ShipCommandError>;
   readonly completeTask: (taskId: string) => Effect.Effect<void, ShipCommandError>;
   readonly createTask: (input: {
@@ -160,18 +152,9 @@ interface ShipService {
       status?: string;
     }
   ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
-  readonly addBlocker: (
-    blocker: string,
-    blocked: string
-  ) => Effect.Effect<void, ShipCommandError>;
-  readonly removeBlocker: (
-    blocker: string,
-    blocked: string
-  ) => Effect.Effect<void, ShipCommandError>;
-  readonly relateTask: (
-    taskId: string,
-    relatedTaskId: string
-  ) => Effect.Effect<void, ShipCommandError>;
+  readonly addBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
+  readonly removeBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
+  readonly relateTask: (taskId: string, relatedTaskId: string) => Effect.Effect<void, ShipCommandError>;
   readonly getPrimeContext: () => Effect.Effect<string, ShipCommandError>;
 }
 
@@ -221,11 +204,9 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<ShipTask>(output);
     });
 
-  const startTask = (taskId: string) =>
-    shell.run(["start", taskId]).pipe(Effect.asVoid);
+  const startTask = (taskId: string) => shell.run(["start", taskId]).pipe(Effect.asVoid);
 
-  const completeTask = (taskId: string) =>
-    shell.run(["done", taskId]).pipe(Effect.asVoid);
+  const completeTask = (taskId: string) => shell.run(["done", taskId]).pipe(Effect.asVoid);
 
   const createTask = (input: { title: string; description?: string; priority?: string }) =>
     Effect.gen(function* () {
@@ -291,8 +272,7 @@ const makeShipService = Effect.gen(function* () {
 const formatTaskList = (tasks: ShipTask[]): string =>
   tasks
     .map((t) => {
-      const priority =
-        t.priority === "urgent" ? "[!]" : t.priority === "high" ? "[^]" : "   ";
+      const priority = t.priority === "urgent" ? "[!]" : t.priority === "high" ? "[^]" : "   ";
       return `${priority} ${t.identifier.padEnd(10)} ${(t.state || t.status).padEnd(12)} ${t.title}`;
     })
     .join("\n");
@@ -345,9 +325,7 @@ const executeAction = (
 
     // Check configuration for all actions except status
     if (args.action !== "status") {
-      const status = yield* ship.checkConfigured().pipe(
-        Effect.catchAll(() => Effect.succeed({ configured: false }))
-      );
+      const status = yield* ship.checkConfigured().pipe(Effect.catchAll(() => Effect.succeed({ configured: false })));
       if (!status.configured) {
         return yield* new ShipNotConfiguredError({});
       }
@@ -472,123 +450,13 @@ const executeAction = (
   });
 
 // =============================================================================
-// Constants
-// =============================================================================
-
-const SHIP_GUIDANCE = `## Ship Tool Guidance
-
-**IMPORTANT: Always use the \`ship\` tool, NEVER run \`ship\` or \`pnpm ship\` via bash/terminal.**
-
-The \`ship\` tool is available for Linear task management. Use it instead of CLI commands.
-
-### Available Actions (via ship tool)
-- \`ready\` - Tasks you can work on (no blockers)
-- \`blocked\` - Tasks waiting on dependencies  
-- \`list\` - All tasks (with optional filters)
-- \`show\` - Task details (requires taskId)
-- \`start\` - Begin working on task (requires taskId)
-- \`done\` - Mark task complete (requires taskId)
-- \`create\` - Create new task (requires title)
-- \`update\` - Update task (requires taskId + fields to update)
-- \`block\` - Add blocking relationship (requires blocker + blocked)
-- \`unblock\` - Remove blocking relationship (requires blocker + blocked)
-- \`relate\` - Link tasks as related (requires taskId + relatedTaskId)
-- \`prime\` - Get AI context
-- \`status\` - Check configuration
-
-### Best Practices
-1. Use \`ship\` tool with action \`ready\` to see available work
-2. Use \`ship\` tool with action \`start\` before beginning work
-3. Use \`ship\` tool with action \`done\` when completing tasks
-4. Use \`ship\` tool with action \`block\` for dependency relationships
-
-### Linear Task Relationships
-
-Linear has native relationship types. **Always use these instead of writing dependencies in text:**
-
-**Blocking (for dependencies):**
-- Use ship tool: action=\`block\`, blocker=\`BRI-100\`, blocked=\`BRI-101\`
-- Use ship tool: action=\`unblock\` to remove relationships
-- Use ship tool: action=\`blocked\` to see waiting tasks
-
-**Related (for cross-references):**
-- Use ship tool: action=\`relate\`, taskId=\`BRI-100\`, relatedTaskId=\`BRI-101\`
-- Use this when tasks are conceptually related but not blocking each other
-
-**Mentioning Tasks in Descriptions (Clickable Pills):**
-To create clickable task pills in descriptions, use full markdown links:
-\`[BRI-123](https://linear.app/WORKSPACE/issue/BRI-123/slug)\`
-
-Get the full URL from ship tool (action=\`show\`, taskId=\`BRI-123\`) and use it in markdown link format.
-Plain text \`BRI-123\` will NOT create clickable pills.
-
-### Task Description Template
-
-\`\`\`markdown
-## Context
-Brief explanation of why this task exists and where it fits.
-
-## Problem Statement
-What specific problem does this task solve? Current vs desired behavior.
-
-## Implementation Notes
-- Key files: \`path/to/file.ts\`
-- Patterns: Reference existing implementations
-- Technical constraints
-
-## Acceptance Criteria
-- [ ] Specific, testable requirement 1
-- [ ] Specific, testable requirement 2
-- [ ] Tests pass
-
-## Out of Scope
-- What NOT to include
-
-## Dependencies
-- Blocked by: [BRI-XXX](url) (brief reason)
-- Blocks: [BRI-YYY](url) (brief reason)
-\`\`\`
-
-**Important:** 
-1. Set blocking relationships via ship tool action=\`block\` (appears in Linear sidebar)
-2. ALSO document in description using markdown links for context
-3. Get task URLs from ship tool action=\`show\`
-
-### Task Quality Checklist
-- Title is actionable and specific (not "Fix bug" but "Fix null pointer in UserService.getById")
-- Context explains WHY, not just WHAT
-- Acceptance criteria are testable
-- **Dependencies set via \`ship block\`** AND documented with markdown links
-- Links use full URL format: \`[BRI-123](https://linear.app/...)\`
-- Priority reflects business impact (urgent/high/medium/low)`;
-
-const SHIP_COMMANDS = {
-  ready: {
-    description: "Find ready-to-work tasks with no blockers",
-    template: `Use the \`ship\` tool with action \`ready\` to find tasks that are ready to work on (no blocking dependencies).
-
-Present the results in a clear format showing:
-- Task ID (e.g., BRI-123)
-- Title  
-- Priority
-- URL
-
-If there are ready tasks, ask the user which one they'd like to work on. If they choose one, use the \`ship\` tool with action \`start\` to begin work on it.
-
-If there are no ready tasks, suggest checking blocked tasks (action \`blocked\`) or creating a new task (action \`create\`).`,
-  },
-};
-
-// =============================================================================
 // Tool Creation
 // =============================================================================
 
 const createShipTool = ($: BunShell) => {
   const shellService = makeShellService($);
   const ShellServiceLive = Layer.succeed(ShellService, shellService);
-  const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(
-    Layer.provide(ShellServiceLive)
-  );
+  const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(Layer.provide(ShellServiceLive));
 
   const runEffect = <A, E>(effect: Effect.Effect<A, E, ShipService>): Promise<A> =>
     Effect.runPromise(Effect.provide(effect, ShipServiceLive));
@@ -631,14 +499,8 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("Task identifier (e.g., BRI-123) - required for show, start, done, update"),
-      title: createTool.schema
-        .string()
-        .optional()
-        .describe("Task title - required for create, optional for update"),
-      description: createTool.schema
-        .string()
-        .optional()
-        .describe("Task description - optional for create/update"),
+      title: createTool.schema.string().optional().describe("Task title - required for create, optional for update"),
+      description: createTool.schema.string().optional().describe("Task description - optional for create/update"),
       priority: createTool.schema
         .enum(["urgent", "high", "medium", "low", "none"])
         .optional()
@@ -647,14 +509,8 @@ Run 'ship init' in the terminal first if not configured.`,
         .enum(["backlog", "todo", "in_progress", "in_review", "done", "cancelled"])
         .optional()
         .describe("Task status - optional for update"),
-      blocker: createTool.schema
-        .string()
-        .optional()
-        .describe("Blocker task ID - required for block/unblock"),
-      blocked: createTool.schema
-        .string()
-        .optional()
-        .describe("Blocked task ID - required for block/unblock"),
+      blocker: createTool.schema.string().optional().describe("Blocker task ID - required for block/unblock"),
+      blocked: createTool.schema.string().optional().describe("Blocked task ID - required for block/unblock"),
       relatedTaskId: createTool.schema
         .string()
         .optional()
@@ -701,112 +557,13 @@ After that, you can use this tool to manage tasks.`);
 };
 
 // =============================================================================
-// Session Context Helpers
-// =============================================================================
-
-const getSessionContext = async (
-  client: OpencodeClient,
-  sessionID: string
-): Promise<{ model?: { providerID: string; modelID: string }; agent?: string } | undefined> => {
-  try {
-    const response = await client.session.messages({
-      path: { id: sessionID },
-      query: { limit: 50 },
-    });
-
-    if (response.data) {
-      for (const msg of response.data) {
-        if (msg.info.role === "user" && "model" in msg.info && msg.info.model) {
-          return { model: msg.info.model, agent: msg.info.agent };
-        }
-      }
-    }
-  } catch {
-    // On error, return undefined
-  }
-  return undefined;
-};
-
-const injectShipContext = async (
-  client: OpencodeClient,
-  sessionID: string,
-  context?: { model?: { providerID: string; modelID: string }; agent?: string }
-): Promise<void> => {
-  try {
-    await client.session.prompt({
-      path: { id: sessionID },
-      body: {
-        noReply: true,
-        model: context?.model,
-        agent: context?.agent,
-        parts: [{ type: "text", text: SHIP_GUIDANCE, synthetic: true }],
-      },
-    });
-  } catch {
-    // Silent skip on error
-  }
-};
-
-// =============================================================================
 // Plugin Export
 // =============================================================================
 
-export const ShipPlugin: Plugin = async ({ client, $ }) => {
-  const injectedSessions = new Set<string>();
-  const shipTool = createShipTool($);
-
-  return {
-    "chat.message": async (_input, output) => {
-      const sessionID = output.message.sessionID;
-
-      if (injectedSessions.has(sessionID)) return;
-
-      try {
-        const existing = await client.session.messages({
-          path: { id: sessionID },
-        });
-
-        if (existing.data) {
-          const hasShipContext = existing.data.some((msg) => {
-            const parts = (msg as any).parts || (msg.info as any).parts;
-            if (!parts) return false;
-            return parts.some(
-              (part: any) => part.type === "text" && part.text?.includes("<ship-context>")
-            );
-          });
-
-          if (hasShipContext) {
-            injectedSessions.add(sessionID);
-            return;
-          }
-        }
-      } catch {
-        // On error, proceed with injection
-      }
-
-      injectedSessions.add(sessionID);
-      await injectShipContext(client, sessionID, {
-        model: output.message.model,
-        agent: output.message.agent,
-      });
-    },
-
-    event: async ({ event }) => {
-      if (event.type === "session.compacted") {
-        const sessionID = event.properties.sessionID;
-        const context = await getSessionContext(client, sessionID);
-        await injectShipContext(client, sessionID, context);
-      }
-    },
-
-    config: async (config) => {
-      config.command = { ...config.command, ...SHIP_COMMANDS };
-    },
-
-    tool: {
-      ship: shipTool,
-    },
-  };
-};
+export const ShipPlugin: Plugin = async ({ $ }) => ({
+  tool: {
+    ship: createShipTool($),
+  },
+});
 
 export default ShipPlugin;
