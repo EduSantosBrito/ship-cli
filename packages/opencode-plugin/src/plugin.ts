@@ -39,6 +39,9 @@ interface ShipStatus {
   projectId?: string | null;
 }
 
+// Track webhook forwarding process
+let webhookProcess: ReturnType<typeof Bun.spawn> | null = null;
+
 interface ShipTask {
   identifier: string;
   title: string;
@@ -105,6 +108,20 @@ interface StackSubmitResult {
     number: number;
     status: "created" | "updated" | "exists";
   };
+  error?: string;
+}
+
+interface WebhookStartResult {
+  started: boolean;
+  pid?: number;
+  repo?: string;
+  events?: string[];
+  error?: string;
+}
+
+interface WebhookStopResult {
+  stopped: boolean;
+  wasRunning: boolean;
   error?: string;
 }
 
@@ -227,6 +244,10 @@ interface ShipService {
     title?: string;
     body?: string;
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
+  // Webhook operations
+  readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, ShipCommandError>;
+  readonly stopWebhook: () => Effect.Effect<WebhookStopResult, ShipCommandError>;
+  readonly getWebhookStatus: () => Effect.Effect<{ running: boolean; pid?: number }, never>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -363,6 +384,85 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackSubmitResult>(output);
     });
 
+  // Webhook operations
+  const startWebhook = (events?: string): Effect.Effect<WebhookStartResult, ShipCommandError> =>
+    Effect.gen(function* () {
+      // Check if already running
+      if (webhookProcess && !webhookProcess.killed) {
+        return {
+          started: false,
+          error: "Webhook forwarding is already running",
+          pid: webhookProcess.pid,
+        };
+      }
+
+      // Build command
+      const cmd = process.env.NODE_ENV === "development" ? ["pnpm", "ship"] : ["ship"];
+      const args = [...cmd, "webhook", "forward"];
+      if (events) {
+        args.push("--events", events);
+      }
+
+      // Spawn detached process
+      const proc = Bun.spawn(args, {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      webhookProcess = proc;
+
+      // Give it a moment to start and check if it failed immediately
+      yield* Effect.sleep("500 millis");
+
+      // Check if process is still running
+      if (proc.killed || proc.exitCode !== null) {
+        const stderr = yield* Effect.promise(() => new Response(proc.stderr).text());
+        webhookProcess = null;
+        return {
+          started: false,
+          error: stderr || "Process exited immediately",
+        };
+      }
+
+      return {
+        started: true,
+        pid: proc.pid,
+        events: events?.split(",").map((e) => e.trim()) || [
+          "pull_request",
+          "pull_request_review",
+          "issue_comment",
+          "check_run",
+        ],
+      };
+    });
+
+  const stopWebhook = (): Effect.Effect<WebhookStopResult, ShipCommandError> =>
+    Effect.sync(() => {
+      if (!webhookProcess || webhookProcess.killed) {
+        return {
+          stopped: false,
+          wasRunning: false,
+          error: "No webhook forwarding process is running",
+        };
+      }
+
+      webhookProcess.kill();
+      webhookProcess = null;
+
+      return {
+        stopped: true,
+        wasRunning: true,
+      };
+    });
+
+  const getWebhookStatus = (): Effect.Effect<{ running: boolean; pid?: number }, never> =>
+    Effect.sync(() => {
+      if (webhookProcess && !webhookProcess.killed && webhookProcess.exitCode === null) {
+        return { running: true, pid: webhookProcess.pid };
+      }
+      return { running: false };
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -383,6 +483,9 @@ const makeShipService = Effect.gen(function* () {
     describeStackChange,
     syncStack,
     submitStack,
+    startWebhook,
+    stopWebhook,
+    getWebhookStatus,
   } satisfies ShipService;
 });
 
@@ -441,6 +544,8 @@ type ToolArgs = {
   bookmark?: string;
   draft?: boolean;
   body?: string;
+  // Webhook-specific args
+  events?: string;
 };
 
 const executeAction = (
@@ -681,6 +786,35 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
       }
 
+      // Webhook operations
+      case "webhook-start": {
+        const result = yield* ship.startWebhook(args.events);
+        if (!result.started) {
+          return `Error: ${result.error}${result.pid ? ` (PID: ${result.pid})` : ""}`;
+        }
+        return `Webhook forwarding started (PID: ${result.pid})
+Events: ${result.events?.join(", ") || "default"}
+
+GitHub events will be forwarded to the current OpenCode session.
+Use action 'webhook-stop' to stop forwarding.`;
+      }
+
+      case "webhook-stop": {
+        const result = yield* ship.stopWebhook();
+        if (!result.stopped) {
+          return result.error || "No webhook forwarding process is running";
+        }
+        return "Webhook forwarding stopped.";
+      }
+
+      case "webhook-status": {
+        const status = yield* ship.getWebhookStatus();
+        if (status.running) {
+          return `Webhook forwarding is running (PID: ${status.pid})`;
+        }
+        return "Webhook forwarding is not running.";
+      }
+
       default:
         return `Unknown action: ${args.action}`;
     }
@@ -709,6 +843,7 @@ Use this tool to:
 - Manage task dependencies (blocking relationships)
 - Get AI-optimized context about current work
 - Manage stacked changes (jj workflow)
+- Start/stop GitHub webhook forwarding for real-time event notifications
 
 Requires ship to be configured in the project (.ship/config.yaml).
 Run 'ship init' in the terminal first if not configured.`,
@@ -735,9 +870,12 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-describe",
           "stack-sync",
           "stack-submit",
+          "webhook-start",
+          "webhook-stop",
+          "webhook-status",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), webhook-start (start GitHub event forwarding), webhook-stop (stop forwarding), webhook-status (check if running)"
         ),
       taskId: createTool.schema
         .string()
@@ -785,6 +923,10 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe("PR body - for stack-submit action (defaults to change description)"),
+      events: createTool.schema
+        .string()
+        .optional()
+        .describe("Comma-separated GitHub events to forward (e.g., 'pull_request,check_run') - for webhook-start action"),
     },
 
     async execute(args) {
