@@ -174,7 +174,7 @@ export const initCommand = Command.make(
         }
       }
 
-      // Step 4: Save config and update .gitignore
+      // Step 4: Save config, update .gitignore, and create OpenCode skill
       const linearConfig = new LinearConfig({
         teamId: selectedTeam.id,
         teamKey: selectedTeam.key,
@@ -183,9 +183,10 @@ export const initCommand = Command.make(
 
       yield* config.saveLinear(linearConfig);
       yield* config.ensureGitignore();
+      yield* config.ensureOpencodeSkill();
 
       clack.note(
-        `Team: ${selectedTeam.key} - ${selectedTeam.name}${selectedProject ? `\nProject: ${selectedProject.name}` : ""}`,
+        `Team: ${selectedTeam.key} - ${selectedTeam.name}${selectedProject ? `\nProject: ${selectedProject.name}` : ""}\n\nOpenCode skill created at .opencode/skill/ship-cli/SKILL.md`,
         "Workspace initialized",
       );
 

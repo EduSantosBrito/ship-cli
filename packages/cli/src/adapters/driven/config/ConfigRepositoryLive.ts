@@ -23,8 +23,12 @@ import { TeamId, ProjectId } from "../../../domain/Task.js";
 const asTeamId = (s: string): typeof TeamId.Type => s as typeof TeamId.Type;
 const asProjectId = (s: string): typeof ProjectId.Type => s as typeof ProjectId.Type;
 
+import { SKILL_CONTENT } from "./skill-content.js";
+
 const CONFIG_DIR = ".ship";
 const CONFIG_FILE = "config.yaml";
+const OPENCODE_SKILL_DIR = ".opencode/skill/ship-cli";
+const OPENCODE_SKILL_FILE = "SKILL.md";
 
 // YAML representation (with optional fields for partial configs)
 const YamlConfig = Schema.Struct({
@@ -348,6 +352,26 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const ensureOpencodeSkill = () =>
+    Effect.gen(function* () {
+      const skillDir = path.join(process.cwd(), OPENCODE_SKILL_DIR);
+      const skillPath = path.join(skillDir, OPENCODE_SKILL_FILE);
+
+      // Check if skill already exists
+      const skillExists = yield* fs.exists(skillPath);
+      if (skillExists) {
+        return;
+      }
+
+      // Create directory and write skill file
+      yield* fs.makeDirectory(skillDir, { recursive: true });
+      yield* fs.writeFileString(skillPath, SKILL_CONTENT);
+    }).pipe(
+      Effect.catchAll((e) =>
+        Effect.fail(new ConfigError({ message: `Failed to create OpenCode skill: ${e}`, cause: e })),
+      ),
+    );
+
   return {
     load,
     loadPartial,
@@ -359,6 +383,7 @@ const make = Effect.gen(function* () {
     getConfigDir,
     ensureConfigDir,
     ensureGitignore,
+    ensureOpencodeSkill,
     delete: deleteConfig,
   };
 });
