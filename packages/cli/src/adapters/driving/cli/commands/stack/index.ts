@@ -16,6 +16,7 @@ import { createCommand } from "./create.js";
 import { describeCommand } from "./describe.js";
 import { syncCommand } from "./sync.js";
 import { submitCommand } from "./submit.js";
+import { squashCommand } from "./squash.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -30,6 +31,7 @@ Commands:
   describe          Update change description
   sync              Fetch and rebase onto trunk
   submit            Push and create/update PR
+  squash            Squash current change into parent
 
 Run 'ship stack <command> --help' for more information.`),
 );
@@ -43,5 +45,6 @@ export const stackCommand = stack.pipe(
     describeCommand,
     syncCommand,
     submitCommand,
+    squashCommand,
   ]),
 );

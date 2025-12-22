@@ -153,6 +153,13 @@ interface StackSubmitResult {
   error?: string;
 }
 
+interface StackSquashResult {
+  squashed: boolean;
+  intoChangeId?: string;
+  description?: string;
+  error?: string;
+}
+
 interface WebhookStartResult {
   started: boolean;
   pid?: number;
@@ -286,6 +293,7 @@ interface ShipService {
     title?: string;
     body?: string;
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
+  readonly squashStack: (message: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
@@ -424,6 +432,12 @@ const makeShipService = Effect.gen(function* () {
       if (input.body) args.push("--body", input.body);
       const output = yield* shell.run(args);
       return yield* parseJson<StackSubmitResult>(output);
+    });
+
+  const squashStack = (message: string) =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "squash", "--json", "-m", message]);
+      return yield* parseJson<StackSquashResult>(output);
     });
 
   // Webhook operations - use Ref for thread-safe process tracking
@@ -575,6 +589,7 @@ const makeShipService = Effect.gen(function* () {
     describeStackChange,
     syncStack,
     submitStack,
+    squashStack,
     startWebhook,
     stopWebhook,
     getWebhookStatus,
@@ -878,6 +893,17 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
       }
 
+      case "stack-squash": {
+        if (!args.message) {
+          return "Error: message is required for stack-squash action";
+        }
+        const result = yield* ship.squashStack(args.message);
+        if (!result.squashed) {
+          return `Error: ${result.error || "Failed to squash"}`;
+        }
+        return `Squashed into ${result.intoChangeId?.slice(0, 8) || "parent"}\nDescription: ${result.description?.split("\n")[0] || "(no description)"}`;
+      }
+
       // Webhook operations
       case "webhook-start": {
         const result = yield* ship.startWebhook(args.events);
@@ -962,12 +988,13 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-describe",
           "stack-sync",
           "stack-submit",
+          "stack-squash",
           "webhook-start",
           "webhook-stop",
           "webhook-status",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), webhook-start (start GitHub event forwarding), webhook-stop (stop forwarding), webhook-status (check if running)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR), stack-squash (squash into parent), webhook-start (start GitHub event forwarding), webhook-stop (stop forwarding), webhook-status (check if running)"
         ),
       taskId: createTool.schema
         .string()
