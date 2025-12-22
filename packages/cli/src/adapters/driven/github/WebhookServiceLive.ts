@@ -75,15 +75,16 @@ type GhWebhookResponse = typeof GhWebhookResponseSchema.Type;
 
 /**
  * Schema for WebSocket messages received from GitHub.
- * Based on the gh-webhook forward.go implementation:
- * type wsEventReceived struct { Header http.Header; Body []byte }
+ * The actual format uses lowercase keys: header, body, delivery_id, request_id
  */
 const WsEventReceivedSchema = Schema.Struct({
-  Header: Schema.Record({
+  header: Schema.Record({
     key: Schema.String,
     value: Schema.Union(Schema.String, Schema.Array(Schema.String)),
   }),
-  Body: Schema.Unknown,
+  body: Schema.Unknown,
+  delivery_id: Schema.optional(Schema.String),
+  request_id: Schema.optional(Schema.String),
 });
 
 // Retry policy for network operations: exponential backoff with max 3 retries
@@ -372,20 +373,39 @@ const make = Effect.gen(function* () {
 
       // Extract headers - normalize to single values (take first if array)
       const normalizedHeaders: Record<string, string> = {};
-      for (const [key, value] of Object.entries(wsEvent.Header)) {
+      for (const [key, value] of Object.entries(wsEvent.header)) {
         normalizedHeaders[key] = Array.isArray(value) ? (value[0] ?? "") : value;
       }
 
       // Extract event info from headers
       const eventType =
-        normalizedHeaders["X-GitHub-Event"] ?? normalizedHeaders["x-github-event"] ?? "unknown";
+        normalizedHeaders["X-GitHub-Event"] ?? normalizedHeaders["x-github-event"] ?? normalizedHeaders["X-Github-Event"] ?? "unknown";
       const deliveryId =
+        wsEvent.delivery_id ??
         normalizedHeaders["X-GitHub-Delivery"] ??
         normalizedHeaders["x-github-delivery"] ??
+        normalizedHeaders["X-Github-Delivery"] ??
         "unknown";
 
+      // Parse the body - GitHub sends it as base64-encoded JSON string
+      let payload: unknown = wsEvent.body;
+      
+      if (typeof payload === "string") {
+        // Try parsing as JSON first
+        try {
+          payload = JSON.parse(payload);
+        } catch {
+          // It's base64 encoded - decode and parse
+          try {
+            const decoded = Buffer.from(payload as string, "base64").toString("utf-8");
+            payload = JSON.parse(decoded);
+          } catch {
+            // Keep as string if neither works
+          }
+        }
+      }
+      
       // Try to extract action from payload if it exists
-      const payload = wsEvent.Body;
       const action =
         payload &&
         typeof payload === "object" &&

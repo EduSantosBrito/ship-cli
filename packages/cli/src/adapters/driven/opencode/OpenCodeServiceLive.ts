@@ -20,7 +20,7 @@ import {
   OpenCodeService,
   Session,
   SessionId,
-  type SessionStatus,
+  SessionStatus,
   type OpenCodeErrors,
 } from "../../../ports/OpenCodeService.js";
 import {
@@ -58,11 +58,12 @@ const SessionResponseSchema = Schema.Struct({
 });
 
 /**
- * Session status response - map of session ID to status
+ * Session status response - map of session ID to status object
+ * Reuses the SessionStatus schema from the port
  */
 const SessionStatusResponseSchema = Schema.Record({
   key: Schema.String,
-  value: Schema.Literal("running", "idle"),
+  value: SessionStatus,
 });
 
 // === Service Implementation ===
@@ -258,12 +259,12 @@ const make = Effect.gen(function* () {
         return null;
       }
 
-      // First priority: find a running session
-      const runningSessions = sessions.filter((s) => statuses[s.id] === "running");
-      if (runningSessions.length > 0) {
-        // Return the most recently updated running session
+      // First priority: find a busy (active) session
+      const busySessions = sessions.filter((s) => statuses[s.id]?.type === "busy");
+      if (busySessions.length > 0) {
+        // Return the most recently updated busy session
         return (
-          runningSessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0] ?? null
+          busySessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0] ?? null
         );
       }
 

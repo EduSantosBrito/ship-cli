@@ -13,9 +13,25 @@ export const SessionId = Schema.String.pipe(Schema.brand("SessionId"));
 export type SessionId = typeof SessionId.Type;
 
 /**
- * Session status indicates whether a session is running or idle.
+ * Session status indicates the current state of a session.
+ * Based on OpenCode SDK types:
+ * - idle: Session is not processing
+ * - busy: Session is actively processing
+ * - retry: Session is retrying after an error
  */
-export const SessionStatus = Schema.Literal("running", "idle");
+export const SessionStatusType = Schema.Literal("idle", "busy", "retry");
+export type SessionStatusType = typeof SessionStatusType.Type;
+
+export const SessionStatus = Schema.Union(
+  Schema.Struct({ type: Schema.Literal("idle") }),
+  Schema.Struct({ type: Schema.Literal("busy") }),
+  Schema.Struct({
+    type: Schema.Literal("retry"),
+    attempt: Schema.Number,
+    message: Schema.String,
+    next: Schema.Number,
+  }),
+);
 export type SessionStatus = typeof SessionStatus.Type;
 
 /**
