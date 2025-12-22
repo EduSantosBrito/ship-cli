@@ -42,12 +42,17 @@ const NETWORK_TIMEOUT = Duration.seconds(10);
 
 /**
  * Session response from OpenCode API
+ *
+ * Note: OpenCode returns timestamps as Unix milliseconds in a nested `time` object,
+ * not as ISO strings at the top level.
  */
 const SessionResponseSchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
-  createdAt: Schema.String,
-  updatedAt: Schema.String,
+  time: Schema.Struct({
+    created: Schema.Number,
+    updated: Schema.Number,
+  }),
   parentID: Schema.optional(Schema.String),
   share: Schema.optional(Schema.String),
 });
@@ -159,6 +164,9 @@ const make = Effect.gen(function* () {
 
   /**
    * Convert API response to Session domain type
+   *
+   * OpenCode returns timestamps as Unix milliseconds, we convert to ISO strings
+   * for the domain model.
    */
   const toSession = (response: typeof SessionResponseSchema.Type): Effect.Effect<Session, OpenCodeError> =>
     Schema.decode(SessionId)(response.id).pipe(
@@ -167,8 +175,8 @@ const make = Effect.gen(function* () {
           new Session({
             id,
             title: response.title,
-            createdAt: response.createdAt,
-            updatedAt: response.updatedAt,
+            createdAt: new Date(response.time.created).toISOString(),
+            updatedAt: new Date(response.time.updated).toISOString(),
             parentID: response.parentID,
             share: response.share,
           }),
