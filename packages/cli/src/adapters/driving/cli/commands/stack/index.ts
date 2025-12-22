@@ -13,6 +13,7 @@ import * as Console from "effect/Console";
 import { logCommand } from "./log.js";
 import { statusCommand } from "./status.js";
 import { createCommand } from "./create.js";
+import { describeCommand } from "./describe.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -24,9 +25,9 @@ Commands:
   log               View stack of changes from trunk to current
   status            Show current change status
   create            Create a new change
+  describe          Update change description
   sync              Fetch and rebase onto trunk (coming soon)
   submit            Push and create/update PR (coming soon)
-  describe          Update change description (coming soon)
 
 Run 'ship stack <command> --help' for more information.`),
 );
@@ -37,5 +38,6 @@ export const stackCommand = stack.pipe(
     logCommand,
     statusCommand,
     createCommand,
+    describeCommand,
   ]),
 );
