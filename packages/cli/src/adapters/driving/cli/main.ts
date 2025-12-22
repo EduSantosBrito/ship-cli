@@ -18,6 +18,7 @@ import { updateCommand } from "./commands/update.js";
 import { relateCommand } from "./commands/relate.js";
 import { statusCommand } from "./commands/status.js";
 import { stackCommand } from "./commands/stack/index.js";
+import { webhookCommand } from "./commands/webhook/index.js";
 
 // Root command
 const ship = Command.make("ship", {}, () =>
@@ -49,6 +50,7 @@ Commands:
   prime             Output AI-optimized context
   
   stack             VCS operations (jj wrapper for AI agents)
+  webhook           GitHub webhook operations
 
 Run 'ship <command> --help' for more information on a command.`),
 );
@@ -74,6 +76,7 @@ export const command = ship.pipe(
     blockedCommand,
     primeCommand,
     stackCommand,
+    webhookCommand,
   ]),
 );
 
