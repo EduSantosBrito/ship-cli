@@ -557,10 +557,30 @@ After that, you can use this tool to manage tasks.`);
 };
 
 // =============================================================================
+// Commands
+// =============================================================================
+
+const SHIP_COMMANDS = {
+  ready: {
+    description: "Find ready-to-work tasks with no blockers",
+    template: `Use the \`ship\` tool with action \`ready\` to find tasks that are ready to work on (no blocking dependencies).
+
+Present the results in a clear format showing task ID, title, priority, and URL.
+
+If there are ready tasks, ask the user which one they'd like to work on. If they choose one, use the \`ship\` tool with action \`start\` to begin work on it.
+
+If there are no ready tasks, suggest checking blocked tasks (action \`blocked\`) or creating a new task (action \`create\`).`,
+  },
+};
+
+// =============================================================================
 // Plugin Export
 // =============================================================================
 
 export const ShipPlugin: Plugin = async ({ $ }) => ({
+  config: async (config) => {
+    config.command = { ...config.command, ...SHIP_COMMANDS };
+  },
   tool: {
     ship: createShipTool($),
   },
