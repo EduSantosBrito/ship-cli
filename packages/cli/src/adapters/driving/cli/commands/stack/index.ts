@@ -12,6 +12,7 @@ import * as Command from "@effect/cli/Command";
 import * as Console from "effect/Console";
 import { logCommand } from "./log.js";
 import { statusCommand } from "./status.js";
+import { createCommand } from "./create.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -22,9 +23,9 @@ Usage: ship stack <command> [options]
 Commands:
   log               View stack of changes from trunk to current
   status            Show current change status
+  create            Create a new change
   sync              Fetch and rebase onto trunk (coming soon)
   submit            Push and create/update PR (coming soon)
-  create            Create new change (coming soon)
   describe          Update change description (coming soon)
 
 Run 'ship stack <command> --help' for more information.`),
@@ -35,5 +36,6 @@ export const stackCommand = stack.pipe(
   Command.withSubcommands([
     logCommand,
     statusCommand,
+    createCommand,
   ]),
 );
