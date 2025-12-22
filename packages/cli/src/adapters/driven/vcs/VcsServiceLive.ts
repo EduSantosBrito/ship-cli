@@ -5,7 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { JjNotInstalledError, VcsError } from "../../../domain/Errors.js";
-import { VcsService, ChangeId, PushResult, type VcsErrors } from "../../../ports/VcsService.js";
+import { VcsService, ChangeId, PushResult, TrunkInfo, SyncResult, type VcsErrors } from "../../../ports/VcsService.js";
 import {
   JJ_LOG_JSON_TEMPLATE,
   parseChanges,
@@ -199,6 +199,70 @@ const make = Effect.gen(function* () {
   const fetch = (): Effect.Effect<void, VcsErrors> =>
     withNetworkRetry(runJj("git", "fetch").pipe(Effect.asVoid), "git fetch");
 
+  const getTrunkInfo = (): Effect.Effect<TrunkInfo, VcsErrors> =>
+    Effect.gen(function* () {
+      // Get trunk info using jj log
+      const output = yield* runJj("log", "-r", "trunk()", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
+      const changes = yield* parseChanges(output);
+      if (changes.length === 0) {
+        return yield* new VcsError({ message: "Could not find trunk (main/master)" });
+      }
+      const trunk = changes[0];
+      return new TrunkInfo({
+        id: trunk.id,
+        shortChangeId: trunk.changeId,
+        description: trunk.description,
+      });
+    });
+
+  const rebase = (source: ChangeId, destination = "main"): Effect.Effect<void, VcsErrors> =>
+    runJj("rebase", "-s", source, "-d", destination).pipe(Effect.asVoid);
+
+  const sync = (): Effect.Effect<SyncResult, VcsErrors> =>
+    Effect.gen(function* () {
+      // 1. Fetch from remote
+      yield* fetch();
+
+      // 2. Get current stack before rebase
+      const stackBefore = yield* getStack();
+      
+      // If no stack (already on trunk), we're done
+      if (stackBefore.length === 0) {
+        const trunk = yield* getTrunkInfo();
+        return new SyncResult({
+          fetched: true,
+          rebased: false,
+          trunkChangeId: trunk.shortChangeId,
+          stackSize: 0,
+          conflicted: false,
+        });
+      }
+
+      // 3. Get the first change in stack (oldest, closest to trunk)
+      // Stack is returned with newest first, so last element is the base
+      const firstInStack = stackBefore[stackBefore.length - 1];
+
+      // 4. Rebase stack onto trunk
+      const rebaseResult = yield* runJj("rebase", "-s", firstInStack.id, "-d", "main").pipe(
+        Effect.map(() => ({ conflicted: false })),
+        Effect.catchTag("JjConflictError", () =>
+          Effect.succeed({ conflicted: true }),
+        ),
+      );
+
+      // 5. Get updated stack and trunk info
+      const stackAfter = yield* getStack();
+      const trunk = yield* getTrunkInfo();
+
+      return new SyncResult({
+        fetched: true,
+        rebased: true,
+        trunkChangeId: trunk.shortChangeId,
+        stackSize: stackAfter.length,
+        conflicted: rebaseResult.conflicted,
+      });
+    });
+
   return {
     isAvailable,
     isRepo,
@@ -211,6 +275,9 @@ const make = Effect.gen(function* () {
     getStack,
     getLog,
     fetch,
+    getTrunkInfo,
+    rebase,
+    sync,
   };
 });
 

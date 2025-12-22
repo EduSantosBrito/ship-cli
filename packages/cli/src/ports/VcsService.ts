@@ -44,6 +44,23 @@ export class PushResult extends Schema.Class<PushResult>("PushResult")({
   changeId: ChangeId,
 }) {}
 
+export class TrunkInfo extends Schema.Class<TrunkInfo>("TrunkInfo")({
+  /** Full change ID (branded) */
+  id: ChangeId,
+  /** Short change ID for display (e.g., "abc12345") */
+  shortChangeId: Schema.String,
+  description: Schema.String,
+}) {}
+
+export class SyncResult extends Schema.Class<SyncResult>("SyncResult")({
+  fetched: Schema.Boolean,
+  rebased: Schema.Boolean,
+  /** Short change ID of trunk for display */
+  trunkChangeId: Schema.String,
+  stackSize: Schema.Number,
+  conflicted: Schema.Boolean,
+}) {}
+
 export interface VcsService {
   /**
    * Check if jj is available
@@ -101,6 +118,24 @@ export interface VcsService {
    * Fetch from remote
    */
   readonly fetch: () => Effect.Effect<void, VcsErrors>;
+
+  /**
+   * Get trunk (main branch) info
+   */
+  readonly getTrunkInfo: () => Effect.Effect<TrunkInfo, VcsErrors>;
+
+  /**
+   * Rebase changes onto a destination
+   * @param source - The first change to rebase (and its descendants)
+   * @param destination - The destination to rebase onto (default: "main")
+   */
+  readonly rebase: (source: ChangeId, destination?: string) => Effect.Effect<void, VcsErrors>;
+
+  /**
+   * Sync with remote: fetch and rebase stack onto trunk
+   * This is the high-level operation that agents should use after PRs merge
+   */
+  readonly sync: () => Effect.Effect<SyncResult, VcsErrors>;
 }
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");

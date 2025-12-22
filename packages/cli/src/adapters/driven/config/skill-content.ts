@@ -24,6 +24,8 @@ The \`ship\` tool replaces built-in todo management. Use it for all task trackin
 
 ## Available Actions
 
+### Task Management
+
 | Action | Description | Required params |
 |--------|-------------|-----------------|
 | \`ready\` | Tasks you can work on (no blockers) | - |
@@ -38,6 +40,16 @@ The \`ship\` tool replaces built-in todo management. Use it for all task trackin
 | \`unblock\` | Remove blocking relationship | blocker, blocked |
 | \`relate\` | Link tasks as related | taskId, relatedTaskId |
 | \`status\` | Check configuration | - |
+
+### Stack Operations (VCS)
+
+| Action | Description | Required params |
+|--------|-------------|-----------------|
+| \`stack-log\` | View stack of changes from trunk to current | - |
+| \`stack-status\` | Show current change status | - |
+| \`stack-create\` | Create a new change | message (optional), bookmark (optional) |
+| \`stack-describe\` | Update change description | message |
+| \`stack-sync\` | Fetch and rebase onto trunk | - |
 
 ---
 
@@ -115,4 +127,53 @@ After completing a task:
 2. **Quality checks** - Run lint, format, typecheck
 3. **Version control** - Commit and push changes
 4. **Mark complete** - Use \`ship\` tool with action \`done\`
+
+---
+
+## Stacked Changes Workflow
+
+When working on multiple related tasks, use stacked changes to keep PRs small and reviewable.
+
+### Building a Stack
+
+Each change should be a child of the previous one:
+
+main ← Change A ← Change B ← Change C
+         ↓           ↓           ↓
+       PR #1       PR #2       PR #3
+
+**To create a stacked change:**
+1. Complete work on current change
+2. Use \`ship\` tool with action \`stack-create\`, message="Description", bookmark="branch-name"
+3. Push and create PR
+
+### After a PR is Merged
+
+**CRITICAL: Immediately sync the remaining stack after any PR merges.**
+
+Use \`ship\` tool with action \`stack-sync\`
+
+This will:
+1. Fetch latest from remote
+2. Rebase remaining stack onto updated trunk
+3. Report any conflicts that need resolution
+
+Do NOT wait for conflict reports. Proactively sync after each merge.
+
+### Viewing the Stack
+
+Use \`ship\` tool with action \`stack-log\` to see all changes from trunk to current.
+
+### Updating Change Description
+
+Use \`ship\` tool with action \`stack-describe\`, message="New description"
+
+---
+
+## VCS Best Practices
+
+1. **One logical change per commit** - Keep changes focused and reviewable
+2. **Descriptive messages** - Use format: \`TASK-ID: Brief description\`
+3. **Sync frequently** - After any PR merges, run \`stack-sync\`
+4. **Do not create orphan changes** - Always build on the stack or on main
 `;

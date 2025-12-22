@@ -51,6 +51,51 @@ interface ShipTask {
   branchName?: string;
 }
 
+// Stack types
+interface StackChange {
+  changeId: string;
+  commitId: string;
+  description: string;
+  bookmarks: string[];
+  isEmpty: boolean;
+  isWorkingCopy: boolean;
+}
+
+interface StackStatus {
+  isRepo: boolean;
+  change?: {
+    changeId: string;
+    commitId: string;
+    description: string;
+    bookmarks: string[];
+    isEmpty: boolean;
+  };
+  error?: string;
+}
+
+interface StackCreateResult {
+  created: boolean;
+  changeId?: string;
+  bookmark?: string;
+  error?: string;
+}
+
+interface StackDescribeResult {
+  updated: boolean;
+  changeId?: string;
+  description?: string;
+  error?: string;
+}
+
+interface StackSyncResult {
+  fetched: boolean;
+  rebased: boolean;
+  trunkChangeId?: string;
+  stackSize?: number;
+  conflicted?: boolean;
+  error?: { tag: string; message: string };
+}
+
 // =============================================================================
 // Shell Service
 // =============================================================================
@@ -156,6 +201,15 @@ interface ShipService {
   readonly removeBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
   readonly relateTask: (taskId: string, relatedTaskId: string) => Effect.Effect<void, ShipCommandError>;
   readonly getPrimeContext: () => Effect.Effect<string, ShipCommandError>;
+  // Stack operations
+  readonly getStackLog: () => Effect.Effect<StackChange[], ShipCommandError | JsonParseError>;
+  readonly getStackStatus: () => Effect.Effect<StackStatus, ShipCommandError | JsonParseError>;
+  readonly createStackChange: (input: {
+    message?: string;
+    bookmark?: string;
+  }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
+  readonly describeStackChange: (message: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
+  readonly syncStack: () => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -248,6 +302,40 @@ const makeShipService = Effect.gen(function* () {
 
   const getPrimeContext = () => shell.run(["prime"]);
 
+  // Stack operations
+  const getStackLog = () =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "log", "--json"]);
+      return yield* parseJson<StackChange[]>(output);
+    });
+
+  const getStackStatus = () =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "status", "--json"]);
+      return yield* parseJson<StackStatus>(output);
+    });
+
+  const createStackChange = (input: { message?: string; bookmark?: string }) =>
+    Effect.gen(function* () {
+      const args = ["stack", "create", "--json"];
+      if (input.message) args.push("--message", input.message);
+      if (input.bookmark) args.push("--bookmark", input.bookmark);
+      const output = yield* shell.run(args);
+      return yield* parseJson<StackCreateResult>(output);
+    });
+
+  const describeStackChange = (message: string) =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "describe", "--json", "--message", message]);
+      return yield* parseJson<StackDescribeResult>(output);
+    });
+
+  const syncStack = () =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "sync", "--json"]);
+      return yield* parseJson<StackSyncResult>(output);
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -262,6 +350,11 @@ const makeShipService = Effect.gen(function* () {
     removeBlocker,
     relateTask,
     getPrimeContext,
+    getStackLog,
+    getStackStatus,
+    createStackChange,
+    describeStackChange,
+    syncStack,
   } satisfies ShipService;
 });
 
@@ -315,6 +408,9 @@ type ToolArgs = {
     priority?: string;
     mine?: boolean;
   };
+  // Stack-specific args
+  message?: string;
+  bookmark?: string;
 };
 
 const executeAction = (
@@ -444,6 +540,94 @@ const executeAction = (
         return yield* ship.getPrimeContext();
       }
 
+      // Stack operations
+      case "stack-log": {
+        const changes = yield* ship.getStackLog();
+        if (changes.length === 0) {
+          return "No changes in stack (working copy is on trunk)";
+        }
+        return `Stack (${changes.length} changes):\n\n${changes
+          .map((c) => {
+            const marker = c.isWorkingCopy ? "@" : "○";
+            const empty = c.isEmpty ? " (empty)" : "";
+            const bookmarks = c.bookmarks.length > 0 ? ` [${c.bookmarks.join(", ")}]` : "";
+            const desc = c.description.split("\n")[0] || "(no description)";
+            return `${marker}  ${c.changeId.slice(0, 8)} ${desc}${empty}${bookmarks}`;
+          })
+          .join("\n")}`;
+      }
+
+      case "stack-status": {
+        const status = yield* ship.getStackStatus();
+        if (!status.isRepo) {
+          return `Error: ${status.error || "Not a jj repository"}`;
+        }
+        if (!status.change) {
+          return "Error: Could not get current change";
+        }
+        const c = status.change;
+        let output = `Change:      ${c.changeId.slice(0, 8)}
+Commit:      ${c.commitId.slice(0, 12)}
+Description: ${c.description.split("\n")[0] || "(no description)"}`;
+        if (c.bookmarks.length > 0) {
+          output += `\nBookmarks:   ${c.bookmarks.join(", ")}`;
+        }
+        output += `\nStatus:      ${c.isEmpty ? "empty (no changes)" : "has changes"}`;
+        return output;
+      }
+
+      case "stack-create": {
+        const result = yield* ship.createStackChange({
+          message: args.message,
+          bookmark: args.bookmark,
+        });
+        if (!result.created) {
+          return `Error: ${result.error || "Failed to create change"}`;
+        }
+        let output = `Created change: ${result.changeId}`;
+        if (result.bookmark) {
+          output += `\nCreated bookmark: ${result.bookmark}`;
+        }
+        return output;
+      }
+
+      case "stack-describe": {
+        if (!args.message) {
+          return "Error: message is required for stack-describe action";
+        }
+        const result = yield* ship.describeStackChange(args.message);
+        if (!result.updated) {
+          return `Error: ${result.error || "Failed to update description"}`;
+        }
+        return `Updated change ${result.changeId?.slice(0, 8) || ""}\nDescription: ${result.description || args.message}`;
+      }
+
+      case "stack-sync": {
+        const result = yield* ship.syncStack();
+        if (result.error) {
+          return `Sync failed: [${result.error.tag}] ${result.error.message}`;
+        }
+        if (result.conflicted) {
+          return `Sync completed with conflicts!
+  Fetched: yes
+  Rebased: yes (with conflicts)
+  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack:   ${result.stackSize} change(s)
+
+Resolve conflicts with 'jj status' and edit the conflicted files.`;
+        }
+        if (!result.rebased) {
+          return `Already up to date.
+  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack: ${result.stackSize} change(s)`;
+        }
+        return `Sync completed successfully.
+  Fetched: yes
+  Rebased: yes
+  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack:   ${result.stackSize} change(s)`;
+      }
+
       default:
         return `Unknown action: ${args.action}`;
     }
@@ -462,7 +646,7 @@ const createShipTool = ($: BunShell) => {
     Effect.runPromise(Effect.provide(effect, ShipServiceLive));
 
   return createTool({
-    description: `Linear task management for the current project.
+    description: `Linear task management and VCS operations for the current project.
 
 Use this tool to:
 - List tasks ready to work on (no blockers)
@@ -471,6 +655,7 @@ Use this tool to:
 - Create new tasks
 - Manage task dependencies (blocking relationships)
 - Get AI-optimized context about current work
+- Manage stacked changes (jj workflow)
 
 Requires ship to be configured in the project (.ship/config.yaml).
 Run 'ship init' in the terminal first if not configured.`,
@@ -491,9 +676,14 @@ Run 'ship init' in the terminal first if not configured.`,
           "relate",
           "prime",
           "status",
+          "stack-log",
+          "stack-status",
+          "stack-create",
+          "stack-describe",
+          "stack-sync",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), prime (AI context), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change), stack-describe (update description), stack-sync (fetch and rebase)"
         ),
       taskId: createTool.schema
         .string()
@@ -525,6 +715,14 @@ Run 'ship init' in the terminal first if not configured.`,
         })
         .optional()
         .describe("Filters for list action"),
+      message: createTool.schema
+        .string()
+        .optional()
+        .describe("Message for stack-create or stack-describe actions"),
+      bookmark: createTool.schema
+        .string()
+        .optional()
+        .describe("Bookmark name for stack-create action"),
     },
 
     async execute(args) {
