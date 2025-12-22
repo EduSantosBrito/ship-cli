@@ -78,16 +78,17 @@ export const submitCommand = Command.make(
       // Check if gh is available
       const ghAvailable = yield* prService.isAvailable();
       if (!ghAvailable) {
-        yield* outputError("GitHub CLI (gh) is not installed or not authenticated. Run 'gh auth login' first.", json);
+        yield* outputError(
+          "GitHub CLI (gh) is not installed or not authenticated. Run 'gh auth login' first.",
+          json,
+        );
         return;
       }
 
       // Get current change
       const changeResult = yield* vcs.getCurrentChange().pipe(
         Effect.map((change) => ({ success: true as const, change })),
-        Effect.catchAll((e) =>
-          Effect.succeed({ success: false as const, error: String(e) }),
-        ),
+        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
       );
 
       if (!changeResult.success) {
@@ -121,9 +122,7 @@ export const submitCommand = Command.make(
       // Push the bookmark to remote
       const pushResult = yield* vcs.push(bookmark).pipe(
         Effect.map((result) => ({ success: true as const, result })),
-        Effect.catchAll((e) =>
-          Effect.succeed({ success: false as const, error: String(e) }),
-        ),
+        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
       );
 
       if (!pushResult.success) {
@@ -134,9 +133,9 @@ export const submitCommand = Command.make(
       // Determine base branch for PR
       // If parent change has a bookmark, use that (stacked PR workflow)
       // Otherwise, fall back to main/trunk
-      const parentChange = yield* vcs.getParentChange().pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
-      );
+      const parentChange = yield* vcs
+        .getParentChange()
+        .pipe(Effect.catchAll(() => Effect.succeed(null)));
 
       const baseBranch = pipe(
         Option.fromNullable(parentChange),
@@ -149,16 +148,16 @@ export const submitCommand = Command.make(
       const prBody = Option.getOrElse(body, () => change.description);
 
       // Check if PR already exists for this branch
-      const existingPr = yield* prService.getPrByBranch(bookmark).pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
-      );
+      const existingPr = yield* prService
+        .getPrByBranch(bookmark)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)));
 
       let output: SubmitOutput;
 
       if (existingPr) {
         // PR already exists - check if we need to update it
         const hasUpdates = Option.isSome(title) || Option.isSome(body);
-        
+
         if (hasUpdates) {
           // Update the PR with new title/body
           const updateInput = new UpdatePrInput({
@@ -168,9 +167,7 @@ export const submitCommand = Command.make(
 
           const updateResult = yield* prService.updatePr(existingPr.number, updateInput).pipe(
             Effect.map((pr) => ({ success: true as const, pr })),
-            Effect.catchAll((e) =>
-              Effect.succeed({ success: false as const, error: String(e) }),
-            ),
+            Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
           );
 
           if (!updateResult.success) {
@@ -222,9 +219,7 @@ export const submitCommand = Command.make(
 
         const createResult = yield* prService.createPr(createInput).pipe(
           Effect.map((pr) => ({ success: true as const, pr })),
-          Effect.catchAll((e) =>
-            Effect.succeed({ success: false as const, error: String(e) }),
-          ),
+          Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
         );
 
         if (!createResult.success) {
@@ -260,11 +255,12 @@ export const submitCommand = Command.make(
         } else if (output.pr) {
           yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
           yield* Console.log(`Base branch: ${output.baseBranch}`);
-          const statusMsg = output.pr.status === "created" 
-            ? "Created PR" 
-            : output.pr.status === "exists" 
-              ? "PR already exists" 
-              : "Updated PR";
+          const statusMsg =
+            output.pr.status === "created"
+              ? "Created PR"
+              : output.pr.status === "exists"
+                ? "PR already exists"
+                : "Updated PR";
           yield* Console.log(`${statusMsg}: #${output.pr.number}`);
           yield* Console.log(`URL: ${output.pr.url}`);
         }

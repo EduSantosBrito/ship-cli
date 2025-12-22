@@ -34,6 +34,7 @@
     "@effect/vitest": "^0.25.1",
     "@linear/sdk": "^29.0.0",
     "@types/node": "^22.5.2",
+    "@types/ws": "^8.18.1",
     "effect": "^3.17.7",
     "oxfmt": "^0.19.0",
     "oxlint": "^1.0.0",

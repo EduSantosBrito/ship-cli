@@ -45,8 +45,7 @@ const formatChangeForText = (
 ): string => {
   const marker = change.isWorkingCopy ? "@" : "○";
   const empty = change.isEmpty ? " (empty)" : "";
-  const bookmarks =
-    change.bookmarks.length > 0 ? ` [${change.bookmarks.join(", ")}]` : "";
+  const bookmarks = change.bookmarks.length > 0 ? ` [${change.bookmarks.join(", ")}]` : "";
 
   // Truncate description to first line
   const desc = change.description.split("\n")[0] || "(no description)";
@@ -56,47 +55,42 @@ const formatChangeForText = (
 
 // === Command ===
 
-export const logCommand = Command.make(
-  "log",
-  { json: jsonOption },
-  ({ json }) =>
-    Effect.gen(function* () {
-      // Check VCS availability (jj installed and in repo)
-      const vcsCheck = yield* checkVcsAvailability();
-      if (!vcsCheck.available) {
-        yield* outputError(vcsCheck.error, json);
-        return;
-      }
-      const { vcs } = vcsCheck;
+export const logCommand = Command.make("log", { json: jsonOption }, ({ json }) =>
+  Effect.gen(function* () {
+    // Check VCS availability (jj installed and in repo)
+    const vcsCheck = yield* checkVcsAvailability();
+    if (!vcsCheck.available) {
+      yield* outputError(vcsCheck.error, json);
+      return;
+    }
+    const { vcs } = vcsCheck;
 
-      // Get the stack - handle errors explicitly
-      const stackResult = yield* vcs.getStack().pipe(
-        Effect.map((stack) => ({ success: true as const, stack })),
-        Effect.catchAll((e) =>
-          Effect.succeed({ success: false as const, error: String(e) }),
-        ),
-      );
+    // Get the stack - handle errors explicitly
+    const stackResult = yield* vcs.getStack().pipe(
+      Effect.map((stack) => ({ success: true as const, stack })),
+      Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
+    );
 
-      if (!stackResult.success) {
-        yield* outputError(`Failed to get stack: ${stackResult.error}`, json);
-        return;
-      }
+    if (!stackResult.success) {
+      yield* outputError(`Failed to get stack: ${stackResult.error}`, json);
+      return;
+    }
 
-      const stack = stackResult.stack;
+    const stack = stackResult.stack;
 
-      if (json) {
-        const output = stack.map(formatChangeForJson);
-        yield* Console.log(JSON.stringify(output, null, 2));
+    if (json) {
+      const output = stack.map(formatChangeForJson);
+      yield* Console.log(JSON.stringify(output, null, 2));
+    } else {
+      if (stack.length === 0) {
+        yield* Console.log("No changes in stack (working copy is on trunk)");
       } else {
-        if (stack.length === 0) {
-          yield* Console.log("No changes in stack (working copy is on trunk)");
-        } else {
-          yield* Console.log("Stack (trunk → @):\n");
-          // Print in reverse order (trunk at bottom, @ at top)
-          for (const change of [...stack].reverse()) {
-            yield* Console.log(formatChangeForText(change));
-          }
+        yield* Console.log("Stack (trunk → @):\n");
+        // Print in reverse order (trunk at bottom, @ at top)
+        for (const change of [...stack].reverse()) {
+          yield* Console.log(formatChangeForText(change));
         }
       }
-    }),
+    }
+  }),
 );

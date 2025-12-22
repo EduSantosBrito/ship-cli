@@ -50,9 +50,7 @@ export const describeCommand = Command.make(
       // Update the description - handle errors explicitly
       const describeResult = yield* vcs.describe(message).pipe(
         Effect.map(() => ({ success: true as const })),
-        Effect.catchAll((e) =>
-          Effect.succeed({ success: false as const, error: String(e) }),
-        ),
+        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
       );
 
       if (!describeResult.success) {
@@ -63,9 +61,7 @@ export const describeCommand = Command.make(
       // Get the current change to return its info - handle errors
       const changeResult = yield* vcs.getCurrentChange().pipe(
         Effect.map((change) => ({ success: true as const, change })),
-        Effect.catchAll((e) =>
-          Effect.succeed({ success: false as const, error: String(e) }),
-        ),
+        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
       );
 
       if (!changeResult.success) {

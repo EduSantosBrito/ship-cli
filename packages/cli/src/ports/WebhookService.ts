@@ -53,7 +53,9 @@ export class WebhookEvent extends Schema.Class<WebhookEvent>("WebhookEvent")({
 /**
  * Input for creating a CLI webhook
  */
-export class CreateCliWebhookInput extends Schema.Class<CreateCliWebhookInput>("CreateCliWebhookInput")({
+export class CreateCliWebhookInput extends Schema.Class<CreateCliWebhookInput>(
+  "CreateCliWebhookInput",
+)({
   /** Repository in "owner/repo" format */
   repo: Schema.String,
   /** Events to subscribe to */
@@ -78,28 +80,39 @@ export interface WebhookService {
    * This uses an undocumented GitHub API feature where webhooks with name="cli"
    * return a ws_url field for real-time event streaming.
    */
-  readonly createCliWebhook: (input: CreateCliWebhookInput) => Effect.Effect<CliWebhook, WebhookErrors>;
+  readonly createCliWebhook: (
+    input: CreateCliWebhookInput,
+  ) => Effect.Effect<CliWebhook, WebhookErrors>;
 
   /**
    * Activate a webhook (start receiving events)
    * @param repo Repository in "owner/repo" format
    * @param webhookId The webhook ID to activate
    */
-  readonly activateWebhook: (repo: string, webhookId: WebhookId) => Effect.Effect<void, WebhookErrors>;
+  readonly activateWebhook: (
+    repo: string,
+    webhookId: WebhookId,
+  ) => Effect.Effect<void, WebhookErrors>;
 
   /**
    * Deactivate a webhook (pause receiving events)
    * @param repo Repository in "owner/repo" format
    * @param webhookId The webhook ID to deactivate
    */
-  readonly deactivateWebhook: (repo: string, webhookId: WebhookId) => Effect.Effect<void, WebhookErrors>;
+  readonly deactivateWebhook: (
+    repo: string,
+    webhookId: WebhookId,
+  ) => Effect.Effect<void, WebhookErrors>;
 
   /**
    * Delete a webhook (cleanup)
    * @param repo Repository in "owner/repo" format
    * @param webhookId The webhook ID to delete
    */
-  readonly deleteWebhook: (repo: string, webhookId: WebhookId) => Effect.Effect<void, WebhookErrors>;
+  readonly deleteWebhook: (
+    repo: string,
+    webhookId: WebhookId,
+  ) => Effect.Effect<void, WebhookErrors>;
 
   /**
    * List existing webhooks for a repository
@@ -110,9 +123,7 @@ export interface WebhookService {
    * Connect to a webhook's WebSocket URL and stream events.
    * Handles reconnection automatically on disconnect.
    */
-  readonly connectAndStream: (
-    wsUrl: string,
-  ) => Stream.Stream<WebhookEvent, WebhookErrors>;
+  readonly connectAndStream: (wsUrl: string) => Stream.Stream<WebhookEvent, WebhookErrors>;
 }
 
 export const WebhookService = Context.GenericTag<WebhookService>("WebhookService");

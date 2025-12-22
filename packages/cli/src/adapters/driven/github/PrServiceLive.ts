@@ -18,11 +18,7 @@ import * as Schedule from "effect/Schedule";
 import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
-import {
-  GhNotInstalledError,
-  GhNotAuthenticatedError,
-  PrError,
-} from "../../../domain/Errors.js";
+import { GhNotInstalledError, GhNotAuthenticatedError, PrError } from "../../../domain/Errors.js";
 import {
   PrService,
   PullRequest,
@@ -58,8 +54,6 @@ const GhPrJsonSchema = Schema.Struct({
 
 type GhPrJson = typeof GhPrJsonSchema.Type;
 
-
-
 // === Service Implementation ===
 
 const make = Effect.gen(function* () {
@@ -69,9 +63,7 @@ const make = Effect.gen(function* () {
    * Run a gh command and return stdout as string.
    * gh outputs to stdout for successful commands.
    */
-  const runGh = (
-    ...args: ReadonlyArray<string>
-  ): Effect.Effect<string, PrErrors> => {
+  const runGh = (...args: ReadonlyArray<string>): Effect.Effect<string, PrErrors> => {
     const cmd = Command.make("gh", ...args);
 
     return Command.string(cmd).pipe(
@@ -107,9 +99,7 @@ const make = Effect.gen(function* () {
   /**
    * Run a gh command and return exit code (for checking success/failure).
    */
-  const runGhExitCode = (
-    ...args: ReadonlyArray<string>
-  ): Effect.Effect<number, never> => {
+  const runGhExitCode = (...args: ReadonlyArray<string>): Effect.Effect<number, never> => {
     const cmd = Command.make("gh", ...args);
     return Command.exitCode(cmd).pipe(
       Effect.provideService(CommandExecutor.CommandExecutor, executor),
@@ -135,14 +125,10 @@ const make = Effect.gen(function* () {
   /**
    * Parse JSON output from gh command
    */
-  const parseGhJson = <T>(
-    output: string,
-    schema: Schema.Schema<T>,
-  ): Effect.Effect<T, PrError> =>
+  const parseGhJson = <T>(output: string, schema: Schema.Schema<T>): Effect.Effect<T, PrError> =>
     Effect.try({
       try: () => JSON.parse(output),
-      catch: (e) =>
-        new PrError({ message: `Failed to parse gh output: ${e}`, cause: e }),
+      catch: (e) => new PrError({ message: `Failed to parse gh output: ${e}`, cause: e }),
     }).pipe(
       Effect.flatMap((json) =>
         Schema.decodeUnknown(schema)(json).pipe(
@@ -209,9 +195,7 @@ const make = Effect.gen(function* () {
       return authCode === 0;
     });
 
-  const createPr = (
-    input: CreatePrInput,
-  ): Effect.Effect<PullRequest, PrErrors> =>
+  const createPr = (input: CreatePrInput): Effect.Effect<PullRequest, PrErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
         // Build the command arguments for creating the PR
@@ -249,10 +233,7 @@ const make = Effect.gen(function* () {
       "createPr",
     );
 
-  const updatePr = (
-    prNumber: number,
-    input: UpdatePrInput,
-  ): Effect.Effect<PullRequest, PrErrors> =>
+  const updatePr = (prNumber: number, input: UpdatePrInput): Effect.Effect<PullRequest, PrErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
         // Build the command arguments for updating the PR
@@ -298,17 +279,13 @@ const make = Effect.gen(function* () {
         yield* runGh("pr", "view", "--web", url).pipe(
           Effect.asVoid,
           Effect.catchAll(() =>
-            Effect.fail(
-              new PrError({ message: `Failed to open browser for ${url}` }),
-            ),
+            Effect.fail(new PrError({ message: `Failed to open browser for ${url}` })),
           ),
         );
       }
     });
 
-  const getPrByBranch = (
-    branch: string,
-  ): Effect.Effect<PullRequest | null, PrErrors> =>
+  const getPrByBranch = (branch: string): Effect.Effect<PullRequest | null, PrErrors> =>
     withNetworkRetry(
       Effect.gen(function* () {
         // gh pr view with branch name, get JSON output

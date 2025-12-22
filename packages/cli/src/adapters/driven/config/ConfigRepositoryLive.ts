@@ -368,7 +368,9 @@ const make = Effect.gen(function* () {
       yield* fs.writeFileString(skillPath, SKILL_CONTENT);
     }).pipe(
       Effect.catchAll((e) =>
-        Effect.fail(new ConfigError({ message: `Failed to create OpenCode skill: ${e}`, cause: e })),
+        Effect.fail(
+          new ConfigError({ message: `Failed to create OpenCode skill: ${e}`, cause: e }),
+        ),
       ),
     );
 
