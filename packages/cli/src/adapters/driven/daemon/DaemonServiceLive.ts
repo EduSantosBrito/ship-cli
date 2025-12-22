@@ -449,19 +449,27 @@ const runDaemonServer = (
     // Route event to subscribed sessions - with concurrent forwarding
     const routeEvent = (event: WebhookEvent): Effect.Effect<void, never> =>
       Effect.gen(function* () {
+        yield* Effect.logInfo("Routing webhook event").pipe(
+          Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
+        );
+
         const prNumber = extractPrNumber(event);
         if (prNumber === null) {
-          yield* Effect.logDebug("Event has no PR number, skipping").pipe(
+          yield* Effect.logInfo("Event has no PR number, skipping").pipe(
             Effect.annotateLogs({ event: event.event })
           );
           return;
         }
 
+        yield* Effect.logInfo("Extracted PR number").pipe(
+          Effect.annotateLogs({ prNumber: String(prNumber) })
+        );
+
         const registry = yield* Ref.get(registryRef);
         const sessions = HashMap.get(registry, prNumber);
         
         if (sessions._tag === "None" || HashSet.size(sessions.value) === 0) {
-          yield* Effect.logDebug("No subscribers for PR").pipe(
+          yield* Effect.logInfo("No subscribers for PR").pipe(
             Effect.annotateLogs({ prNumber: String(prNumber) })
           );
           return;
@@ -470,6 +478,13 @@ const runDaemonServer = (
         const message = formatWebhookEvent(event);
         const eventDesc = event.action ? `${event.event}.${event.action}` : event.event;
 
+        yield* Effect.logInfo("Forwarding to sessions").pipe(
+          Effect.annotateLogs({ 
+            prNumber: String(prNumber), 
+            sessionCount: String(HashSet.size(sessions.value)) 
+          })
+        );
+
         // Forward to all sessions concurrently
         yield* Effect.forEach(
           HashSet.toValues(sessions.value),
@@ -477,7 +492,7 @@ const runDaemonServer = (
             Schema.decode(SessionId)(sessionId).pipe(
               Effect.flatMap((sid) => openCodeService.sendPromptAsync(sid, message)),
               Effect.tap(() =>
-                Effect.logDebug("Forwarded event").pipe(
+                Effect.logInfo("Forwarded event to session").pipe(
                   Effect.annotateLogs({ event: eventDesc, prNumber: String(prNumber), sessionId })
                 )
               ),
@@ -492,10 +507,20 @@ const runDaemonServer = (
       });
 
     // Stream webhook events and route them
+    yield* Effect.logInfo("Starting webhook event stream consumer");
     const eventStreamFiber = yield* webhookService
       .connectAndStream(webhook.wsUrl)
       .pipe(
-        Stream.tap((event) => routeEvent(event)),
+        Stream.tap(() => Effect.logInfo("Stream consumer pulled an event")),
+        Stream.mapEffect((event) => 
+          Effect.gen(function* () {
+            yield* Effect.logInfo("Received webhook event from stream").pipe(
+              Effect.annotateLogs({ event: event.event, action: event.action ?? "none" })
+            );
+            yield* routeEvent(event);
+            return event;
+          })
+        ),
         Stream.tapError((e) =>
           Ref.set(connectedRef, false).pipe(
             Effect.tap(() => 

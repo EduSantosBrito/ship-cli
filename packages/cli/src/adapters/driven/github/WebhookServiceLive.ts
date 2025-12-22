@@ -5,6 +5,10 @@
  * It leverages an undocumented GitHub feature where webhooks with name="cli"
  * return a ws_url field for real-time event streaming via WebSocket.
  *
+ * IMPORTANT: The CLI webhook protocol is BIDIRECTIONAL - after receiving
+ * an event, we must send back an acknowledgment response. Without this,
+ * the server will stop sending events after the first one.
+ *
  * Key gh commands used:
  * - `gh api POST /repos/{owner}/{repo}/hooks` - Create webhook
  * - `gh api PATCH /repos/{owner}/{repo}/hooks/{id}` - Update webhook (activate/deactivate)
@@ -13,6 +17,7 @@
  */
 
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
@@ -86,6 +91,20 @@ const WsEventReceivedSchema = Schema.Struct({
   delivery_id: Schema.optional(Schema.String),
   request_id: Schema.optional(Schema.String),
 });
+
+/**
+ * Schema for the acknowledgment response we send back to GitHub.
+ * This is required for the bidirectional protocol - without sending
+ * this response, GitHub will stop sending events after the first one.
+ * 
+ * Note: The Body field must be base64-encoded because Go's encoding/json
+ * marshals []byte as base64. The GitHub server expects this format.
+ */
+interface WsEventResponse {
+  Status: number;
+  Header: Record<string, string[]>;
+  Body: string; // base64-encoded
+}
 
 // Retry policy for network operations: exponential backoff with max 3 retries
 const networkRetryPolicy = Schedule.intersect(
@@ -425,6 +444,19 @@ const make = Effect.gen(function* () {
   };
 
   /**
+   * Create the acknowledgment response to send back to GitHub.
+   * This is required for the bidirectional protocol.
+   * 
+   * The Body must be base64-encoded because Go's encoding/json marshals
+   * []byte as base64, and the GitHub server expects this format.
+   */
+  const createAckResponse = (): WsEventResponse => ({
+    Status: 200,
+    Header: {},
+    Body: Buffer.from("OK").toString("base64"), // "T0s=" - base64 encoded "OK"
+  });
+
+  /**
    * Create a WebSocket constructor that includes the Authorization header.
    * This wraps the standard WebSocket to pass authentication when connecting to GitHub.
    */
@@ -442,7 +474,10 @@ const make = Effect.gen(function* () {
 
   /**
    * Create a single WebSocket connection and stream events until disconnect.
-   * Uses Stream.asyncPush for proper Effect integration with resource management.
+   * 
+   * IMPORTANT: This implements the bidirectional GitHub CLI webhook protocol.
+   * After receiving each event, we must send back an acknowledgment response
+   * or GitHub will stop sending events.
    */
   const createWebSocketStream = (
     wsUrl: string,
@@ -450,66 +485,109 @@ const make = Effect.gen(function* () {
   ): Stream.Stream<WebhookEvent, WebhookErrors> =>
     Stream.asyncPush<WebhookEvent, WebhookErrors>((emit) =>
       Effect.acquireRelease(
-        // Acquire: Create WebSocket connection
-        Socket.makeWebSocket(wsUrl).pipe(
-          Effect.provide(makeAuthenticatedWebSocketConstructor(authToken)),
-          Effect.mapError(
-            (e) =>
-              new WebhookConnectionError({
-                message: `Failed to connect to WebSocket: ${e}`,
-                wsUrl,
-                cause: e,
-              }),
-          ),
-          Effect.tap((socket) =>
-            // Start the socket handler - this runs in the background
-            socket
-              .runRaw((data: string | Uint8Array) =>
-                parseWsMessage(data).pipe(
-                  Effect.flatMap((event) => Effect.sync(() => emit.single(event))),
-                  Effect.catchAll((error) =>
-                    Effect.logError("Failed to parse webhook event").pipe(
+        // Acquire: Create WebSocket connection and start handler in background
+        Effect.gen(function* () {
+          // Create WebSocket connection
+          const socket = yield* Socket.makeWebSocket(wsUrl).pipe(
+            Effect.provide(makeAuthenticatedWebSocketConstructor(authToken)),
+            Effect.mapError(
+              (e) =>
+                new WebhookConnectionError({
+                  message: `Failed to connect to WebSocket: ${e}`,
+                  wsUrl,
+                  cause: e,
+                }),
+            ),
+          );
+
+          // Get the writer for sending acknowledgment responses
+          const write = yield* socket.writer;
+
+          // Fork the socket handler to run in background - this allows the stream to start consuming
+          const fiber = yield* socket
+            .runRaw((data: string | Uint8Array) =>
+              Effect.gen(function* () {
+                yield* Effect.logDebug("WebSocket received raw data").pipe(
+                  Effect.annotateLogs("dataLength", String(typeof data === "string" ? data.length : data.byteLength)),
+                );
+
+                // Parse the incoming event
+                const event = yield* parseWsMessage(data).pipe(
+                  Effect.catchAll((error) => {
+                    // Log parse error but still try to send ack
+                    return Effect.logError("Failed to parse webhook event").pipe(
                       Effect.annotateLogs("error", error.message),
+                      Effect.as(null),
+                    );
+                  }),
+                );
+
+                // Send acknowledgment response back to GitHub
+                // This is CRITICAL - without this, no more events will be received
+                const ackResponse = createAckResponse();
+                const ackJson = JSON.stringify(ackResponse);
+                yield* Effect.logDebug("Sending WebSocket ack response").pipe(
+                  Effect.annotateLogs("ack", ackJson),
+                );
+                yield* write(ackJson).pipe(
+                  Effect.tap(() => Effect.logDebug("WebSocket ack sent successfully")),
+                  Effect.catchAll((error) =>
+                    Effect.logWarning("Failed to send WebSocket ack").pipe(
+                      Effect.annotateLogs("error", String(error)),
                     ),
                   ),
-                ),
-              )
-              .pipe(
-                Effect.catchAll((error) => {
-                  // Handle socket close/error
-                  if (Socket.SocketCloseError.is(error)) {
-                    // Normal close (1000) - end the stream gracefully
-                    if (error.code === 1000) {
-                      return Effect.sync(() => emit.end());
-                    }
-                    // Abnormal close - emit error for retry
-                    return Effect.sync(() =>
-                      emit.fail(
-                        new WebhookConnectionError({
-                          message: `WebSocket closed with code ${error.code}: ${error.closeReason ?? "unknown"}`,
-                          wsUrl,
-                          cause: error,
-                        }),
-                      ),
-                    );
+                );
+
+                // Emit the event if we parsed it successfully
+                if (event !== null) {
+                  yield* Effect.logDebug("Emitting parsed event").pipe(
+                    Effect.annotateLogs("event", event.event),
+                    Effect.annotateLogs("action", event.action ?? "none"),
+                  );
+                  const emitted = emit.single(event);
+                  yield* Effect.logDebug("Event emitted to stream").pipe(
+                    Effect.annotateLogs("emitted", String(emitted)),
+                  );
+                }
+              }),
+            )
+            .pipe(
+              Effect.catchAll((error) => {
+                // Handle socket close/error
+                if (Socket.SocketCloseError.is(error)) {
+                  // Normal close (1000) - end the stream gracefully
+                  if (error.code === 1000) {
+                    return Effect.sync(() => emit.end());
                   }
-                  // Other socket errors
+                  // Abnormal close - emit error for retry
                   return Effect.sync(() =>
                     emit.fail(
                       new WebhookConnectionError({
-                        message: `WebSocket error: ${error}`,
+                        message: `WebSocket closed with code ${error.code}: ${error.closeReason ?? "unknown"}`,
                         wsUrl,
                         cause: error,
                       }),
                     ),
                   );
-                }),
-                Effect.fork, // Fork the handler to run in background
-              ),
-          ),
-        ),
-        // Release: Close WebSocket on cleanup (will happen automatically via Scope)
-        () => Effect.void,
+                }
+                // Other socket errors
+                return Effect.sync(() =>
+                  emit.fail(
+                    new WebhookConnectionError({
+                      message: `WebSocket error: ${error}`,
+                      wsUrl,
+                      cause: error,
+                    }),
+                  ),
+                );
+              }),
+              Effect.fork,
+            );
+
+          return fiber;
+        }),
+        // Release: Interrupt the fiber when stream is done
+        (fiber) => Fiber.interrupt(fiber).pipe(Effect.ignore),
       ),
     );
 
