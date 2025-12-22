@@ -119,6 +119,15 @@ export class GhNotInstalledError extends Data.TaggedError("GhNotInstalledError")
   });
 }
 
+/** gh CLI is installed but not authenticated with GitHub */
+export class GhNotAuthenticatedError extends Data.TaggedError("GhNotAuthenticatedError")<{
+  readonly message: string;
+}> {
+  static readonly default = new GhNotAuthenticatedError({
+    message: "gh CLI is not authenticated. Run 'gh auth login' first.",
+  });
+}
+
 // === Linear API Errors ===
 
 export class LinearApiError extends Data.TaggedError("LinearApiError")<{
