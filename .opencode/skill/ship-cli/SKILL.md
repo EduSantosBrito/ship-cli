@@ -143,12 +143,83 @@ This enables the **automatic rebase workflow**: when a parent PR is merged, the 
 
 ### Reacting to GitHub Events
 
-When you receive a GitHub event notification:
+**CRITICAL: Always notify the user BEFORE taking action on webhook events.**
 
-1. **PR Merged**: Run `stack-sync` to rebase onto the new trunk
-2. **CI Failed**: Investigate and fix the issue
-3. **Review Comment**: Address the feedback
-4. **PR Approved**: Consider merging or waiting for CI
+When you receive a GitHub event notification (injected message starting with `[GitHub]`), you MUST:
+
+1. **Output visible text first** - Tell the user what event you received and what you're about to do
+2. **Then execute the action** - Run the appropriate tool command
+3. **Summarize the result** - Tell the user what happened
+
+**Why this matters:** Tool calls may execute but appear invisible to the user. Always wrap tool calls with user-visible text so the user knows what's happening.
+
+**Note:** Webhook events are formatted by the daemon and injected as messages. Look for the `→ Action:` line at the end of each event for the suggested action.
+
+#### Anti-Pattern: Silent Tool Calls
+
+**DO NOT DO THIS:**
+```
+[Receives webhook notification]
+[Immediately calls stack-sync without any text output]
+[User sees nothing and has no idea what happened]
+```
+
+This makes the tool call appear to run "invisibly" like a background job. The user has no visibility into what the agent is doing.
+
+#### Example: PR Merged Event
+
+When you receive:
+```
+[GitHub] PR #77 merged by @user
+...
+→ Action: Run stack-sync to update your local stack
+```
+
+You MUST respond like this:
+```
+PR #77 has been merged! Let me sync your local stack to update it.
+
+[Execute: ship tool with action=stack-sync, workdir=<workspace-path>]
+
+<After seeing the result, summarize:>
+Stack synced successfully. <include relevant details from output>
+```
+
+#### Event Response Guide
+
+| Event | First: Tell User | Then: Execute | Finally: Summarize |
+|-------|------------------|---------------|-------------------|
+| **PR Merged** | "PR #X merged! Syncing your stack..." | `stack-sync` | Report sync result, workspace cleanup |
+| **CI Failed** | "CI failed on PR #X. Investigating..." | Read logs/status | Report findings, suggest fixes |
+| **Review Comment** | "New review comment on PR #X. Checking..." | Fetch comment | Summarize feedback, propose response |
+| **Changes Requested** | "Changes requested on PR #X. Reviewing..." | Fetch review | List requested changes |
+| **PR Approved** | "PR #X approved! Checking if ready to merge..." | Check CI status | Report merge readiness |
+
+#### Handling Multiple Events
+
+If multiple webhook events arrive in quick succession:
+
+1. **Acknowledge all events** to the user first
+2. **Determine if they can be batched** - e.g., multiple CI updates for the same PR can be summarized together
+3. **Execute actions in logical order** - e.g., sync before submit
+4. **Summarize all results together** - give the user a complete picture
+
+#### After Stack is Fully Merged
+
+When `stack-sync` reports "Stack fully merged" and cleans up the workspace:
+
+1. **Notify the user** that the stack was merged and workspace cleaned up
+2. **Switch context back to the default workspace** - stop using the old `workdir` parameter
+3. **Suggest next steps** - e.g., "You can now start a new task with `ship ready`"
+
+Example response after merge cleanup:
+```
+Stack fully merged! Your changes are now in trunk.
+- Workspace `bri-123-feature` has been cleaned up
+- You're now back in the default workspace
+
+Ready to start a new task? Use `ship ready` to see available work.
+```
 
 ---
 
