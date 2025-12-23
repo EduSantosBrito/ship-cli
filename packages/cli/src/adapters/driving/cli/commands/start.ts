@@ -30,10 +30,15 @@ const jsonOption = Options.boolean("json").pipe(
   Options.withDefault(false),
 );
 
+const sessionOption = Options.text("session").pipe(
+  Options.withDescription("OpenCode session ID to label the task with (for tracking which agent is working on it)"),
+  Options.optional,
+);
+
 export const startCommand = Command.make(
   "start",
-  { taskId: taskIdArg, json: jsonOption },
-  ({ taskId, json }) =>
+  { taskId: taskIdArg, json: jsonOption, session: sessionOption },
+  ({ taskId, json, session }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
@@ -72,6 +77,12 @@ export const startCommand = Command.make(
         }),
       );
 
+      // Set session label if provided (for tracking which agent is working on the task)
+      const sessionId = Option.getOrUndefined(session);
+      if (sessionId) {
+        yield* issueRepo.setSessionLabel(task.id, sessionId);
+      }
+
       // Get branch name for reference (useful for stack-create)
       const branchName = yield* issueRepo.getBranchName(task.id);
 
@@ -87,6 +98,10 @@ export const startCommand = Command.make(
             branchName,
           },
         };
+        // Include session label info in JSON output
+        if (sessionId) {
+          output.sessionLabel = `session:${sessionId}`;
+        }
         // Include warnings in JSON output
         if (task.blockedBy.length > 0) {
           output.warnings = [`Task is blocked by: ${task.blockedBy.join(", ")}`];
@@ -95,6 +110,9 @@ export const startCommand = Command.make(
       } else {
         yield* Console.log(`Started: ${updatedTask.identifier} - ${updatedTask.title}`);
         yield* Console.log(`Status: ${updatedTask.state.name}`);
+        if (sessionId) {
+          yield* Console.log(`Session: ${sessionId}`);
+        }
         yield* Console.log(`\nTo create a VCS change, use:`);
         yield* Console.log(
           `  ship stack create -m "${updatedTask.identifier}: ${updatedTask.title}" -b ${branchName}`,

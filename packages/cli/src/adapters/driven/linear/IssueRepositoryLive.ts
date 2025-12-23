@@ -554,6 +554,120 @@ const make = Effect.gen(function* () {
       "Getting branch name",
     );
 
+  const SESSION_LABEL_PREFIX = "session:";
+
+  const setSessionLabel = (
+    id: TaskId,
+    sessionId: string,
+  ): Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError> =>
+    withRetryAndTimeout(
+      Effect.gen(function* () {
+        const client = yield* linearClient.client();
+
+        // Fetch the issue to get team and current labels
+        const issue = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(client.issue(id), signal),
+          catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
+        });
+
+        if (!issue) {
+          return yield* Effect.fail(new TaskNotFoundError({ taskId: id }));
+        }
+
+        // Get current labels on the issue
+        const currentLabels = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(issue.labels(), signal),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to fetch issue labels: ${e}`, cause: e }),
+        });
+
+        // Get the team to fetch team-level labels
+        const team = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(issue.team!, signal),
+          catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
+        });
+
+        const targetLabelName = `${SESSION_LABEL_PREFIX}${sessionId}`;
+
+        // Get all labels in the workspace/team that start with "session:"
+        const allLabels = yield* Effect.tryPromise({
+          try: (signal) =>
+            withAbortSignal(
+              client.issueLabels({
+                filter: {
+                  name: { startsWith: SESSION_LABEL_PREFIX },
+                },
+              }),
+              signal,
+            ),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to fetch session labels: ${e}`, cause: e }),
+        });
+
+        // Find or create the target session label
+        let targetLabelId: string | undefined = allLabels.nodes.find(
+          (l) => l.name === targetLabelName,
+        )?.id;
+
+        if (!targetLabelId) {
+          // Create the new session label (at team level)
+          const createResult = yield* Effect.tryPromise({
+            try: (signal) =>
+              withAbortSignal(
+                client.createIssueLabel({
+                  name: targetLabelName,
+                  teamId: team.id,
+                  color: "#6B7280", // Gray color for session labels
+                  description: `OpenCode agent session ${sessionId}`,
+                }),
+                signal,
+              ),
+            catch: (e) =>
+              new LinearApiError({ message: `Failed to create session label: ${e}`, cause: e }),
+          });
+
+          if (!createResult.success) {
+            return yield* Effect.fail(new TaskError({ message: "Failed to create session label" }));
+          }
+
+          // Fetch the created label to get its ID
+          const createdLabel = yield* Effect.tryPromise({
+            try: async (signal) => {
+              if (!createResult.issueLabel) throw new Error("Label not returned");
+              return withAbortSignal(createResult.issueLabel, signal);
+            },
+            catch: (e) =>
+              new LinearApiError({ message: `Failed to get created label: ${e}`, cause: e }),
+          });
+
+          targetLabelId = createdLabel.id;
+        }
+
+        // Build the new label IDs list:
+        // 1. Keep all non-session labels from current issue
+        // 2. Add the target session label
+        const currentLabelIds =
+          currentLabels?.nodes
+            ?.filter((l) => !l.name.startsWith(SESSION_LABEL_PREFIX))
+            .map((l) => l.id) ?? [];
+
+        const newLabelIds = [...currentLabelIds, targetLabelId];
+
+        // Update the issue with new labels
+        const result = yield* Effect.tryPromise({
+          try: (signal) =>
+            withAbortSignal(client.updateIssue(id, { labelIds: newLabelIds }), signal),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
+        });
+
+        if (!result.success) {
+          return yield* Effect.fail(new TaskError({ message: "Failed to update issue labels" }));
+        }
+      }),
+      "Setting session label",
+    );
+
   return {
     getTask,
     getTaskByIdentifier,
@@ -566,6 +680,7 @@ const make = Effect.gen(function* () {
     removeBlocker,
     addRelated,
     getBranchName,
+    setSessionLabel,
   };
 });
 

@@ -382,7 +382,7 @@ interface ShipService {
     mine?: boolean;
   }) => Effect.Effect<ShipTask[], ShipCommandError | JsonParseError>;
   readonly getTask: (taskId: string) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
-  readonly startTask: (taskId: string) => Effect.Effect<void, ShipCommandError>;
+  readonly startTask: (taskId: string, sessionId?: string) => Effect.Effect<void, ShipCommandError>;
   readonly completeTask: (taskId: string) => Effect.Effect<void, ShipCommandError>;
   readonly createTask: (input: {
     title: string;
@@ -507,7 +507,14 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<ShipTask>(output);
     });
 
-  const startTask = (taskId: string) => shell.run(["start", taskId]).pipe(Effect.asVoid);
+  const startTask = (taskId: string, sessionId?: string) => {
+    const args = ["start"];
+    if (sessionId) {
+      args.push("--session", sessionId);
+    }
+    args.push(taskId);
+    return shell.run(args).pipe(Effect.asVoid);
+  };
 
   const completeTask = (taskId: string) => shell.run(["done", taskId]).pipe(Effect.asVoid);
 
@@ -1016,8 +1023,10 @@ const executeAction = (
         if (!args.taskId) {
           return "Error: taskId is required for start action";
         }
-        yield* ship.startTask(args.taskId);
-        return `Started working on ${args.taskId}`;
+        // Pass context session ID for labeling which agent is working on the task
+        yield* ship.startTask(args.taskId, contextSessionId);
+        const sessionInfo = contextSessionId ? ` (labeled with session:${contextSessionId})` : "";
+        return `Started working on ${args.taskId}${sessionInfo}`;
       }
 
       case "done": {
