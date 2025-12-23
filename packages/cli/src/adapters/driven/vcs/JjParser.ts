@@ -27,7 +27,8 @@ export const JJ_LOG_JSON_TEMPLATE = `
 "\\"author\\":" ++ json(author) ++ "," ++
 "\\"bookmarks\\":" ++ json(local_bookmarks) ++ "," ++
 "\\"is_working_copy\\":" ++ json(current_working_copy) ++ "," ++
-"\\"is_empty\\":" ++ json(empty) ++
+"\\"is_empty\\":" ++ json(empty) ++ "," ++
+"\\"has_conflict\\":" ++ json(conflict) ++
 "}" ++ "\\n"
 `.trim();
 
@@ -55,6 +56,7 @@ const JjCommitJsonSchema = Schema.Struct({
   bookmarks: Schema.Array(JjBookmarkSchema),
   is_working_copy: Schema.Boolean,
   is_empty: Schema.Boolean,
+  has_conflict: Schema.Boolean,
 });
 
 type JjCommitJson = typeof JjCommitJsonSchema.Type;
@@ -152,4 +154,5 @@ const jjCommitToChange = (jj: JjCommitJson): Change =>
     bookmarks: jj.bookmarks.map((b) => b.name),
     isWorkingCopy: jj.is_working_copy,
     isEmpty: jj.is_empty,
+    hasConflict: jj.has_conflict,
   });

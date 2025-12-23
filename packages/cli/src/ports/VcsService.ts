@@ -48,6 +48,8 @@ export class Change extends Schema.Class<Change>("Change")({
   bookmarks: Schema.Array(Schema.String),
   isWorkingCopy: Schema.Boolean,
   isEmpty: Schema.Boolean,
+  /** Whether this change has unresolved merge conflicts */
+  hasConflict: Schema.Boolean,
 }) {}
 
 export class PushResult extends Schema.Class<PushResult>("PushResult")({

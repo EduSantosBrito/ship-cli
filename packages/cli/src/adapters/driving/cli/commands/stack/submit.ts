@@ -157,9 +157,33 @@ export const submitCommand = Command.make(
         return;
       }
 
+      // Early conflict check for current change (fast path)
+      // Provides clearer error messaging when working copy has conflicts
+      if (change.hasConflict) {
+        yield* outputError(
+          "Current change has unresolved conflicts. Resolve conflicts before submitting.\n\nUse 'ship stack status' to check conflict state.",
+          json,
+        );
+        return;
+      }
+
       // Auto-abandon empty changes without descriptions in the stack
       // This prevents "commit has no description" errors when pushing
       const stackChanges = yield* vcs.getStack().pipe(Effect.catchAll(() => Effect.succeed([])));
+
+      // Check for conflicts in the stack before pushing
+      // Pushing changes with conflicts would create broken commits on the remote
+      const conflictedChanges = stackChanges.filter((c) => c.hasConflict);
+      if (conflictedChanges.length > 0) {
+        const conflictList = conflictedChanges
+          .map((c) => `  - ${c.changeId.slice(0, 8)}: ${c.description.split("\n")[0] || "(no description)"}`)
+          .join("\n");
+        yield* outputError(
+          `Cannot submit: ${conflictedChanges.length} change(s) have unresolved conflicts:\n${conflictList}\n\nResolve conflicts before submitting. Use 'ship stack status' to check conflict state.`,
+          json,
+        );
+        return;
+      }
 
       // Helper to check if a change should be abandoned
       const isEmptyWithoutDescription = (c: (typeof stackChanges)[number]) =>

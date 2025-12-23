@@ -31,6 +31,7 @@ interface StatusOutput {
     description: string;
     bookmarks: readonly string[];
     isEmpty: boolean;
+    hasConflict: boolean;
   };
 }
 
@@ -67,6 +68,7 @@ export const statusCommand = Command.make("status", { json: jsonOption }, ({ jso
         description: change.description,
         bookmarks: change.bookmarks,
         isEmpty: change.isEmpty,
+        hasConflict: change.hasConflict,
       },
     };
 
@@ -79,7 +81,9 @@ export const statusCommand = Command.make("status", { json: jsonOption }, ({ jso
       if (change.bookmarks.length > 0) {
         yield* Console.log(`Bookmarks:   ${change.bookmarks.join(", ")}`);
       }
-      if (change.isEmpty) {
+      if (change.hasConflict) {
+        yield* Console.log(`Status:      CONFLICT (resolve before submitting)`);
+      } else if (change.isEmpty) {
         yield* Console.log(`Status:      empty (no changes)`);
       } else {
         yield* Console.log(`Status:      has changes`);

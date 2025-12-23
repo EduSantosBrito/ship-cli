@@ -85,6 +85,7 @@ export const defaultTestVcsState: TestVcsState = {
         bookmarks: [],
         isWorkingCopy: true,
         isEmpty: false,
+        hasConflict: false,
       }),
     ],
   ]),
@@ -231,6 +232,7 @@ export const TestVcsServiceLayer = (
               bookmarks: [],
               isWorkingCopy: true,
               isEmpty: true,
+              hasConflict: false,
             });
 
             yield* Ref.update(stateRef, (state) => {
@@ -298,6 +300,7 @@ export const TestVcsServiceLayer = (
                   bookmarks: [],
                   isWorkingCopy: true,
                   isEmpty: true,
+                  hasConflict: false,
                 }),
               );
               return { ...s, changes, currentChangeId: newId };
@@ -595,6 +598,7 @@ export const TestVcsServiceLayer = (
                 bookmarks: [],
                 isWorkingCopy: true,
                 isEmpty: true,
+                hasConflict: false,
               });
             }
             return newCurrent;
