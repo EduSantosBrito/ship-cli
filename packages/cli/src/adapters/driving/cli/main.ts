@@ -16,6 +16,7 @@ import { blockedCommand } from "./commands/blocked.js";
 import { updateCommand } from "./commands/update.js";
 import { relateCommand } from "./commands/relate.js";
 import { statusCommand } from "./commands/status.js";
+import { wipCommand } from "./commands/wip.js";
 import { stackCommand } from "./commands/stack/index.js";
 import { webhookCommand } from "./commands/webhook/index.js";
 import { templateCommand } from "./commands/template/index.js";
@@ -33,6 +34,7 @@ Commands:
   team              Switch team
   project           Switch project
   status            Check configuration status
+  wip               Show work in progress (tasks + changes + PRs)
   
   ready             List tasks ready to work on (no blockers)
   blocked           List blocked tasks
@@ -64,6 +66,7 @@ export const command = ship.pipe(
     teamCommand,
     projectCommand,
     statusCommand,
+    wipCommand,
     readyCommand,
     listCommand,
     showCommand,
