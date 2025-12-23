@@ -14,9 +14,10 @@ import {
   UpdateTaskInput,
   TaskFilter,
   type ProjectId,
+  type TaskType,
 } from "../../../domain/Task.js";
 import { LinearApiError, TaskError, TaskNotFoundError } from "../../../domain/Errors.js";
-import { mapIssueToTask, priorityToLinear, statusToLinearStateType } from "./Mapper.js";
+import { mapIssueToTask, priorityToLinear, statusToLinearStateType, TYPE_LABEL_PREFIX } from "./Mapper.js";
 
 // Retry policy: exponential backoff with max 3 retries
 const retryPolicy = Schedule.intersect(
@@ -130,6 +131,133 @@ const make = Effect.gen(function* () {
       "Fetching task by identifier",
     );
 
+  // Helper to get color for type labels
+  const getTypeColor = (type: TaskType): string => {
+    switch (type) {
+      case "bug":
+        return "#EF4444"; // Red
+      case "feature":
+        return "#10B981"; // Green
+      case "task":
+        return "#3B82F6"; // Blue
+      case "epic":
+        return "#8B5CF6"; // Purple
+      case "chore":
+        return "#6B7280"; // Gray
+    }
+  };
+
+  // Internal helper to set type label (used by both createTask and setTypeLabel)
+  const setTypeLabelInternal = (
+    client: ReturnType<typeof linearClient.client> extends Effect.Effect<infer C, unknown, unknown>
+      ? C
+      : never,
+    id: TaskId,
+    type: TaskType,
+  ): Effect.Effect<void, TaskError | LinearApiError> =>
+    Effect.gen(function* () {
+      // Fetch the issue to get team and current labels
+      const issue = yield* Effect.tryPromise({
+        try: (signal) => withAbortSignal(client.issue(id), signal),
+        catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
+      });
+
+      if (!issue) {
+        return yield* Effect.fail(new TaskError({ message: `Issue not found: ${id}` }));
+      }
+
+      // Get current labels on the issue
+      const currentLabels = yield* Effect.tryPromise({
+        try: (signal) => withAbortSignal(issue.labels(), signal),
+        catch: (e) =>
+          new LinearApiError({ message: `Failed to fetch issue labels: ${e}`, cause: e }),
+      });
+
+      // Get the team to fetch team-level labels
+      const team = yield* Effect.tryPromise({
+        try: (signal) => withAbortSignal(issue.team!, signal),
+        catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
+      });
+
+      const targetLabelName = `${TYPE_LABEL_PREFIX}${type}`;
+
+      // Get all labels in the workspace/team that start with "type:"
+      const allLabels = yield* Effect.tryPromise({
+        try: (signal) =>
+          withAbortSignal(
+            client.issueLabels({
+              filter: {
+                name: { startsWith: TYPE_LABEL_PREFIX },
+              },
+            }),
+            signal,
+          ),
+        catch: (e) =>
+          new LinearApiError({ message: `Failed to fetch type labels: ${e}`, cause: e }),
+      });
+
+      // Find or create the target type label
+      let targetLabelId: string | undefined = allLabels.nodes.find(
+        (l) => l.name === targetLabelName,
+      )?.id;
+
+      if (!targetLabelId) {
+        // Create the new type label (at team level)
+        const createResult = yield* Effect.tryPromise({
+          try: (signal) =>
+            withAbortSignal(
+              client.createIssueLabel({
+                name: targetLabelName,
+                teamId: team.id,
+                color: getTypeColor(type),
+                description: `Task type: ${type}`,
+              }),
+              signal,
+            ),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to create type label: ${e}`, cause: e }),
+        });
+
+        if (!createResult.success) {
+          return yield* Effect.fail(new TaskError({ message: "Failed to create type label" }));
+        }
+
+        // Fetch the created label to get its ID
+        const createdLabel = yield* Effect.tryPromise({
+          try: async (signal) => {
+            if (!createResult.issueLabel) throw new Error("Label not returned");
+            return withAbortSignal(createResult.issueLabel, signal);
+          },
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to get created label: ${e}`, cause: e }),
+        });
+
+        targetLabelId = createdLabel.id;
+      }
+
+      // Build the new label IDs list:
+      // 1. Keep all non-type labels from current issue
+      // 2. Add the target type label
+      const currentLabelIds =
+        currentLabels?.nodes
+          ?.filter((l) => !l.name.startsWith(TYPE_LABEL_PREFIX))
+          .map((l) => l.id) ?? [];
+
+      const newLabelIds = [...currentLabelIds, targetLabelId];
+
+      // Update the issue with new labels
+      const result = yield* Effect.tryPromise({
+        try: (signal) =>
+          withAbortSignal(client.updateIssue(id, { labelIds: newLabelIds }), signal),
+        catch: (e) =>
+          new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
+      });
+
+      if (!result.success) {
+        return yield* Effect.fail(new TaskError({ message: "Failed to update issue labels" }));
+      }
+    });
+
   const createTask = (
     teamId: TeamId,
     input: CreateTaskInput,
@@ -176,8 +304,18 @@ const make = Effect.gen(function* () {
             new LinearApiError({ message: `Failed to get created issue: ${e}`, cause: e }),
         });
 
+        // Set type label if provided (default is "task")
+        yield* setTypeLabelInternal(client, issue.id as TaskId, input.type);
+
+        // Re-fetch to get updated labels
+        const updatedIssue = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(client.issue(issue.id), signal),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to fetch updated issue: ${e}`, cause: e }),
+        });
+
         return yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+          try: (signal) => withAbortSignal(mapIssueToTask(updatedIssue!), signal),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -560,6 +698,18 @@ const make = Effect.gen(function* () {
 
   const SESSION_LABEL_PREFIX = "session:";
 
+  const setTypeLabel = (
+    id: TaskId,
+    type: TaskType,
+  ): Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError> =>
+    withRetryAndTimeout(
+      Effect.gen(function* () {
+        const client = yield* linearClient.client();
+        yield* setTypeLabelInternal(client, id, type);
+      }),
+      "Setting type label",
+    );
+
   const setSessionLabel = (
     id: TaskId,
     sessionId: string,
@@ -685,6 +835,7 @@ const make = Effect.gen(function* () {
     addRelated,
     getBranchName,
     setSessionLabel,
+    setTypeLabel,
   };
 });
 

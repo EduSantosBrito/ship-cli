@@ -17,7 +17,11 @@ import {
   WorkflowStateType,
   Subtask,
   type TaskStatus,
+  type TaskType,
 } from "../../../domain/Task.js";
+
+// Prefix for type labels in Linear
+export const TYPE_LABEL_PREFIX = "type:";
 
 // Map Linear state type to our WorkflowStateType
 const mapStateType = (stateType: string): WorkflowStateType => {
@@ -129,6 +133,12 @@ export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Prom
     }
   }
 
+  // Extract type from labels (look for "type:bug", "type:feature", etc.)
+  const typeLabel = labels?.nodes?.find((l) => l.name.startsWith(TYPE_LABEL_PREFIX));
+  const taskType: Option.Option<TaskType> = typeLabel
+    ? Option.some(typeLabel.name.slice(TYPE_LABEL_PREFIX.length) as TaskType)
+    : Option.none();
+
   return new Task({
     id: issue.id as TaskId,
     identifier: issue.identifier,
@@ -136,7 +146,7 @@ export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Prom
     description: issue.description ? Option.some(issue.description) : Option.none(),
     state: mapWorkflowState(state),
     priority: mapPriority(issue.priority),
-    type: Option.none(), // Linear doesn't have issue types in the same way
+    type: taskType,
     teamId: (team?.id ?? "") as TeamId,
     projectId: Option.none(), // Will be populated if needed
     branchName: issue.branchName ? Option.some(issue.branchName) : Option.none(),

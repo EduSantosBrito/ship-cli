@@ -36,7 +36,19 @@ const mineOption = Options.boolean("mine").pipe(
 const formatTask = (task: Task): string => {
   const priority = task.priority === "urgent" ? "[!]" : task.priority === "high" ? "[^]" : "   ";
   const stateName = task.state.name.padEnd(11);
-  return `${priority} ${task.identifier.padEnd(10)} ${stateName} ${task.title}`;
+  const typeIndicator = Option.isSome(task.type)
+    ? task.type.value === "bug"
+      ? "(bug)"
+      : task.type.value === "feature"
+        ? "(feat)"
+        : task.type.value === "epic"
+          ? "(epic)"
+          : task.type.value === "chore"
+            ? "(chore)"
+            : ""
+    : "";
+  const typeDisplay = typeIndicator ? `${typeIndicator.padEnd(7)} ` : "        ";
+  return `${priority} ${task.identifier.padEnd(10)} ${stateName} ${typeDisplay}${task.title}`;
 };
 
 export const listCommand = Command.make(
@@ -64,6 +76,7 @@ export const listCommand = Command.make(
           identifier: t.identifier,
           title: t.title,
           priority: t.priority,
+          type: Option.getOrNull(t.type),
           state: t.state.name,
           stateType: t.state.type,
           labels: t.labels,
@@ -76,8 +89,8 @@ export const listCommand = Command.make(
           yield* Console.log("No tasks found matching the filter.");
         } else {
           yield* Console.log(`Found ${taskList.length} task(s):\n`);
-          yield* Console.log("PRI IDENTIFIER  STATUS      TITLE");
-          yield* Console.log("─".repeat(60));
+          yield* Console.log("PRI IDENTIFIER  STATUS      TYPE     TITLE");
+          yield* Console.log("─".repeat(70));
           for (const task of taskList) {
             yield* Console.log(formatTask(task));
           }
