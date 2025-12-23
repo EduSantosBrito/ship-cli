@@ -1,8 +1,33 @@
 {
   "name": "ship-monorepo",
+  "description": "Linear + Jujutsu workflow CLI for AI agents - manage tasks and stacked changes",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Eduardo Santos de Brito",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EduSantosBrito/ship-cli.git"
+  },
+  "homepage": "https://github.com/EduSantosBrito/ship-cli#readme",
+  "bugs": {
+    "url": "https://github.com/EduSantosBrito/ship-cli/issues"
+  },
+  "keywords": [
+    "linear",
+    "jj",
+    "jujutsu",
+    "cli",
+    "ai",
+    "opencode",
+    "task-management",
+    "stacked-diffs",
+    "effect"
+  ],
   "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "pnpm -r build",
     "check": "pnpm -r check",
