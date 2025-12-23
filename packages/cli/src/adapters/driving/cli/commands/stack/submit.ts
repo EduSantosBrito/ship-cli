@@ -70,6 +70,8 @@ interface SubmitOutput {
     sessionId: string;
     prNumbers: number[];
   };
+  /** Changes that were auto-abandoned because they were empty with no description */
+  abandonedEmptyChanges?: string[];
 }
 
 // === Command ===
@@ -152,6 +154,29 @@ export const submitCommand = Command.make(
         );
         return;
       }
+
+      // Auto-abandon empty changes without descriptions in the stack
+      // This prevents "commit has no description" errors when pushing
+      const stackChanges = yield* vcs.getStack().pipe(Effect.catchAll(() => Effect.succeed([])));
+
+      // Helper to check if a change should be abandoned
+      const isEmptyWithoutDescription = (c: typeof stackChanges[number]) =>
+        c.isEmpty &&
+        (!c.description || c.description.trim() === "" || c.description === "(no description)") &&
+        c.bookmarks.length === 0 &&
+        c.id !== change.id; // Don't abandon the change we're submitting
+
+      const emptyChangesToAbandon = stackChanges.filter(isEmptyWithoutDescription);
+
+      // Abandon empty changes and collect successfully abandoned change IDs
+      const abandonedChangeIds = yield* Effect.forEach(
+        emptyChangesToAbandon,
+        (emptyChange) =>
+          vcs.abandon(emptyChange.id).pipe(
+            Effect.map(() => emptyChange.changeId),
+            Effect.catchAll(() => Effect.succeed(null)), // Continue on failure
+          ),
+      ).pipe(Effect.map((ids) => ids.filter((id): id is string => id !== null)));
 
       // Push the bookmark to remote
       const pushResult = yield* vcs.push(bookmark).pipe(
@@ -333,10 +358,21 @@ export const submitCommand = Command.make(
         }
       }
 
+      // Add info about auto-abandoned empty changes
+      if (abandonedChangeIds.length > 0) {
+        output.abandonedEmptyChanges = abandonedChangeIds;
+      }
+
       // Output result
       if (json) {
         yield* Console.log(JSON.stringify(output, null, 2));
       } else {
+        // Report auto-abandoned changes first
+        if (output.abandonedEmptyChanges && output.abandonedEmptyChanges.length > 0) {
+          yield* Console.log(
+            `Auto-abandoned empty changes: ${output.abandonedEmptyChanges.join(", ")}`,
+          );
+        }
         if (output.error) {
           yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
           yield* Console.log(`Base branch: ${output.baseBranch}`);
