@@ -12,6 +12,7 @@ import {
   PushResult,
   TrunkInfo,
   SyncResult,
+  AbandonedMergedChange,
   WorkspaceInfo,
   UpdateStaleResult,
   type VcsErrors,
@@ -266,6 +267,8 @@ const make = Effect.gen(function* () {
           trunkChangeId: trunk.shortChangeId,
           stackSize: 0,
           conflicted: false,
+          abandonedMergedChanges: [],
+          stackFullyMerged: false,
         });
       }
 
@@ -279,9 +282,51 @@ const make = Effect.gen(function* () {
         Effect.catchTag("JjConflictError", () => Effect.succeed({ conflicted: true })),
       );
 
-      // 5. Get updated stack and trunk info
-      const stackAfter = yield* getStack();
+      // 5. Get updated stack after rebase
+      let stackAfter = yield* getStack();
+
+      // 6. Detect and abandon merged changes
+      // After rebase, changes that became empty AND have a bookmark are likely merged
+      // (their content is now in trunk)
+      const abandonedChanges: AbandonedMergedChange[] = [];
+
+      // Find changes that:
+      // - Are empty (their content is now in the parent/trunk)
+      // - Have at least one bookmark (they were pushed and tracked)
+      // - Are not the working copy (don't abandon the current change if it's empty but we're working on it)
+      const mergedChanges = stackAfter.filter(
+        (change) => change.isEmpty && change.bookmarks.length > 0 && !change.isWorkingCopy,
+      );
+
+      // Abandon each merged change (jj will automatically restack descendants)
+      for (const change of mergedChanges) {
+        yield* runJj("abandon", change.id).pipe(
+          Effect.tap(() =>
+            Effect.logInfo(`Auto-abandoned merged change: ${change.changeId}`).pipe(
+              Effect.annotateLogs({ bookmark: change.bookmarks[0] ?? "none" }),
+            ),
+          ),
+          Effect.catchAll((e) =>
+            Effect.logWarning(`Failed to abandon merged change: ${change.changeId}`).pipe(
+              Effect.annotateLogs({ error: String(e) }),
+            ),
+          ),
+        );
+
+        abandonedChanges.push(
+          new AbandonedMergedChange({
+            changeId: change.changeId,
+            bookmark: change.bookmarks[0],
+          }),
+        );
+      }
+
+      // 7. Get final stack after abandoning merged changes
+      stackAfter = yield* getStack();
       const trunk = yield* getTrunkInfo();
+
+      // Check if the entire stack was merged (no changes left)
+      const stackFullyMerged = abandonedChanges.length > 0 && stackAfter.length === 0;
 
       return new SyncResult({
         fetched: true,
@@ -289,6 +334,8 @@ const make = Effect.gen(function* () {
         trunkChangeId: trunk.shortChangeId,
         stackSize: stackAfter.length,
         conflicted: rebaseResult.conflicted,
+        abandonedMergedChanges: abandonedChanges,
+        stackFullyMerged,
       });
     });
 

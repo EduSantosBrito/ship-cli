@@ -49,7 +49,7 @@ The \`ship\` tool replaces built-in todo management. Use it for all task trackin
 | \`stack-status\` | Show current change status | - |
 | \`stack-create\` | Create a new change | message (optional), bookmark (optional) |
 | \`stack-describe\` | Update change description | message |
-| \`stack-sync\` | Fetch and rebase onto trunk | - |
+| \`stack-sync\` | Fetch, rebase, auto-abandon merged changes | - |
 
 ---
 
@@ -156,7 +156,14 @@ Use \`ship\` tool with action \`stack-sync\`
 This will:
 1. Fetch latest from remote
 2. Rebase remaining stack onto updated trunk
-3. Report any conflicts that need resolution
+3. **Auto-abandon merged changes** - Changes that become empty after rebase (their content is now in trunk) are automatically abandoned
+4. **Auto-cleanup workspace** - If ALL changes in the stack were merged, the workspace is automatically cleaned up
+5. Report any conflicts that need resolution
+
+The output will show:
+- Which changes were auto-abandoned (with their bookmarks)
+- Whether the stack was fully merged
+- If a workspace was cleaned up
 
 Do NOT wait for conflict reports. Proactively sync after each merge.
 
