@@ -10,7 +10,7 @@ Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md) to help maintai
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20, 22, or 24 (LTS versions)
 - [pnpm](https://pnpm.io/) (we use pnpm workspaces)
 - [jj](https://martinvonz.github.io/jj) (for testing VCS features)
 - A [Linear](https://linear.app) account (for testing task management)
