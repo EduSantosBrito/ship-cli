@@ -1,6 +1,32 @@
 import * as Schema from "effect/Schema";
 import { ProjectId, TeamId } from "./Task.js";
 
+// =============================================================================
+// Workspace Path Constants
+// =============================================================================
+
+/**
+ * Directory name for ship workspaces within the .ship folder.
+ * Used for creating isolated jj workspaces per stack.
+ */
+export const SHIP_WORKSPACES_DIR = "workspaces";
+
+/**
+ * Default workspace name in jj.
+ * The main repository checkout is always the "default" workspace.
+ */
+export const DEFAULT_WORKSPACE_NAME = "default";
+
+/**
+ * Default workspace path pattern for config.
+ * Supports variables: {repo}, {stack}, {user}
+ */
+export const DEFAULT_WORKSPACE_PATH_PATTERN = `.ship/${SHIP_WORKSPACES_DIR}/{stack}`;
+
+// =============================================================================
+// Config Schemas
+// =============================================================================
+
 // Personal API key from https://linear.app/settings/api
 export class AuthConfig extends Schema.Class<AuthConfig>("AuthConfig")({
   apiKey: Schema.String,
@@ -31,7 +57,7 @@ export class WorkspaceConfig extends Schema.Class<WorkspaceConfig>("WorkspaceCon
    * @default ".ship/workspaces/{stack}"
    * @example ".ship/workspaces/bri-123-auth-feature"
    */
-  basePath: Schema.optionalWith(Schema.String, { default: () => ".ship/workspaces/{stack}" }),
+  basePath: Schema.optionalWith(Schema.String, { default: () => DEFAULT_WORKSPACE_PATH_PATTERN }),
 
   /**
    * Whether to automatically cd into workspace after creation.

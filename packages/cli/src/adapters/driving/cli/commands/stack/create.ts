@@ -23,6 +23,7 @@ import {
   WorkspaceMetadata,
   WorkspacesFile,
   modifyWorkspacesFile,
+  DEFAULT_WORKSPACE_PATH_PATTERN,
 } from "../../../../../domain/Config.js";
 
 // === Options ===
@@ -175,7 +176,7 @@ export const createCommand = Command.make(
         const config = yield* configRepo.load().pipe(
           Effect.catchAll(() =>
             Effect.succeed({
-              workspace: { basePath: ".ship/workspaces/{stack}", autoNavigate: true, autoCleanup: true },
+              workspace: { basePath: DEFAULT_WORKSPACE_PATH_PATTERN, autoNavigate: true, autoCleanup: true },
             }),
           ),
         );

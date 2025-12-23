@@ -6,6 +6,10 @@ import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { JjNotInstalledError, VcsError } from "../../../domain/Errors.js";
 import {
+  DEFAULT_WORKSPACE_NAME,
+  SHIP_WORKSPACES_DIR,
+} from "../../../domain/Config.js";
+import {
   VcsService,
   ChangeId,
   Change,
@@ -424,7 +428,10 @@ const make = Effect.gen(function* () {
 
         // Determine path: default workspace is at mainRepoPath
         // Non-default workspaces are in .ship/workspaces/<name>
-        const path = name === "default" ? mainRepoPath : `${mainRepoPath}/.ship/workspaces/${name}`;
+        const path =
+          name === DEFAULT_WORKSPACE_NAME
+            ? mainRepoPath
+            : `${mainRepoPath}/.ship/${SHIP_WORKSPACES_DIR}/${name}`;
 
         workspaces.push(
           new WorkspaceInfo({
