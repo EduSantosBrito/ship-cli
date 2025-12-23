@@ -162,6 +162,11 @@ export const syncCommand = Command.make("sync", { json: jsonOption }, ({ json })
  * 1. We're in a non-default workspace
  * 2. autoCleanup is enabled in config
  *
+ * Cleanup includes:
+ * - Forgetting the workspace from jj
+ * - Removing workspace metadata
+ * - Deleting the workspace directory from disk
+ *
  * Uses file locking to prevent race conditions in multi-agent scenarios.
  */
 const cleanupWorkspaceAfterMerge = (
@@ -169,6 +174,7 @@ const cleanupWorkspaceAfterMerge = (
     getCurrentWorkspaceName: () => Effect.Effect<string, unknown>;
     isNonDefaultWorkspace: () => Effect.Effect<boolean, unknown>;
     forgetWorkspace: (name: string) => Effect.Effect<void, unknown>;
+    getWorkspaceRoot: () => Effect.Effect<string, unknown>;
   },
 ): Effect.Effect<
   { cleaned: boolean; workspaceName?: string },
@@ -176,6 +182,8 @@ const cleanupWorkspaceAfterMerge = (
   ConfigRepository | FileSystem.FileSystem | Path.Path
 > =>
   Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+
     // Check if we're in a non-default workspace
     const isNonDefault = yield* vcs.isNonDefaultWorkspace().pipe(
       Effect.catchAll(() => Effect.succeed(false)),
@@ -197,9 +205,13 @@ const cleanupWorkspaceAfterMerge = (
       return { cleaned: false };
     }
 
-    // Get current workspace name before cleanup
+    // Get current workspace name and path before cleanup
     const workspaceName = yield* vcs.getCurrentWorkspaceName().pipe(
       Effect.catchAll(() => Effect.succeed("unknown")),
+    );
+
+    const workspacePath = yield* vcs.getWorkspaceRoot().pipe(
+      Effect.catchAll(() => Effect.succeed("")),
     );
 
     // Use file locking for the workspace metadata update
@@ -227,6 +239,17 @@ const cleanupWorkspaceAfterMerge = (
         if (matchingWorkspace) {
           const filtered = workspaces.filter((ws) => ws.name !== workspaceName);
           yield* saveWorkspacesFile(configRepo, new WorkspacesFile({ workspaces: filtered }));
+        }
+
+        // Delete the workspace directory from disk
+        if (workspacePath && workspacePath !== "") {
+          yield* fs.remove(workspacePath, { recursive: true }).pipe(
+            Effect.catchAll((e) =>
+              Effect.logWarning(`Failed to delete workspace directory: ${workspacePath}`).pipe(
+                Effect.annotateLogs({ error: String(e) }),
+              ),
+            ),
+          );
         }
 
         return { cleaned: true, workspaceName };
