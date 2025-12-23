@@ -1,17 +1,35 @@
-coverage/
-*.tsbuildinfo
+# Dependencies
 node_modules/
-yarn-error.log
-.ultra.cache.json
-.DS_Store
-tmp/
-build/
+
+# Build outputs
 dist/
-.direnv/
+build/
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Environment
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.direnv/
+
+# Misc
+tmp/
+yarn-error.log
+.ultra.cache.json
+
+# Ship workspaces
 .ship/
-.ship/worktrees/
