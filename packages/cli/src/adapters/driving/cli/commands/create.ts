@@ -88,6 +88,7 @@ export const createCommand = Command.make(
               identifier: task.identifier,
               title: task.title,
               priority: task.priority,
+              type: Option.getOrNull(task.type),
               state: task.state.name,
               url: task.url,
               parentId: Option.isSome(parent) ? parent.value : null,
@@ -102,6 +103,7 @@ export const createCommand = Command.make(
           yield* Console.log(`Created: ${task.identifier} - ${task.title}`);
         }
         yield* Console.log(`Priority: ${task.priority}`);
+        yield* Console.log(`Type: ${type}`);
         yield* Console.log(`URL: ${task.url}`);
         yield* Console.log(`\nRun 'ship start ${task.identifier}' to begin work.`);
       }

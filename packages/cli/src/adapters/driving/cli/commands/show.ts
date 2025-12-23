@@ -24,6 +24,10 @@ const formatTask = (task: Task): string[] => {
   lines.push(`Status:   ${task.state.name}`);
   lines.push(`Priority: ${task.priority}`);
 
+  if (Option.isSome(task.type)) {
+    lines.push(`Type:     ${task.type.value}`);
+  }
+
   if (task.labels.length > 0) {
     lines.push(`Labels:   ${task.labels.join(", ")}`);
   }
@@ -84,6 +88,7 @@ export const showCommand = Command.make(
           title: task.title,
           description: Option.getOrNull(task.description),
           priority: task.priority,
+          type: Option.getOrNull(task.type),
           state: task.state.name,
           stateType: task.state.type,
           labels: task.labels,

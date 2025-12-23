@@ -5,6 +5,7 @@ import type {
   Task,
   TaskFilter,
   TaskId,
+  TaskType,
   TeamId,
   UpdateTaskInput,
   ProjectId,
@@ -75,6 +76,12 @@ export interface IssueRepository {
   readonly setSessionLabel: (
     id: TaskId,
     sessionId: string,
+  ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
+
+  /** Set the type label on a task (creates label if it doesn't exist, removes old type labels) */
+  readonly setTypeLabel: (
+    id: TaskId,
+    type: TaskType,
   ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
 }
 
