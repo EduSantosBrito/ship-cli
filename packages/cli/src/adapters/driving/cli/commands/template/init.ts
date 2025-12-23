@@ -87,50 +87,51 @@ type: chore
 `,
 };
 
-export const initTemplateCommand = Command.make(
-  "init",
-  { force: forceOption },
-  ({ force }) =>
-    Effect.gen(function* () {
-      const configRepo = yield* ConfigRepository;
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
+export const initTemplateCommand = Command.make("init", { force: forceOption }, ({ force }) =>
+  Effect.gen(function* () {
+    const configRepo = yield* ConfigRepository;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
 
-      const configDir = yield* configRepo.getConfigDir();
-      const templatesDir = path.join(configDir, "templates");
+    const configDir = yield* configRepo.getConfigDir();
+    const templatesDir = path.join(configDir, "templates");
 
-      // Ensure templates directory exists
-      const dirExists = yield* fs.exists(templatesDir).pipe(Effect.catchAll(() => Effect.succeed(false)));
-      if (!dirExists) {
-        yield* fs.makeDirectory(templatesDir, { recursive: true });
+    // Ensure templates directory exists
+    const dirExists = yield* fs
+      .exists(templatesDir)
+      .pipe(Effect.catchAll(() => Effect.succeed(false)));
+    if (!dirExists) {
+      yield* fs.makeDirectory(templatesDir, { recursive: true });
+    }
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const [name, content] of Object.entries(DEFAULT_TEMPLATES)) {
+      const templatePath = path.join(templatesDir, `${name}.yaml`);
+      const exists = yield* fs
+        .exists(templatePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)));
+
+      if (exists && !force) {
+        yield* Console.log(`Skipping ${name}.yaml (already exists, use --force to overwrite)`);
+        skipped++;
+      } else {
+        yield* fs.writeFileString(templatePath, content);
+        yield* Console.log(`Created ${name}.yaml`);
+        created++;
       }
+    }
 
-      let created = 0;
-      let skipped = 0;
-
-      for (const [name, content] of Object.entries(DEFAULT_TEMPLATES)) {
-        const templatePath = path.join(templatesDir, `${name}.yaml`);
-        const exists = yield* fs.exists(templatePath).pipe(Effect.catchAll(() => Effect.succeed(false)));
-
-        if (exists && !force) {
-          yield* Console.log(`Skipping ${name}.yaml (already exists, use --force to overwrite)`);
-          skipped++;
-        } else {
-          yield* fs.writeFileString(templatePath, content);
-          yield* Console.log(`Created ${name}.yaml`);
-          created++;
-        }
-      }
-
-      yield* Console.log("");
-      if (created > 0) {
-        yield* Console.log(`Created ${created} template(s) in .ship/templates/`);
-      }
-      if (skipped > 0) {
-        yield* Console.log(`Skipped ${skipped} existing template(s)`);
-      }
-      yield* Console.log("");
-      yield* Console.log("Use templates with: ship create --template <name> \"Task title\"");
-      yield* Console.log("View templates with: ship template list");
-    }),
+    yield* Console.log("");
+    if (created > 0) {
+      yield* Console.log(`Created ${created} template(s) in .ship/templates/`);
+    }
+    if (skipped > 0) {
+      yield* Console.log(`Skipped ${skipped} existing template(s)`);
+    }
+    yield* Console.log("");
+    yield* Console.log('Use templates with: ship create --template <name> "Task title"');
+    yield* Console.log("View templates with: ship template list");
+  }),
 );

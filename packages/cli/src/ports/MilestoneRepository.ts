@@ -38,5 +38,4 @@ export interface MilestoneRepository {
   ) => Effect.Effect<void, MilestoneNotFoundError | LinearApiError>;
 }
 
-export const MilestoneRepository =
-  Context.GenericTag<MilestoneRepository>("MilestoneRepository");
+export const MilestoneRepository = Context.GenericTag<MilestoneRepository>("MilestoneRepository");

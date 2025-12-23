@@ -55,7 +55,9 @@ const statusOption = Options.choice("status", [
 ]).pipe(Options.withAlias("s"), Options.withDescription("New task status"), Options.optional);
 
 const parentOption = Options.text("parent").pipe(
-  Options.withDescription("Parent task ID (e.g., BRI-42) to reparent, or empty string to remove parent"),
+  Options.withDescription(
+    "Parent task ID (e.g., BRI-42) to reparent, or empty string to remove parent",
+  ),
   Options.optional,
 );
 
@@ -122,12 +124,10 @@ export const updateCommand = Command.make(
             return Effect.succeed(Option.some(""));
           }
           // Resolve parent identifier to ID
-          return issueRepo
-            .getTaskByIdentifier(value)
-            .pipe(
-              Effect.catchTag("TaskNotFoundError", () => issueRepo.getTask(value as TaskId)),
-              Effect.map((task) => Option.some(task.id)),
-            );
+          return issueRepo.getTaskByIdentifier(value).pipe(
+            Effect.catchTag("TaskNotFoundError", () => issueRepo.getTask(value as TaskId)),
+            Effect.map((task) => Option.some(task.id)),
+          );
         },
       });
 

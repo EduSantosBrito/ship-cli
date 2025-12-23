@@ -32,7 +32,9 @@ const typeOption = Options.choice("type", ["bug", "feature", "task", "epic", "ch
 
 const templateOption = Options.text("template").pipe(
   Options.withAlias("T"),
-  Options.withDescription("Use a template (e.g., bug, feature). Run 'ship template list' to see available templates."),
+  Options.withDescription(
+    "Use a template (e.g., bug, feature). Run 'ship template list' to see available templates.",
+  ),
   Options.optional,
 );
 
