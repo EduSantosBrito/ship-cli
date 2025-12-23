@@ -83,6 +83,11 @@ export interface IssueRepository {
     id: TaskId,
     type: TaskType,
   ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
+
+  /** Clear session label from a task and delete the label if no other tasks use it */
+  readonly clearSessionLabel: (
+    id: TaskId,
+  ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
 }
 
 export const IssueRepository = Context.GenericTag<IssueRepository>("IssueRepository");

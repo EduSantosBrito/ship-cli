@@ -826,6 +826,89 @@ const make = Effect.gen(function* () {
       "Setting session label",
     );
 
+  const clearSessionLabel = (
+    id: TaskId,
+  ): Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError> =>
+    withRetryAndTimeout(
+      Effect.gen(function* () {
+        const client = yield* linearClient.client();
+
+        // Fetch the issue to get current labels
+        const issue = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(client.issue(id), signal),
+          catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
+        });
+
+        if (!issue) {
+          return yield* Effect.fail(new TaskNotFoundError({ taskId: id }));
+        }
+
+        // Get current labels on the issue
+        const currentLabels = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(issue.labels(), signal),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to fetch issue labels: ${e}`, cause: e }),
+        });
+
+        // Find session labels on this issue
+        const sessionLabels = currentLabels?.nodes?.filter((l) =>
+          l.name.startsWith(SESSION_LABEL_PREFIX),
+        ) ?? [];
+
+        // If no session labels, nothing to do
+        if (sessionLabels.length === 0) {
+          return;
+        }
+
+        // Remove session labels from the issue
+        const nonSessionLabelIds =
+          currentLabels?.nodes
+            ?.filter((l) => !l.name.startsWith(SESSION_LABEL_PREFIX))
+            .map((l) => l.id) ?? [];
+
+        const result = yield* Effect.tryPromise({
+          try: (signal) =>
+            withAbortSignal(client.updateIssue(id, { labelIds: nonSessionLabelIds }), signal),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
+        });
+
+        if (!result.success) {
+          return yield* Effect.fail(new TaskError({ message: "Failed to remove session label" }));
+        }
+
+        // For each session label, check if it's still in use and delete if not
+        for (const sessionLabel of sessionLabels) {
+          // Find issues using this label
+          const issuesWithLabel = yield* Effect.tryPromise({
+            try: (signal) =>
+              withAbortSignal(
+                client.issues({
+                  filter: {
+                    labels: { some: { id: { eq: sessionLabel.id } } },
+                  },
+                  first: 1, // We only need to know if at least one issue uses it
+                }),
+                signal,
+              ),
+            catch: (e) =>
+              new LinearApiError({ message: `Failed to check label usage: ${e}`, cause: e }),
+          });
+
+          // If no issues use this label, delete it (non-fatal if this fails)
+          if (issuesWithLabel.nodes.length === 0) {
+            yield* Effect.tryPromise({
+              try: (signal) =>
+                withAbortSignal(client.deleteIssueLabel(sessionLabel.id), signal),
+              catch: (e) =>
+                new LinearApiError({ message: `Failed to delete session label: ${e}`, cause: e }),
+            }).pipe(Effect.ignore);
+          }
+        }
+      }),
+      "Clearing session label",
+    );
+
   return {
     getTask,
     getTaskByIdentifier,
@@ -840,6 +923,7 @@ const make = Effect.gen(function* () {
     getBranchName,
     setSessionLabel,
     setTypeLabel,
+    clearSessionLabel,
   };
 });
 
