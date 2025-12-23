@@ -23,6 +23,7 @@ export const loginCommand = Command.make("login", {}, () =>
           validate: (value) => {
             if (!value) return "API key is required";
             if (!value.startsWith("lin_api_")) return "API key should start with lin_api_";
+            return undefined;
           },
         }),
       catch: () => PromptCancelledError.default,

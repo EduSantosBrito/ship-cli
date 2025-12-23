@@ -17,7 +17,7 @@
     "isolatedModules": true,
     "sourceMap": true,
     "declarationMap": true,
-    "noImplicitReturns": false,
+    "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
