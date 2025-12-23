@@ -17,6 +17,9 @@ const formatBlockedTask = (task: Task): string[] => {
   lines.push(`${task.identifier}: ${task.title}`);
   lines.push(`  Status: ${task.state.name}`);
   lines.push(`  Priority: ${task.priority}`);
+  if (Option.isSome(task.milestoneName)) {
+    lines.push(`  Milestone: ${task.milestoneName.value}`);
+  }
   if (task.blockedBy.length > 0) {
     lines.push(`  Blocked by: ${task.blockedBy.join(", ")}`);
   }
@@ -42,6 +45,8 @@ export const blockedCommand = Command.make("blocked", { json: jsonOption }, ({ j
         stateType: t.state.type,
         blockedBy: t.blockedBy,
         url: t.url,
+        milestoneId: Option.getOrNull(t.milestoneId),
+        milestoneName: Option.getOrNull(t.milestoneName),
       }));
       yield* Console.log(JSON.stringify(output, null, 2));
     } else {

@@ -28,6 +28,10 @@ const formatTask = (task: Task): string[] => {
     lines.push(`Type:     ${task.type.value}`);
   }
 
+  if (Option.isSome(task.milestoneName)) {
+    lines.push(`Milestone: ${task.milestoneName.value}`);
+  }
+
   if (task.labels.length > 0) {
     lines.push(`Labels:   ${task.labels.join(", ")}`);
   }
@@ -96,6 +100,8 @@ export const showCommand = Command.make(
           labels: task.labels,
           url: task.url,
           branchName: Option.getOrNull(task.branchName),
+          milestoneId: Option.getOrNull(task.milestoneId),
+          milestoneName: Option.getOrNull(task.milestoneName),
           blockedBy: task.blockedBy,
           blocks: task.blocks,
           subtasks: task.subtasks.map((s) => ({

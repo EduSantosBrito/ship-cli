@@ -288,6 +288,10 @@ const make = Effect.gen(function* () {
           createInput.parentId = input.parentId.value;
         }
 
+        if (Option.isSome(input.milestoneId)) {
+          createInput.projectMilestoneId = input.milestoneId.value;
+        }
+
         const issuePayload = yield* Effect.tryPromise({
           try: (signal) => withAbortSignal(client.createIssue(createInput), signal),
           catch: (e) => new LinearApiError({ message: `Failed to create issue: ${e}`, cause: e }),
@@ -334,6 +338,7 @@ const make = Effect.gen(function* () {
     stateId?: string;
     assigneeId?: string;
     parentId?: string | null;
+    projectMilestoneId?: string | null;
   }
 
   const updateTask = (
@@ -365,6 +370,12 @@ const make = Effect.gen(function* () {
         if (Option.isSome(input.parentId)) {
           // Empty string means remove parent, otherwise set the parent ID
           updatePayload.parentId = input.parentId.value === "" ? null : input.parentId.value;
+        }
+
+        if (Option.isSome(input.milestoneId)) {
+          // Empty string means remove milestone, otherwise set the milestone ID
+          updatePayload.projectMilestoneId =
+            input.milestoneId.value === "" ? null : input.milestoneId.value;
         }
 
         if (Option.isSome(input.status)) {
@@ -455,6 +466,10 @@ const make = Effect.gen(function* () {
 
         if (Option.isSome(filter.projectId)) {
           linearFilter.project = { id: { eq: filter.projectId.value } };
+        }
+
+        if (Option.isSome(filter.milestoneId)) {
+          linearFilter.projectMilestone = { id: { eq: filter.milestoneId.value } };
         }
 
         if (filter.assignedToMe) {

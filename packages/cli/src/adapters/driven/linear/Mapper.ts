@@ -110,6 +110,10 @@ export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Prom
   const labels = await issue.labels();
   const team = await issue.team;
 
+  // Fetch milestone info if available
+  // Linear SDK exposes projectMilestone as a relation
+  const milestone = await (issue as unknown as { projectMilestone?: Promise<{ id: string; name: string } | null> }).projectMilestone;
+
   // Get blocking relations
   // Note: Linear SDK doesn't directly expose relations, we'll handle this in the repository
   const blockedBy: TaskId[] = [];
@@ -152,6 +156,8 @@ export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Prom
     type: taskType,
     teamId: (team?.id ?? "") as TeamId,
     projectId: Option.none(), // Will be populated if needed
+    milestoneId: milestone ? Option.some(milestone.id as MilestoneId) : Option.none(),
+    milestoneName: milestone ? Option.some(milestone.name) : Option.none(),
     branchName: issue.branchName ? Option.some(issue.branchName) : Option.none(),
     url: issue.url,
     labels: labels?.nodes?.map((l) => l.name) ?? [],
