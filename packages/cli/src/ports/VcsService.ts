@@ -228,6 +228,21 @@ export interface VcsService {
    * @returns True if in a non-default workspace
    */
   readonly isNonDefaultWorkspace: () => Effect.Effect<boolean, VcsErrors>;
+
+  // === Stack Navigation ===
+
+  /**
+   * Get child change of current working copy (toward the tip of the stack)
+   * Returns null if current change has no children in the stack
+   */
+  readonly getChildChange: () => Effect.Effect<Change | null, VcsErrors>;
+
+  /**
+   * Edit a specific change (make it the working copy)
+   * This is equivalent to `jj edit <changeId>`
+   * @param changeId - The change ID to edit
+   */
+  readonly editChange: (changeId: ChangeId) => Effect.Effect<void, VcsErrors>;
 }
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");

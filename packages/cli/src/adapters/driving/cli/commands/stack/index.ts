@@ -21,6 +21,8 @@ import { squashCommand } from "./squash.js";
 import { abandonCommand } from "./abandon.js";
 import { workspacesCommand } from "./workspaces.js";
 import { removeWorkspaceCommand } from "./remove-workspace.js";
+import { upCommand } from "./up.js";
+import { downCommand } from "./down.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -38,6 +40,8 @@ Commands:
   submit            Push and create/update PR
   squash            Squash current change into parent
   abandon           Abandon a change
+  up                Move to child change (toward tip)
+  down              Move to parent change (toward trunk)
   workspaces        List jj workspaces
   remove-workspace  Remove a jj workspace
 
@@ -56,6 +60,8 @@ export const stackCommand = stack.pipe(
     submitCommand,
     squashCommand,
     abandonCommand,
+    upCommand,
+    downCommand,
     workspacesCommand,
     removeWorkspaceCommand,
   ]),

@@ -53,6 +53,8 @@ All stack actions support an optional `workdir` parameter for operating in jj wo
 | `stack-submit` | Push and create/update PR (auto-subscribes to webhook events) | draft (optional), workdir (optional) |
 | `stack-squash` | Squash current change into parent | message, workdir (optional) |
 | `stack-abandon` | Abandon current change | changeId (optional), workdir (optional) |
+| `stack-up` | Move to child change (toward tip of stack) | workdir (optional) |
+| `stack-down` | Move to parent change (toward trunk) | workdir (optional) |
 | `stack-workspaces` | List all jj workspaces | workdir (optional) |
 | `stack-remove-workspace` | Remove a jj workspace | name, deleteFiles (optional), workdir (optional) |
 
