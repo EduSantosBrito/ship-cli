@@ -67,6 +67,8 @@ export const readyCommand = Command.make("ready", { json: jsonOption }, ({ json 
           }
           yield* Console.log("");
         }
+        yield* Console.log("---");
+        yield* Console.log('Before starting work, read the skill: skill(name="ship-cli")');
       }
     }
   }),
