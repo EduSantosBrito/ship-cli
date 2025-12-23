@@ -224,4 +224,49 @@ RIGHT - Notify first, then ask:
     Would you like me to run \`stack-sync\` to update your local stack?
 
 This applies to ALL GitHub events: merges, review comments, CI failures, etc. The user should always know what happened before any action is taken.
+
+---
+
+## Command Output Guidance
+
+Every ship command includes contextual guidance in its output to help you understand:
+
+1. **Next actions** - Suggested next steps based on the command result
+2. **Workdir** - Explicit working directory path when it has changed (critical for workspace operations)
+3. **Skill reminder** - Prompt to read this skill when encountering complex situations
+
+### Guidance Format
+
+\`\`\`
+[Command Output]
+
+---
+Next: <suggested actions>
+Workdir: <path>           # Only shown when working directory changed
+Skill: skill(name="ship-cli")  # Only on entry points or complex situations
+Note: <contextual message>
+\`\`\`
+
+### Critical: Workspace Deletion
+
+When \`stack-sync\` detects a fully merged stack, it automatically:
+1. Cleans up the workspace (deletes directory)
+2. Provides the **main repo path** in the \`Workdir:\` line
+
+**You MUST use the provided workdir for all subsequent commands**, as the previous workspace directory no longer exists.
+
+Example output:
+\`\`\`
+Stack fully merged! All changes are now in trunk.
+Cleaned up workspace: bri-123-feature
+
+---
+Next: action=done (mark task complete) | action=ready (find next task)
+Workdir: /Users/dev/project
+Skill: skill(name="ship-cli")
+Note: Workspace 'bri-123-feature' was deleted. Use the workdir above for subsequent commands.
+\`\`\`
+
+After seeing this output, use \`workdir=/Users/dev/project\` for the next ship command.
 `;
+
