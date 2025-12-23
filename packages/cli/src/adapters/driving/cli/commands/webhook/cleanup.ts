@@ -39,12 +39,8 @@ export const cleanupCommand = Command.make("cleanup", { json: jsonOption }, ({ j
 
     // Run cleanup
     const removedSessions = yield* daemonService.cleanup().pipe(
-      Effect.catchTag("DaemonNotRunningError", () =>
-        Effect.fail({ type: "not_running" as const }),
-      ),
-      Effect.catchAll((e) =>
-        Effect.fail({ type: "error" as const, message: String(e) }),
-      ),
+      Effect.catchTag("DaemonNotRunningError", () => Effect.fail({ type: "not_running" as const })),
+      Effect.catchAll((e) => Effect.fail({ type: "error" as const, message: String(e) })),
     );
 
     if (typeof removedSessions === "object" && "type" in removedSessions) {

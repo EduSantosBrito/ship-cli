@@ -64,10 +64,7 @@ type Registry = HashMap.HashMap<number, HashSet.HashSet<string>>;
  * Type guard to check if an unknown error is a tagged Effect error with a specific tag.
  * Useful for runtime error type checking in catchAll handlers.
  */
-const isTaggedError = <T extends string>(
-  e: unknown,
-  tag: T,
-): e is { _tag: T; message: string } =>
+const isTaggedError = <T extends string>(e: unknown, tag: T): e is { _tag: T; message: string } =>
   typeof e === "object" && e !== null && "_tag" in e && e._tag === tag;
 
 // === IPC Command Request ===
@@ -339,7 +336,7 @@ const runDaemonServer = (
             // Find and remove subscriptions for sessions that no longer exist
             const registry = yield* Ref.get(registryRef);
             const allSessionIds = new Set<string>();
-            
+
             // Collect all session IDs from the registry
             for (const [_pr, sessions] of HashMap.entries(registry)) {
               for (const sessionId of HashSet.values(sessions)) {
@@ -667,8 +664,14 @@ const runDaemonServer = (
                 }
 
                 // For other errors, just log a warning (do NOT remove the subscription)
-                return Effect.logWarning("Failed to forward to session (will retry on next event)").pipe(
-                  Effect.annotateLogs({ sessionId, error: String(e), errorTag: (e as { _tag?: string })?._tag ?? "unknown" }),
+                return Effect.logWarning(
+                  "Failed to forward to session (will retry on next event)",
+                ).pipe(
+                  Effect.annotateLogs({
+                    sessionId,
+                    error: String(e),
+                    errorTag: (e as { _tag?: string })?._tag ?? "unknown",
+                  }),
                 );
               }),
             ),

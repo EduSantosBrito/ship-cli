@@ -119,7 +119,12 @@ export class StatusResponse extends Schema.Class<StatusResponse>("StatusResponse
 /**
  * Union of all IPC responses
  */
-export const IpcResponse = Schema.Union(SuccessResponse, ErrorResponse, StatusResponse, CleanupResponse);
+export const IpcResponse = Schema.Union(
+  SuccessResponse,
+  ErrorResponse,
+  StatusResponse,
+  CleanupResponse,
+);
 export type IpcResponse = typeof IpcResponse.Type;
 
 // === Daemon Errors ===

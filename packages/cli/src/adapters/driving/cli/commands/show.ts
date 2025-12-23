@@ -59,7 +59,9 @@ const formatTask = (task: Task): string[] => {
     for (const subtask of task.subtasks) {
       const statusIndicator = subtask.isDone ? "✓" : "○";
       const priorityDisplay = subtask.priority !== "none" ? ` [${subtask.priority}]` : "";
-      lines.push(`  ${statusIndicator} ${subtask.identifier}${priorityDisplay}: ${subtask.title} (${subtask.state})`);
+      lines.push(
+        `  ${statusIndicator} ${subtask.identifier}${priorityDisplay}: ${subtask.title} (${subtask.state})`,
+      );
     }
   }
 

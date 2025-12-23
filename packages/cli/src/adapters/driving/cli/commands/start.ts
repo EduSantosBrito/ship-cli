@@ -33,7 +33,9 @@ const jsonOption = Options.boolean("json").pipe(
 );
 
 const sessionOption = Options.text("session").pipe(
-  Options.withDescription("OpenCode session ID to label the task with (for tracking which agent is working on it)"),
+  Options.withDescription(
+    "OpenCode session ID to label the task with (for tracking which agent is working on it)",
+  ),
   Options.optional,
 );
 

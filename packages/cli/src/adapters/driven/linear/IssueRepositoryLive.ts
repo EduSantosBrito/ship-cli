@@ -17,7 +17,12 @@ import {
   type TaskType,
 } from "../../../domain/Task.js";
 import { LinearApiError, TaskError, TaskNotFoundError } from "../../../domain/Errors.js";
-import { mapIssueToTask, priorityToLinear, statusToLinearStateType, TYPE_LABEL_PREFIX } from "./Mapper.js";
+import {
+  mapIssueToTask,
+  priorityToLinear,
+  statusToLinearStateType,
+  TYPE_LABEL_PREFIX,
+} from "./Mapper.js";
 
 // Retry policy: exponential backoff with max 3 retries
 const retryPolicy = Schedule.intersect(
@@ -247,8 +252,7 @@ const make = Effect.gen(function* () {
 
       // Update the issue with new labels
       const result = yield* Effect.tryPromise({
-        try: (signal) =>
-          withAbortSignal(client.updateIssue(id, { labelIds: newLabelIds }), signal),
+        try: (signal) => withAbortSignal(client.updateIssue(id, { labelIds: newLabelIds }), signal),
         catch: (e) =>
           new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
       });
@@ -851,9 +855,8 @@ const make = Effect.gen(function* () {
         });
 
         // Find session labels on this issue
-        const sessionLabels = currentLabels?.nodes?.filter((l) =>
-          l.name.startsWith(SESSION_LABEL_PREFIX),
-        ) ?? [];
+        const sessionLabels =
+          currentLabels?.nodes?.filter((l) => l.name.startsWith(SESSION_LABEL_PREFIX)) ?? [];
 
         // If no session labels, nothing to do
         if (sessionLabels.length === 0) {
@@ -898,8 +901,7 @@ const make = Effect.gen(function* () {
           // If no issues use this label, delete it (non-fatal if this fails)
           if (issuesWithLabel.nodes.length === 0) {
             yield* Effect.tryPromise({
-              try: (signal) =>
-                withAbortSignal(client.deleteIssueLabel(sessionLabel.id), signal),
+              try: (signal) => withAbortSignal(client.deleteIssueLabel(sessionLabel.id), signal),
               catch: (e) =>
                 new LinearApiError({ message: `Failed to delete session label: ${e}`, cause: e }),
             }).pipe(Effect.ignore);

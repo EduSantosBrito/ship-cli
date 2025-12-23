@@ -160,7 +160,7 @@ export const submitCommand = Command.make(
       const stackChanges = yield* vcs.getStack().pipe(Effect.catchAll(() => Effect.succeed([])));
 
       // Helper to check if a change should be abandoned
-      const isEmptyWithoutDescription = (c: typeof stackChanges[number]) =>
+      const isEmptyWithoutDescription = (c: (typeof stackChanges)[number]) =>
         c.isEmpty &&
         (!c.description || c.description.trim() === "" || c.description === "(no description)") &&
         c.bookmarks.length === 0 &&
@@ -169,13 +169,11 @@ export const submitCommand = Command.make(
       const emptyChangesToAbandon = stackChanges.filter(isEmptyWithoutDescription);
 
       // Abandon empty changes and collect successfully abandoned change IDs
-      const abandonedChangeIds = yield* Effect.forEach(
-        emptyChangesToAbandon,
-        (emptyChange) =>
-          vcs.abandon(emptyChange.id).pipe(
-            Effect.map(() => emptyChange.changeId),
-            Effect.catchAll(() => Effect.succeed(null)), // Continue on failure
-          ),
+      const abandonedChangeIds = yield* Effect.forEach(emptyChangesToAbandon, (emptyChange) =>
+        vcs.abandon(emptyChange.id).pipe(
+          Effect.map(() => emptyChange.changeId),
+          Effect.catchAll(() => Effect.succeed(null)), // Continue on failure
+        ),
       ).pipe(Effect.map((ids) => ids.filter((id): id is string => id !== null)));
 
       // Push the bookmark to remote

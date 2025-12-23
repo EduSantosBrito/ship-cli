@@ -111,8 +111,12 @@ export const upCommand = Command.make("up", { json: jsonOption }, ({ json }) =>
       yield* Console.log(JSON.stringify(output, null, 2));
     } else {
       yield* Console.log(`Moved up in stack:`);
-      yield* Console.log(`  From: ${current.changeId.slice(0, 8)} ${current.description.split("\n")[0] || "(no description)"}`);
-      yield* Console.log(`  To:   ${child.changeId.slice(0, 8)} ${child.description.split("\n")[0] || "(no description)"}`);
+      yield* Console.log(
+        `  From: ${current.changeId.slice(0, 8)} ${current.description.split("\n")[0] || "(no description)"}`,
+      );
+      yield* Console.log(
+        `  To:   ${child.changeId.slice(0, 8)} ${child.description.split("\n")[0] || "(no description)"}`,
+      );
     }
   }),
 );

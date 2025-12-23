@@ -91,7 +91,9 @@ export const bookmarkCommand = Command.make(
         if (json) {
           yield* Console.log(JSON.stringify(output, null, 2));
         } else {
-          yield* Console.log(`Moved bookmark '${name}' to ${currentChange.change.changeId.slice(0, 8)}`);
+          yield* Console.log(
+            `Moved bookmark '${name}' to ${currentChange.change.changeId.slice(0, 8)}`,
+          );
         }
       } else {
         // Create new bookmark
@@ -133,7 +135,9 @@ export const bookmarkCommand = Command.make(
         if (json) {
           yield* Console.log(JSON.stringify(output, null, 2));
         } else {
-          yield* Console.log(`Created bookmark '${name}' at ${currentChange.change.changeId.slice(0, 8)}`);
+          yield* Console.log(
+            `Created bookmark '${name}' at ${currentChange.change.changeId.slice(0, 8)}`,
+          );
         }
       }
     }),

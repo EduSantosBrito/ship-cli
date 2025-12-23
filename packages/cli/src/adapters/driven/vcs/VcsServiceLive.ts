@@ -5,10 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Command from "@effect/platform/Command";
 import * as CommandExecutor from "@effect/platform/CommandExecutor";
 import { JjNotInstalledError, VcsError } from "../../../domain/Errors.js";
-import {
-  DEFAULT_WORKSPACE_NAME,
-  SHIP_WORKSPACES_DIR,
-} from "../../../domain/Config.js";
+import { DEFAULT_WORKSPACE_NAME, SHIP_WORKSPACES_DIR } from "../../../domain/Config.js";
 import {
   VcsService,
   ChangeId,
@@ -163,6 +160,9 @@ const make = Effect.gen(function* () {
     }
     return runJj("bookmark", "move", name, "--to", "@").pipe(Effect.asVoid);
   };
+
+  const deleteBookmark = (name: string): Effect.Effect<void, VcsErrors> =>
+    runJj("bookmark", "delete", name).pipe(Effect.asVoid);
 
   const getCurrentChange = (): Effect.Effect<Change, VcsErrors> =>
     Effect.gen(function* () {
@@ -616,6 +616,7 @@ const make = Effect.gen(function* () {
     commit,
     createBookmark,
     moveBookmark,
+    deleteBookmark,
     push,
     getCurrentChange,
     getStack,
