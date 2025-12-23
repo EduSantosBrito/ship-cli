@@ -145,6 +145,13 @@ export interface VcsService {
   readonly createBookmark: (name: string, ref?: ChangeId) => Effect.Effect<void, VcsErrors>;
 
   /**
+   * Move an existing bookmark to the current change (or specified revision)
+   * @param name - Bookmark name to move
+   * @param ref - Optional revision to move to (defaults to current @)
+   */
+  readonly moveBookmark: (name: string, ref?: ChangeId) => Effect.Effect<void, VcsErrors>;
+
+  /**
    * Push bookmark to remote
    */
   readonly push: (bookmark: string) => Effect.Effect<PushResult, VcsErrors>;
