@@ -54,6 +54,12 @@ const workspacePathOption = Options.text("workspace-path").pipe(
   Options.optional,
 );
 
+const taskIdOption = Options.text("task-id").pipe(
+  Options.withAlias("t"),
+  Options.withDescription("Associate workspace with a task ID (e.g., BRI-123)"),
+  Options.optional,
+);
+
 // === Output Types ===
 
 interface CreateOutput {
@@ -102,6 +108,41 @@ const slugify = (text: string): string => {
     .slice(0, 50); // Limit length
 };
 
+/**
+ * Extract task ID from bookmark or message.
+ * Looks for patterns like:
+ * - "user/bri-123-feature" -> "BRI-123"
+ * - "BRI-123: Some description" -> "BRI-123"
+ * - "bri-123-some-feature" -> "BRI-123"
+ *
+ * Returns null if no task ID pattern is found.
+ */
+const extractTaskId = (
+  bookmark: { _tag: "Some"; value: string } | { _tag: "None" },
+  message: { _tag: "Some"; value: string } | { _tag: "None" },
+): string | null => {
+  // Task ID pattern: letters followed by hyphen and numbers (e.g., BRI-123, ENG-456)
+  const taskIdPattern = /\b([a-zA-Z]+-\d+)\b/;
+
+  // Try bookmark first (more reliable since it's typically derived from task)
+  if (bookmark._tag === "Some") {
+    const match = bookmark.value.match(taskIdPattern);
+    if (match) {
+      return match[1].toUpperCase();
+    }
+  }
+
+  // Fall back to message
+  if (message._tag === "Some") {
+    const match = message.value.match(taskIdPattern);
+    if (match) {
+      return match[1].toUpperCase();
+    }
+  }
+
+  return null;
+};
+
 // === Command ===
 
 export const createCommand = Command.make(
@@ -112,8 +153,9 @@ export const createCommand = Command.make(
     bookmark: bookmarkOption,
     noWorkspace: noWorkspaceOption,
     workspacePath: workspacePathOption,
+    taskId: taskIdOption,
   },
-  ({ json, message, bookmark, noWorkspace, workspacePath }) =>
+  ({ json, message, bookmark, noWorkspace, workspacePath, taskId }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -163,13 +205,17 @@ export const createCommand = Command.make(
           return;
         }
 
+        // Resolve task ID: prefer explicit --task-id, fall back to extraction from bookmark/message
+        const resolvedTaskId =
+          taskId._tag === "Some" ? taskId.value.toUpperCase() : extractTaskId(bookmark, message);
+
         // Save workspace metadata for task association tracking
         yield* saveWorkspaceMetadata(configRepo, {
           name: stackName,
           path: workspaceResult.info.path,
           stackName,
           bookmark: bookmark._tag === "Some" ? bookmark.value : null,
-          taskId: null,
+          taskId: resolvedTaskId,
         });
 
         // Create bookmark if requested on the new workspace's working copy
