@@ -297,8 +297,16 @@ export const TestIssueRepositoryLayer = (
               (t) => t.teamId === teamId && !t.isDone,
             );
 
-            // Filter to tasks with no blockers
-            tasks = tasks.filter((t) => t.blockedBy.length === 0);
+            // Filter to tasks with no incomplete blockers
+            // A task is ready if it has no blockers OR all blockers are completed
+            tasks = tasks.filter((t) => {
+              if (t.blockedBy.length === 0) return true;
+              // Check if all blockers are completed
+              return t.blockedBy.every((blockerId) => {
+                const blocker = state.tasks.get(blockerId);
+                return blocker?.isDone ?? true; // If blocker not found, consider it done
+              });
+            });
 
             if (projectId) {
               tasks = tasks.filter(
@@ -316,9 +324,15 @@ export const TestIssueRepositoryLayer = (
             yield* checkGlobalApiError;
 
             const state = yield* Ref.get(stateRef);
-            let tasks = Array.from(state.tasks.values()).filter(
-              (t) => t.teamId === teamId && !t.isDone && t.blockedBy.length > 0,
-            );
+            let tasks = Array.from(state.tasks.values()).filter((t) => {
+              if (t.teamId !== teamId || t.isDone) return false;
+              if (t.blockedBy.length === 0) return false;
+              // Task is blocked if at least one blocker is incomplete
+              return t.blockedBy.some((blockerId) => {
+                const blocker = state.tasks.get(blockerId);
+                return blocker && !blocker.isDone;
+              });
+            });
 
             if (projectId) {
               tasks = tasks.filter(

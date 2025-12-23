@@ -403,12 +403,143 @@ describe("IssueRepository Error Paths", () => {
       }).pipe(Effect.provide(TestIssueRepositoryLayer())),
     );
 
-    it.effect("getReadyTasks returns tasks without blockers", () =>
+    it.effect("getReadyTasks returns tasks without incomplete blockers", () =>
       Effect.gen(function* () {
         const repo = yield* IssueRepository;
         const tasks = yield* repo.getReadyTasks(testTeamId);
-        expect(tasks.every((t) => t.blockedBy.length === 0)).toBe(true);
+        // Default test tasks have no blockers, so all should be ready
+        expect(tasks.length).toBeGreaterThan(0);
       }).pipe(Effect.provide(TestIssueRepositoryLayer())),
+    );
+
+    it.effect("getReadyTasks excludes tasks with incomplete blockers", () =>
+      Effect.gen(function* () {
+        const repo = yield* IssueRepository;
+        const tasks = yield* repo.getReadyTasks(testTeamId);
+
+        // task-blocked should NOT appear (has incomplete blocker)
+        expect(tasks.find((t) => t.id === "task-blocked")).toBeUndefined();
+        // task-ready should appear (no blockers)
+        expect(tasks.find((t) => t.id === "task-ready")).toBeDefined();
+      }).pipe(
+        Effect.provide(
+          TestIssueRepositoryLayer({
+            tasks: new Map([
+              [
+                "task-blocked",
+                createTestTask({
+                  id: "task-blocked",
+                  identifier: "TEST-1",
+                  blockedBy: ["blocker-incomplete"],
+                }),
+              ],
+              [
+                "blocker-incomplete",
+                createTestTask({
+                  id: "blocker-incomplete",
+                  identifier: "TEST-2",
+                  blocks: ["task-blocked"],
+                  stateType: "unstarted",
+                }),
+              ],
+              [
+                "task-ready",
+                createTestTask({
+                  id: "task-ready",
+                  identifier: "TEST-3",
+                }),
+              ],
+            ]),
+          }),
+        ),
+      ),
+    );
+
+    it.effect("getReadyTasks includes tasks whose blockers are all completed", () =>
+      Effect.gen(function* () {
+        const repo = yield* IssueRepository;
+        const tasks = yield* repo.getReadyTasks(testTeamId);
+
+        // task-with-completed-blocker SHOULD appear (blocker is done)
+        expect(tasks.find((t) => t.id === "task-with-completed-blocker")).toBeDefined();
+      }).pipe(
+        Effect.provide(
+          TestIssueRepositoryLayer({
+            tasks: new Map([
+              [
+                "task-with-completed-blocker",
+                createTestTask({
+                  id: "task-with-completed-blocker",
+                  identifier: "TEST-1",
+                  blockedBy: ["blocker-completed"],
+                }),
+              ],
+              [
+                "blocker-completed",
+                createTestTask({
+                  id: "blocker-completed",
+                  identifier: "TEST-2",
+                  blocks: ["task-with-completed-blocker"],
+                  stateType: "completed",
+                }),
+              ],
+            ]),
+          }),
+        ),
+      ),
+    );
+
+    it.effect("getBlockedTasks returns only tasks with incomplete blockers", () =>
+      Effect.gen(function* () {
+        const repo = yield* IssueRepository;
+        const tasks = yield* repo.getBlockedTasks(testTeamId);
+
+        // task-blocked should appear (has incomplete blocker)
+        expect(tasks.find((t) => t.id === "task-blocked")).toBeDefined();
+        // task-with-completed-blocker should NOT appear (blocker is done)
+        expect(tasks.find((t) => t.id === "task-with-completed-blocker")).toBeUndefined();
+      }).pipe(
+        Effect.provide(
+          TestIssueRepositoryLayer({
+            tasks: new Map([
+              [
+                "task-blocked",
+                createTestTask({
+                  id: "task-blocked",
+                  identifier: "TEST-1",
+                  blockedBy: ["blocker-incomplete"],
+                }),
+              ],
+              [
+                "blocker-incomplete",
+                createTestTask({
+                  id: "blocker-incomplete",
+                  identifier: "TEST-2",
+                  blocks: ["task-blocked"],
+                  stateType: "unstarted",
+                }),
+              ],
+              [
+                "task-with-completed-blocker",
+                createTestTask({
+                  id: "task-with-completed-blocker",
+                  identifier: "TEST-3",
+                  blockedBy: ["blocker-completed"],
+                }),
+              ],
+              [
+                "blocker-completed",
+                createTestTask({
+                  id: "blocker-completed",
+                  identifier: "TEST-4",
+                  blocks: ["task-with-completed-blocker"],
+                  stateType: "completed",
+                }),
+              ],
+            ]),
+          }),
+        ),
+      ),
     );
 
     it.effect("addBlocker adds blocking relationship", () =>
@@ -622,7 +753,7 @@ describe("IssueRepository Error Paths", () => {
       ),
     );
 
-    it.effect("getBlockedTasks returns only tasks with blockers", () =>
+    it.effect("getBlockedTasks returns only tasks with incomplete blockers", () =>
       Effect.gen(function* () {
         const repo = yield* IssueRepository;
         const tasks = yield* repo.getBlockedTasks(testTeamId);
@@ -638,6 +769,15 @@ describe("IssueRepository Error Paths", () => {
                   id: "blocked-task",
                   identifier: "TEST-1",
                   blockedBy: ["blocker-task"],
+                }),
+              ],
+              [
+                "blocker-task",
+                createTestTask({
+                  id: "blocker-task",
+                  identifier: "TEST-3",
+                  blocks: ["blocked-task"],
+                  stateType: "unstarted", // Blocker is incomplete
                 }),
               ],
               [
