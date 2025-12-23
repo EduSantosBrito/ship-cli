@@ -338,7 +338,7 @@ describe("Domain Errors", () => {
           "JjStaleWorkingCopyError",
         )
         expect(JjStaleWorkingCopyError.default.message).toBe(
-          "The working copy is stale. Run 'jj workspace update-stale' to recover.",
+          "The working copy is stale. Run 'ship stack update-stale' to recover.",
         )
       })
     })

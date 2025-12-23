@@ -129,7 +129,7 @@ export class JjStaleWorkingCopyError extends Data.TaggedError("JjStaleWorkingCop
   readonly message: string;
 }> {
   static readonly default = new JjStaleWorkingCopyError({
-    message: "The working copy is stale. Run 'jj workspace update-stale' to recover.",
+    message: "The working copy is stale. Run 'ship stack update-stale' to recover.",
   });
 }
 
