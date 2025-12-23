@@ -94,6 +94,7 @@ export const teamCommand = Command.make("team", {}, () =>
             validate: (v) => {
               if (!v) return "Key is required";
               if (!/^[A-Z]{2,5}$/.test(v.toUpperCase())) return "Key must be 2-5 uppercase letters";
+              return undefined;
             },
           }),
         catch: () => PromptCancelledError.default,
