@@ -6,9 +6,25 @@
   "description": "Linear + jj workflow CLI for AI agents",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/ship",
+    "url": "https://github.com/EduSantosBrito/ship-cli.git",
     "directory": "packages/cli"
   },
+  "homepage": "https://github.com/EduSantosBrito/ship-cli#readme",
+  "bugs": {
+    "url": "https://github.com/EduSantosBrito/ship-cli/issues"
+  },
+  "author": "Eduardo Santos de Brito",
+  "keywords": [
+    "linear",
+    "jj",
+    "jujutsu",
+    "cli",
+    "ai",
+    "opencode",
+    "task-management",
+    "stacked-diffs",
+    "effect"
+  ],
   "bin": {
     "ship": "./dist/bin.js"
   },

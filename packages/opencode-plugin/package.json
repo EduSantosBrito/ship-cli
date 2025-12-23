@@ -19,9 +19,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/ship",
+    "url": "https://github.com/EduSantosBrito/ship-cli.git",
     "directory": "packages/opencode-plugin"
   },
+  "homepage": "https://github.com/EduSantosBrito/ship-cli#readme",
+  "bugs": {
+    "url": "https://github.com/EduSantosBrito/ship-cli/issues"
+  },
+  "author": "Eduardo Santos de Brito",
   "publishConfig": {
     "access": "public"
   },
