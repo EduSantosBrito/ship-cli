@@ -289,3 +289,24 @@ export class WorkspaceNotFoundError extends Data.TaggedError("WorkspaceNotFoundE
     });
   }
 }
+
+// === Template Errors ===
+
+/** Template not found by name */
+export class TemplateNotFoundError extends Data.TaggedError("TemplateNotFoundError")<{
+  readonly message: string;
+  readonly templateName: string;
+}> {
+  static forName(name: string) {
+    return new TemplateNotFoundError({
+      message: `Template '${name}' not found. Run 'ship template list' to see available templates.`,
+      templateName: name,
+    });
+  }
+}
+
+/** Generic template error */
+export class TemplateError extends Data.TaggedError("TemplateError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
