@@ -983,9 +983,534 @@ type ToolArgs = {
   prNumbers?: number[];
 };
 
+/**
+ * Action handlers for the ship tool.
+ * Each handler returns an Effect that produces a formatted string result.
+ *
+ * Using a record of handlers provides:
+ * - Cleaner separation of action logic
+ * - No fall-through bugs
+ * - Easier to add new actions
+ * - Each handler is self-contained
+ */
+type ActionHandler = (
+  ship: ShipService,
+  args: ToolArgs,
+  contextSessionId?: string,
+) => Effect.Effect<string, ShipCommandError | JsonParseError, never>;
+
+const actionHandlers: Record<string, ActionHandler> = {
+  status: (ship) =>
+    Effect.gen(function* () {
+      const status = yield* ship.checkConfigured();
+      if (status.configured) {
+        return `Ship is configured.\n\nTeam: ${status.teamKey}\nProject: ${status.projectId || "none"}`;
+      }
+      return "Ship is not configured. Run 'ship init' first.";
+    }),
+
+  ready: (ship) =>
+    Effect.gen(function* () {
+      const tasks = yield* ship.getReadyTasks();
+      if (tasks.length === 0) {
+        return "No tasks ready to work on (all tasks are either blocked or completed).";
+      }
+      const skillReminder = "\n---\nBefore starting work, read the skill: skill(name=\"ship-cli\")";
+      return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}${skillReminder}`;
+    }),
+
+  blocked: (ship) =>
+    Effect.gen(function* () {
+      const tasks = yield* ship.getBlockedTasks();
+      if (tasks.length === 0) {
+        return "No blocked tasks.";
+      }
+      return `Blocked tasks:\n\n${formatTaskList(tasks)}`;
+    }),
+
+  list: (ship, args) =>
+    Effect.gen(function* () {
+      const tasks = yield* ship.listTasks(args.filter);
+      if (tasks.length === 0) {
+        return "No tasks found matching the filter.";
+      }
+      return `Tasks:\n\n${formatTaskList(tasks)}`;
+    }),
+
+  show: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.taskId) {
+        return "Error: taskId is required for show action";
+      }
+      const task = yield* ship.getTask(args.taskId);
+      return formatTaskDetails(task);
+    }),
+
+  start: (ship, args, contextSessionId) =>
+    Effect.gen(function* () {
+      if (!args.taskId) {
+        return "Error: taskId is required for start action";
+      }
+      yield* ship.startTask(args.taskId, contextSessionId);
+      const sessionInfo = contextSessionId ? ` (labeled with session:${contextSessionId})` : "";
+      return `Started working on ${args.taskId}${sessionInfo}`;
+    }),
+
+  done: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.taskId) {
+        return "Error: taskId is required for done action";
+      }
+      yield* ship.completeTask(args.taskId);
+      return `Completed ${args.taskId}`;
+    }),
+
+  create: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.title) {
+        return "Error: title is required for create action";
+      }
+      const task = yield* ship.createTask({
+        title: args.title,
+        description: args.description,
+        priority: args.priority,
+        parentId: args.parentId,
+      });
+      if (args.parentId) {
+        return `Created subtask ${task.identifier}: ${task.title}\nParent: ${args.parentId}\nURL: ${task.url}`;
+      }
+      return `Created task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
+    }),
+
+  update: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.taskId) {
+        return "Error: taskId is required for update action";
+      }
+      if (!args.title && !args.description && !args.priority && !args.status) {
+        return "Error: at least one of title, description, priority, or status is required for update";
+      }
+      const task = yield* ship.updateTask(args.taskId, {
+        title: args.title,
+        description: args.description,
+        priority: args.priority,
+        status: args.status,
+      });
+      return `Updated task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
+    }),
+
+  block: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.blocker || !args.blocked) {
+        return "Error: both blocker and blocked task IDs are required";
+      }
+      yield* ship.addBlocker(args.blocker, args.blocked);
+      return `${args.blocker} now blocks ${args.blocked}`;
+    }),
+
+  unblock: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.blocker || !args.blocked) {
+        return "Error: both blocker and blocked task IDs are required";
+      }
+      yield* ship.removeBlocker(args.blocker, args.blocked);
+      return `Removed ${args.blocker} as blocker of ${args.blocked}`;
+    }),
+
+  relate: (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.taskId || !args.relatedTaskId) {
+        return "Error: both taskId and relatedTaskId are required for relate action";
+      }
+      yield* ship.relateTask(args.taskId, args.relatedTaskId);
+      return `Linked ${args.taskId} ↔ ${args.relatedTaskId} as related`;
+    }),
+
+  "stack-log": (ship, args) =>
+    Effect.gen(function* () {
+      const changes = yield* ship.getStackLog(args.workdir);
+      if (changes.length === 0) {
+        return "No changes in stack (working copy is on trunk)";
+      }
+      return `Stack (${changes.length} changes):\n\n${changes
+        .map((c) => {
+          const marker = c.isWorkingCopy ? "@" : "○";
+          const empty = c.isEmpty ? " (empty)" : "";
+          const bookmarks = c.bookmarks.length > 0 ? ` [${c.bookmarks.join(", ")}]` : "";
+          const desc = c.description.split("\n")[0] || "(no description)";
+          return `${marker}  ${c.changeId.slice(0, 8)} ${desc}${empty}${bookmarks}`;
+        })
+        .join("\n")}`;
+    }),
+
+  "stack-status": (ship, args) =>
+    Effect.gen(function* () {
+      const status = yield* ship.getStackStatus(args.workdir);
+      if (!status.isRepo) {
+        return `Error: ${status.error || "Not a jj repository"}`;
+      }
+      if (!status.change) {
+        return "Error: Could not get current change";
+      }
+      const c = status.change;
+      let output = `Change:      ${c.changeId.slice(0, 8)}
+Commit:      ${c.commitId.slice(0, 12)}
+Description: ${c.description.split("\n")[0] || "(no description)"}`;
+      if (c.bookmarks.length > 0) {
+        output += `\nBookmarks:   ${c.bookmarks.join(", ")}`;
+      }
+      output += `\nStatus:      ${c.isEmpty ? "empty (no changes)" : "has changes"}`;
+      return output;
+    }),
+
+  "stack-create": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.createStackChange({
+        message: args.message,
+        bookmark: args.bookmark,
+        noWorkspace: args.noWorkspace,
+        taskId: args.taskId,
+        workdir: args.workdir,
+      });
+      if (!result.created) {
+        return `Error: ${result.error || "Failed to create change"}`;
+      }
+      let output = `Created change: ${result.changeId}`;
+      if (result.bookmark) {
+        output += `\nCreated bookmark: ${result.bookmark}`;
+      }
+      if (result.workspace?.created) {
+        output += `\nCreated workspace: ${result.workspace.name} at ${result.workspace.path}`;
+      }
+      return output;
+    }),
+
+  "stack-describe": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.message) {
+        return "Error: message is required for stack-describe action";
+      }
+      const result = yield* ship.describeStackChange(args.message, args.workdir);
+      if (!result.updated) {
+        return `Error: ${result.error || "Failed to update description"}`;
+      }
+      return `Updated change ${result.changeId?.slice(0, 8) || ""}\nDescription: ${result.description || args.message}`;
+    }),
+
+  "stack-sync": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.syncStack(args.workdir);
+      if (result.error) {
+        return `Sync failed: [${result.error.tag}] ${result.error.message}`;
+      }
+
+      const parts: string[] = [];
+
+      if (result.abandonedMergedChanges && result.abandonedMergedChanges.length > 0) {
+        parts.push("Auto-abandoned merged changes:");
+        for (const change of result.abandonedMergedChanges) {
+          const bookmarkInfo = change.bookmark ? ` (${change.bookmark})` : "";
+          parts.push(`  - ${change.changeId}${bookmarkInfo}`);
+        }
+        parts.push("");
+      }
+
+      if (result.stackFullyMerged) {
+        parts.push("Stack fully merged! All changes are now in trunk.");
+        if (result.cleanedUpWorkspace) {
+          parts.push(`Cleaned up workspace: ${result.cleanedUpWorkspace}`);
+        }
+        parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+      } else if (result.conflicted) {
+        parts.push("Sync completed with conflicts!");
+        parts.push(`  Fetched: yes`);
+        parts.push(`  Rebased: yes (with conflicts)`);
+        parts.push(`  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+        parts.push(`  Stack:   ${result.stackSize} change(s)`);
+        parts.push("");
+        parts.push("Resolve conflicts with 'jj status' and edit the conflicted files.");
+      } else if (!result.rebased) {
+        parts.push("Already up to date.");
+        parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+        parts.push(`  Stack: ${result.stackSize} change(s)`);
+      } else {
+        parts.push("Sync completed successfully.");
+        parts.push(`  Fetched: yes`);
+        parts.push(`  Rebased: yes`);
+        parts.push(`  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+        parts.push(`  Stack:   ${result.stackSize} change(s)`);
+      }
+
+      return parts.join("\n");
+    }),
+
+  "stack-restack": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.restackStack(args.workdir);
+      if (result.error) {
+        return `Restack failed: ${result.error}`;
+      }
+      if (!result.restacked) {
+        return `Nothing to restack (working copy is on trunk).
+  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`;
+      }
+      if (result.conflicted) {
+        return `Restack completed with conflicts!
+  Rebased: yes (with conflicts)
+  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack:   ${result.stackSize} change(s)
+
+Resolve conflicts with 'jj status' and edit the conflicted files.`;
+      }
+      return `Restack completed successfully.
+  Rebased: ${result.stackSize} change(s)
+  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack:   ${result.stackSize} change(s)`;
+    }),
+
+  "stack-submit": (ship, args, contextSessionId) =>
+    Effect.gen(function* () {
+      const subscribeSessionId = args.sessionId || contextSessionId;
+
+      const result = yield* ship.submitStack({
+        draft: args.draft,
+        title: args.title,
+        body: args.body,
+        subscribe: subscribeSessionId,
+        workdir: args.workdir,
+      });
+      if (result.error) {
+        if (result.pushed) {
+          return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\nWarning: ${result.error}`;
+        }
+        return `Error: ${result.error}`;
+      }
+      let output = "";
+      if (result.pr) {
+        const statusMsg =
+          result.pr.status === "created"
+            ? "Created PR"
+            : result.pr.status === "exists"
+              ? "PR already exists"
+              : "Updated PR";
+        output = `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
+      } else {
+        output = `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
+      }
+      if (result.subscribed) {
+        output += `\n\nAuto-subscribed to stack PRs: ${result.subscribed.prNumbers.join(", ")}`;
+      }
+      return output;
+    }),
+
+  "stack-squash": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.message) {
+        return "Error: message is required for stack-squash action";
+      }
+      const result = yield* ship.squashStack(args.message, args.workdir);
+      if (!result.squashed) {
+        return `Error: ${result.error || "Failed to squash"}`;
+      }
+      return `Squashed into ${result.intoChangeId?.slice(0, 8) || "parent"}\nDescription: ${result.description?.split("\n")[0] || "(no description)"}`;
+    }),
+
+  "stack-abandon": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.abandonStack(args.changeId, args.workdir);
+      if (!result.abandoned) {
+        return `Error: ${result.error || "Failed to abandon"}`;
+      }
+      return `Abandoned ${result.changeId?.slice(0, 8) || "change"}\nWorking copy now at: ${result.newWorkingCopy?.slice(0, 8) || "unknown"}`;
+    }),
+
+  "stack-up": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.stackUp(args.workdir);
+      if (!result.moved) {
+        return result.error || "Already at the tip of the stack (no child change)";
+      }
+      return `Moved up in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
+    }),
+
+  "stack-down": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.stackDown(args.workdir);
+      if (!result.moved) {
+        return result.error || "Already at the base of the stack (on trunk)";
+      }
+      return `Moved down in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
+    }),
+
+  "stack-undo": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.stackUndo(args.workdir);
+      if (!result.undone) {
+        return `Error: ${result.error || "Failed to undo"}`;
+      }
+      return result.operation ? `Undone: ${result.operation}` : "Undone last operation";
+    }),
+
+  "stack-update-stale": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.stackUpdateStale(args.workdir);
+      if (!result.updated) {
+        return `Error: ${result.error || "Failed to update stale workspace"}`;
+      }
+      return result.changeId ? `Working copy updated. Now at: ${result.changeId}` : "Working copy updated.";
+    }),
+
+  "stack-bookmark": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.name) {
+        return "Error: name is required for stack-bookmark action";
+      }
+      const result = yield* ship.bookmarkStack(args.name, args.move, args.workdir);
+      if (!result.success) {
+        return `Error: ${result.error || "Failed to create/move bookmark"}`;
+      }
+      const action = result.action === "moved" ? "Moved" : "Created";
+      return `${action} bookmark '${result.bookmark}' at ${result.changeId?.slice(0, 8) || "current change"}`;
+    }),
+
+  "stack-workspaces": (ship, args) =>
+    Effect.gen(function* () {
+      const workspaces = yield* ship.listWorkspaces(args.workdir);
+      if (workspaces.length === 0) {
+        return "No workspaces found.";
+      }
+      return `Workspaces (${workspaces.length}):\n\n${workspaces
+        .map((ws: WorkspaceOutput) => {
+          const defaultMark = ws.isDefault ? " (default)" : "";
+          const stack = ws.stackName ? ` stack:${ws.stackName}` : "";
+          const task = ws.taskId ? ` task:${ws.taskId}` : "";
+          return `${ws.name}${defaultMark}${stack}${task}\n  Change: ${ws.changeId} - ${ws.description}\n  Path: ${ws.path}`;
+        })
+        .join("\n\n")}`;
+    }),
+
+  "stack-remove-workspace": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.name) {
+        return "Error: name is required for stack-remove-workspace action";
+      }
+      const result = yield* ship.removeWorkspace(args.name, args.deleteFiles, args.workdir);
+      if (!result.removed) {
+        return `Error: ${result.error || "Failed to remove workspace"}`;
+      }
+      let output = `Removed workspace: ${result.name}`;
+      if (result.filesDeleted !== undefined) {
+        output += result.filesDeleted ? "\nFiles deleted." : "\nFiles remain on disk.";
+      }
+      return output;
+    }),
+
+  "webhook-start": (ship, args) =>
+    Effect.gen(function* () {
+      const result = yield* ship.startWebhook(args.events);
+      if (!result.started) {
+        return `Error: ${result.error}${result.pid ? ` (PID: ${result.pid})` : ""}`;
+      }
+      return `Webhook forwarding started (PID: ${result.pid})
+Events: ${result.events?.join(", ") || "default"}
+
+GitHub events will be forwarded to the current OpenCode session.
+Use action 'webhook-stop' to stop forwarding.`;
+    }),
+
+  "webhook-stop": (ship) =>
+    Effect.gen(function* () {
+      const result = yield* ship.stopWebhook();
+      if (!result.stopped) {
+        return result.error || "No webhook forwarding process is running";
+      }
+      return "Webhook forwarding stopped.";
+    }),
+
+  "webhook-status": (ship) =>
+    Effect.gen(function* () {
+      const status = yield* ship.getWebhookStatus();
+      if (status.running) {
+        return `Webhook forwarding is running (PID: ${status.pid})`;
+      }
+      return "Webhook forwarding is not running.";
+    }),
+
+  "webhook-daemon-status": (ship) =>
+    Effect.gen(function* () {
+      const status = yield* ship.getDaemonStatus();
+      if (!status.running) {
+        return "Webhook daemon is not running.\n\nStart it with: ship webhook start";
+      }
+      let output = `Webhook Daemon Status
+─────────────────────────────────────────
+Status: Running
+PID: ${status.pid || "unknown"}
+Repository: ${status.repo || "unknown"}
+GitHub WebSocket: ${status.connectedToGitHub ? "Connected" : "Disconnected"}
+Uptime: ${status.uptime ? `${status.uptime}s` : "unknown"}
+
+Subscriptions:`;
+      if (!status.subscriptions || status.subscriptions.length === 0) {
+        output += "\n  No active subscriptions.";
+      } else {
+        for (const sub of status.subscriptions) {
+          output += `\n  Session ${sub.sessionId}: PRs ${sub.prNumbers.join(", ")}`;
+        }
+      }
+      return output;
+    }),
+
+  "webhook-subscribe": (ship, args, contextSessionId) =>
+    Effect.gen(function* () {
+      const sessionId = args.sessionId || contextSessionId;
+      if (!sessionId) {
+        return "Error: sessionId is required for webhook-subscribe action (not provided and could not auto-detect from context)";
+      }
+      if (!args.prNumbers || args.prNumbers.length === 0) {
+        return "Error: prNumbers is required for webhook-subscribe action";
+      }
+      const result = yield* ship.subscribeToPRs(sessionId, args.prNumbers);
+      if (!result.subscribed) {
+        return `Error: ${result.error || "Failed to subscribe"}`;
+      }
+      return `Subscribed session ${sessionId} to PRs: ${args.prNumbers.join(", ")}
+
+The daemon will forward GitHub events for these PRs to your session.
+Use 'webhook-unsubscribe' to stop receiving events.`;
+    }),
+
+  "webhook-unsubscribe": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.sessionId) {
+        return "Error: sessionId is required for webhook-unsubscribe action";
+      }
+      if (!args.prNumbers || args.prNumbers.length === 0) {
+        return "Error: prNumbers is required for webhook-unsubscribe action";
+      }
+      const result = yield* ship.unsubscribeFromPRs(args.sessionId, args.prNumbers);
+      if (!result.unsubscribed) {
+        return `Error: ${result.error || "Failed to unsubscribe"}`;
+      }
+      return `Unsubscribed session ${args.sessionId} from PRs: ${args.prNumbers.join(", ")}`;
+    }),
+
+  "webhook-cleanup": (ship) =>
+    Effect.gen(function* () {
+      const result = yield* ship.cleanupStaleSubscriptions();
+      if (!result.success) {
+        return `Error: ${result.error || "Failed to cleanup"}`;
+      }
+      if (result.removedSessions.length === 0) {
+        return "No stale subscriptions found. All subscribed sessions are still active.";
+      }
+      return `Cleaned up ${result.removedSessions.length} stale subscription(s):\n${result.removedSessions.map((s: string) => `  - ${s}`).join("\n")}\n\nThese sessions no longer exist in OpenCode.`;
+    }),
+};
+
 const executeAction = (
   args: ToolArgs,
-  contextSessionId?: string, // Session ID from OpenCode tool context
+  contextSessionId?: string,
 ): Effect.Effect<string, ShipCommandError | JsonParseError | ShipNotConfiguredError, ShipService> =>
   Effect.gen(function* () {
     const ship = yield* ShipService;
@@ -998,498 +1523,13 @@ const executeAction = (
       }
     }
 
-    switch (args.action) {
-      case "status": {
-        const status = yield* ship.checkConfigured();
-        if (status.configured) {
-          return `Ship is configured.\n\nTeam: ${status.teamKey}\nProject: ${status.projectId || "none"}`;
-        }
-        return "Ship is not configured. Run 'ship init' first.";
-      }
-
-      case "ready": {
-        const tasks = yield* ship.getReadyTasks();
-        if (tasks.length === 0) {
-          return "No tasks ready to work on (all tasks are either blocked or completed).";
-        }
-        const skillReminder =
-          "\n---\nBefore starting work, read the skill: skill(name=\"ship-cli\")";
-        return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}${skillReminder}`;
-      }
-
-      case "blocked": {
-        const tasks = yield* ship.getBlockedTasks();
-        if (tasks.length === 0) {
-          return "No blocked tasks.";
-        }
-        return `Blocked tasks:\n\n${formatTaskList(tasks)}`;
-      }
-
-      case "list": {
-        const tasks = yield* ship.listTasks(args.filter);
-        if (tasks.length === 0) {
-          return "No tasks found matching the filter.";
-        }
-        return `Tasks:\n\n${formatTaskList(tasks)}`;
-      }
-
-      case "show": {
-        if (!args.taskId) {
-          return "Error: taskId is required for show action";
-        }
-        const task = yield* ship.getTask(args.taskId);
-        return formatTaskDetails(task);
-      }
-
-      case "start": {
-        if (!args.taskId) {
-          return "Error: taskId is required for start action";
-        }
-        // Pass context session ID for labeling which agent is working on the task
-        yield* ship.startTask(args.taskId, contextSessionId);
-        const sessionInfo = contextSessionId ? ` (labeled with session:${contextSessionId})` : "";
-        return `Started working on ${args.taskId}${sessionInfo}`;
-      }
-
-      case "done": {
-        if (!args.taskId) {
-          return "Error: taskId is required for done action";
-        }
-        yield* ship.completeTask(args.taskId);
-        return `Completed ${args.taskId}`;
-      }
-
-      case "create": {
-        if (!args.title) {
-          return "Error: title is required for create action";
-        }
-        const task = yield* ship.createTask({
-          title: args.title,
-          description: args.description,
-          priority: args.priority,
-          parentId: args.parentId,
-        });
-        if (args.parentId) {
-          return `Created subtask ${task.identifier}: ${task.title}\nParent: ${args.parentId}\nURL: ${task.url}`;
-        }
-        return `Created task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
-      }
-
-      case "update": {
-        if (!args.taskId) {
-          return "Error: taskId is required for update action";
-        }
-        if (!args.title && !args.description && !args.priority && !args.status) {
-          return "Error: at least one of title, description, priority, or status is required for update";
-        }
-        const task = yield* ship.updateTask(args.taskId, {
-          title: args.title,
-          description: args.description,
-          priority: args.priority,
-          status: args.status,
-        });
-        return `Updated task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
-      }
-
-      case "block": {
-        if (!args.blocker || !args.blocked) {
-          return "Error: both blocker and blocked task IDs are required";
-        }
-        yield* ship.addBlocker(args.blocker, args.blocked);
-        return `${args.blocker} now blocks ${args.blocked}`;
-      }
-
-      case "unblock": {
-        if (!args.blocker || !args.blocked) {
-          return "Error: both blocker and blocked task IDs are required";
-        }
-        yield* ship.removeBlocker(args.blocker, args.blocked);
-        return `Removed ${args.blocker} as blocker of ${args.blocked}`;
-      }
-
-      case "relate": {
-        if (!args.taskId || !args.relatedTaskId) {
-          return "Error: both taskId and relatedTaskId are required for relate action";
-        }
-        yield* ship.relateTask(args.taskId, args.relatedTaskId);
-        return `Linked ${args.taskId} ↔ ${args.relatedTaskId} as related`;
-      }
-
-      // Stack operations - pass workdir for workspace support
-      case "stack-log": {
-        const changes = yield* ship.getStackLog(args.workdir);
-        if (changes.length === 0) {
-          return "No changes in stack (working copy is on trunk)";
-        }
-        return `Stack (${changes.length} changes):\n\n${changes
-          .map((c) => {
-            const marker = c.isWorkingCopy ? "@" : "○";
-            const empty = c.isEmpty ? " (empty)" : "";
-            const bookmarks = c.bookmarks.length > 0 ? ` [${c.bookmarks.join(", ")}]` : "";
-            const desc = c.description.split("\n")[0] || "(no description)";
-            return `${marker}  ${c.changeId.slice(0, 8)} ${desc}${empty}${bookmarks}`;
-          })
-          .join("\n")}`;
-      }
-
-      case "stack-status": {
-        const status = yield* ship.getStackStatus(args.workdir);
-        if (!status.isRepo) {
-          return `Error: ${status.error || "Not a jj repository"}`;
-        }
-        if (!status.change) {
-          return "Error: Could not get current change";
-        }
-        const c = status.change;
-        let output = `Change:      ${c.changeId.slice(0, 8)}
-Commit:      ${c.commitId.slice(0, 12)}
-Description: ${c.description.split("\n")[0] || "(no description)"}`;
-        if (c.bookmarks.length > 0) {
-          output += `\nBookmarks:   ${c.bookmarks.join(", ")}`;
-        }
-        output += `\nStatus:      ${c.isEmpty ? "empty (no changes)" : "has changes"}`;
-        return output;
-      }
-
-      case "stack-create": {
-        const result = yield* ship.createStackChange({
-          message: args.message,
-          bookmark: args.bookmark,
-          noWorkspace: args.noWorkspace,
-          taskId: args.taskId,
-          workdir: args.workdir,
-        });
-        if (!result.created) {
-          return `Error: ${result.error || "Failed to create change"}`;
-        }
-        let output = `Created change: ${result.changeId}`;
-        if (result.bookmark) {
-          output += `\nCreated bookmark: ${result.bookmark}`;
-        }
-        if (result.workspace?.created) {
-          output += `\nCreated workspace: ${result.workspace.name} at ${result.workspace.path}`;
-        }
-        return output;
-      }
-
-      case "stack-describe": {
-        if (!args.message) {
-          return "Error: message is required for stack-describe action";
-        }
-        const result = yield* ship.describeStackChange(args.message, args.workdir);
-        if (!result.updated) {
-          return `Error: ${result.error || "Failed to update description"}`;
-        }
-        return `Updated change ${result.changeId?.slice(0, 8) || ""}\nDescription: ${result.description || args.message}`;
-      }
-
-      case "stack-sync": {
-        const result = yield* ship.syncStack(args.workdir);
-        if (result.error) {
-          return `Sync failed: [${result.error.tag}] ${result.error.message}`;
-        }
-
-        // Build output parts
-        const parts: string[] = [];
-
-        // Report auto-abandoned merged changes
-        if (result.abandonedMergedChanges && result.abandonedMergedChanges.length > 0) {
-          parts.push("Auto-abandoned merged changes:");
-          for (const change of result.abandonedMergedChanges) {
-            const bookmarkInfo = change.bookmark ? ` (${change.bookmark})` : "";
-            parts.push(`  - ${change.changeId}${bookmarkInfo}`);
-          }
-          parts.push("");
-        }
-
-        // Handle different scenarios
-        if (result.stackFullyMerged) {
-          parts.push("Stack fully merged! All changes are now in trunk.");
-          if (result.cleanedUpWorkspace) {
-            parts.push(`Cleaned up workspace: ${result.cleanedUpWorkspace}`);
-          }
-          parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
-        } else if (result.conflicted) {
-          parts.push("Sync completed with conflicts!");
-          parts.push(`  Fetched: yes`);
-          parts.push(`  Rebased: yes (with conflicts)`);
-          parts.push(`  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
-          parts.push(`  Stack:   ${result.stackSize} change(s)`);
-          parts.push("");
-          parts.push("Resolve conflicts with 'jj status' and edit the conflicted files.");
-        } else if (!result.rebased) {
-          parts.push("Already up to date.");
-          parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
-          parts.push(`  Stack: ${result.stackSize} change(s)`);
-        } else {
-          parts.push("Sync completed successfully.");
-          parts.push(`  Fetched: yes`);
-          parts.push(`  Rebased: yes`);
-          parts.push(`  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
-          parts.push(`  Stack:   ${result.stackSize} change(s)`);
-        }
-
-        return parts.join("\n");
-      }
-
-      case "stack-restack": {
-        const result = yield* ship.restackStack(args.workdir);
-        if (result.error) {
-          return `Restack failed: ${result.error}`;
-        }
-        if (!result.restacked) {
-          return `Nothing to restack (working copy is on trunk).
-  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`;
-        }
-        if (result.conflicted) {
-          return `Restack completed with conflicts!
-  Rebased: yes (with conflicts)
-  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
-  Stack:   ${result.stackSize} change(s)
-
-Resolve conflicts with 'jj status' and edit the conflicted files.`;
-        }
-        return `Restack completed successfully.
-  Rebased: ${result.stackSize} change(s)
-  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
-  Stack:   ${result.stackSize} change(s)`;
-      }
-
-      case "stack-submit": {
-        // Auto-subscribe using context session ID (from OpenCode) or explicit sessionId arg
-        const subscribeSessionId = args.sessionId || contextSessionId;
-        
-        const result = yield* ship.submitStack({
-          draft: args.draft,
-          title: args.title,
-          body: args.body,
-          subscribe: subscribeSessionId,
-          workdir: args.workdir,
-        });
-        if (result.error) {
-          if (result.pushed) {
-            return `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\nWarning: ${result.error}`;
-          }
-          return `Error: ${result.error}`;
-        }
-        let output = "";
-        if (result.pr) {
-          const statusMsg = result.pr.status === "created"
-            ? "Created PR"
-            : result.pr.status === "exists"
-              ? "PR already exists"
-              : "Updated PR";
-          output = `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}\n${statusMsg}: #${result.pr.number}\nURL: ${result.pr.url}`;
-        } else {
-          output = `Pushed bookmark: ${result.bookmark}\nBase branch: ${result.baseBranch || "main"}`;
-        }
-        // Add subscription info if auto-subscribed
-        if (result.subscribed) {
-          output += `\n\nAuto-subscribed to stack PRs: ${result.subscribed.prNumbers.join(", ")}`;
-        }
-        return output;
-      }
-
-      case "stack-squash": {
-        if (!args.message) {
-          return "Error: message is required for stack-squash action";
-        }
-        const result = yield* ship.squashStack(args.message, args.workdir);
-        if (!result.squashed) {
-          return `Error: ${result.error || "Failed to squash"}`;
-        }
-        return `Squashed into ${result.intoChangeId?.slice(0, 8) || "parent"}\nDescription: ${result.description?.split("\n")[0] || "(no description)"}`;
-      }
-
-      case "stack-abandon": {
-        const result = yield* ship.abandonStack(args.changeId, args.workdir);
-        if (!result.abandoned) {
-          return `Error: ${result.error || "Failed to abandon"}`;
-        }
-        return `Abandoned ${result.changeId?.slice(0, 8) || "change"}\nWorking copy now at: ${result.newWorkingCopy?.slice(0, 8) || "unknown"}`;
-      }
-
-      // Stack navigation
-      case "stack-up": {
-        const result = yield* ship.stackUp(args.workdir);
-        if (!result.moved) {
-          return result.error || "Already at the tip of the stack (no child change)";
-        }
-        return `Moved up in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
-      }
-
-      case "stack-down": {
-        const result = yield* ship.stackDown(args.workdir);
-        if (!result.moved) {
-          return result.error || "Already at the base of the stack (on trunk)";
-        }
-        return `Moved down in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
-      }
-
-      // Stack recovery
-      case "stack-undo": {
-        const result = yield* ship.stackUndo(args.workdir);
-        if (!result.undone) {
-          return `Error: ${result.error || "Failed to undo"}`;
-        }
-        return result.operation ? `Undone: ${result.operation}` : "Undone last operation";
-      }
-
-      case "stack-update-stale": {
-        const result = yield* ship.stackUpdateStale(args.workdir);
-        if (!result.updated) {
-          return `Error: ${result.error || "Failed to update stale workspace"}`;
-        }
-        return result.changeId
-          ? `Working copy updated. Now at: ${result.changeId}`
-          : "Working copy updated.";
-      }
-
-      // Stack bookmark
-      case "stack-bookmark": {
-        if (!args.name) {
-          return "Error: name is required for stack-bookmark action";
-        }
-        const result = yield* ship.bookmarkStack(args.name, args.move, args.workdir);
-        if (!result.success) {
-          return `Error: ${result.error || "Failed to create/move bookmark"}`;
-        }
-        const action = result.action === "moved" ? "Moved" : "Created";
-        return `${action} bookmark '${result.bookmark}' at ${result.changeId?.slice(0, 8) || "current change"}`;
-      }
-
-      // Workspace operations - pass workdir for workspace support
-      case "stack-workspaces": {
-        const workspaces = yield* ship.listWorkspaces(args.workdir);
-        if (workspaces.length === 0) {
-          return "No workspaces found.";
-        }
-        return `Workspaces (${workspaces.length}):\n\n${workspaces
-          .map((ws: WorkspaceOutput) => {
-            const defaultMark = ws.isDefault ? " (default)" : "";
-            const stack = ws.stackName ? ` stack:${ws.stackName}` : "";
-            const task = ws.taskId ? ` task:${ws.taskId}` : "";
-            return `${ws.name}${defaultMark}${stack}${task}\n  Change: ${ws.changeId} - ${ws.description}\n  Path: ${ws.path}`;
-          })
-          .join("\n\n")}`;
-      }
-
-      case "stack-remove-workspace": {
-        if (!args.name) {
-          return "Error: name is required for stack-remove-workspace action";
-        }
-        const result = yield* ship.removeWorkspace(args.name, args.deleteFiles, args.workdir);
-        if (!result.removed) {
-          return `Error: ${result.error || "Failed to remove workspace"}`;
-        }
-        let output = `Removed workspace: ${result.name}`;
-        if (result.filesDeleted !== undefined) {
-          output += result.filesDeleted ? "\nFiles deleted." : "\nFiles remain on disk.";
-        }
-        return output;
-      }
-
-      // Webhook operations
-      case "webhook-start": {
-        const result = yield* ship.startWebhook(args.events);
-        if (!result.started) {
-          return `Error: ${result.error}${result.pid ? ` (PID: ${result.pid})` : ""}`;
-        }
-        return `Webhook forwarding started (PID: ${result.pid})
-Events: ${result.events?.join(", ") || "default"}
-
-GitHub events will be forwarded to the current OpenCode session.
-Use action 'webhook-stop' to stop forwarding.`;
-      }
-
-      case "webhook-stop": {
-        const result = yield* ship.stopWebhook();
-        if (!result.stopped) {
-          return result.error || "No webhook forwarding process is running";
-        }
-        return "Webhook forwarding stopped.";
-      }
-
-      case "webhook-status": {
-        const status = yield* ship.getWebhookStatus();
-        if (status.running) {
-          return `Webhook forwarding is running (PID: ${status.pid})`;
-        }
-        return "Webhook forwarding is not running.";
-      }
-
-      // Daemon-based webhook operations
-      case "webhook-subscribe": {
-        // Auto-detect session ID from context (like stack-submit does)
-        const sessionId = args.sessionId || contextSessionId;
-        if (!sessionId) {
-          return "Error: sessionId is required for webhook-subscribe action (not provided and could not auto-detect from context)";
-        }
-        if (!args.prNumbers || args.prNumbers.length === 0) {
-          return "Error: prNumbers is required for webhook-subscribe action";
-        }
-        const result = yield* ship.subscribeToPRs(sessionId, args.prNumbers);
-        if (!result.subscribed) {
-          return `Error: ${result.error || "Failed to subscribe"}`;
-        }
-        return `Subscribed session ${sessionId} to PRs: ${args.prNumbers.join(", ")}
-
-The daemon will forward GitHub events for these PRs to your session.
-Use 'webhook-unsubscribe' to stop receiving events.`;
-      }
-
-      case "webhook-unsubscribe": {
-        if (!args.sessionId) {
-          return "Error: sessionId is required for webhook-unsubscribe action";
-        }
-        if (!args.prNumbers || args.prNumbers.length === 0) {
-          return "Error: prNumbers is required for webhook-unsubscribe action";
-        }
-        const result = yield* ship.unsubscribeFromPRs(args.sessionId, args.prNumbers);
-        if (!result.unsubscribed) {
-          return `Error: ${result.error || "Failed to unsubscribe"}`;
-        }
-        return `Unsubscribed session ${args.sessionId} from PRs: ${args.prNumbers.join(", ")}`;
-      }
-
-      case "webhook-daemon-status": {
-        const status = yield* ship.getDaemonStatus();
-        if (!status.running) {
-          return "Webhook daemon is not running.\n\nStart it with: ship webhook start";
-        }
-        let output = `Webhook Daemon Status
-─────────────────────────────────────────
-Status: Running
-PID: ${status.pid || "unknown"}
-Repository: ${status.repo || "unknown"}
-GitHub WebSocket: ${status.connectedToGitHub ? "Connected" : "Disconnected"}
-Uptime: ${status.uptime ? `${status.uptime}s` : "unknown"}
-
-Subscriptions:`;
-        if (!status.subscriptions || status.subscriptions.length === 0) {
-          output += "\n  No active subscriptions.";
-        } else {
-          for (const sub of status.subscriptions) {
-            output += `\n  Session ${sub.sessionId}: PRs ${sub.prNumbers.join(", ")}`;
-          }
-        }
-        return output;
-      }
-
-      case "webhook-cleanup": {
-        const result = yield* ship.cleanupStaleSubscriptions();
-        if (!result.success) {
-          return `Error: ${result.error || "Failed to cleanup"}`;
-        }
-        if (result.removedSessions.length === 0) {
-          return "No stale subscriptions found. All subscribed sessions are still active.";
-        }
-        return `Cleaned up ${result.removedSessions.length} stale subscription(s):\n${result.removedSessions.map((s: string) => `  - ${s}`).join("\n")}\n\nThese sessions no longer exist in OpenCode.`;
-      }
-
-      default:
-        return `Unknown action: ${args.action}`;
+    // Look up handler from the record
+    const handler = actionHandlers[args.action];
+    if (!handler) {
+      return `Unknown action: ${args.action}`;
     }
+
+    return yield* handler(ship, args, contextSessionId);
   });
 
 // =============================================================================
