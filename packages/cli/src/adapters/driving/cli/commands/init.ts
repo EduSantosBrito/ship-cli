@@ -8,6 +8,7 @@ import { AuthService } from "../../../../ports/AuthService.js";
 import { TeamRepository } from "../../../../ports/TeamRepository.js";
 import { ProjectRepository } from "../../../../ports/ProjectRepository.js";
 import { LinearConfig } from "../../../../domain/Config.js";
+import { PromptCancelledError } from "../../../../domain/Errors.js";
 import type { Team, Project } from "../../../../domain/Task.js";
 
 const teamOption = Options.text("team").pipe(
@@ -66,7 +67,7 @@ export const initCommand = Command.make(
                 if (!value.startsWith("lin_api_")) return "API key should start with lin_api_";
               },
             }),
-          catch: () => new Error("Prompt cancelled"),
+          catch: () => PromptCancelledError.default,
         });
 
         if (clack.isCancel(apiKey)) {
@@ -77,11 +78,10 @@ export const initCommand = Command.make(
         const spinner = clack.spinner();
         spinner.start("Validating API key...");
 
-        yield* auth
-          .saveApiKey(apiKey as string)
-          .pipe(Effect.tapError(() => Effect.sync(() => spinner.stop("Invalid API key"))));
-
-        spinner.stop("Authenticated");
+        yield* auth.saveApiKey(apiKey as string).pipe(
+          Effect.tap(() => Effect.sync(() => spinner.stop("Authenticated"))),
+          Effect.tapError(() => Effect.sync(() => spinner.stop("Invalid API key"))),
+        );
       } else {
         clack.log.success("Already authenticated");
       }
@@ -89,8 +89,10 @@ export const initCommand = Command.make(
       // Step 2: Get teams
       const teamSpinner = clack.spinner();
       teamSpinner.start("Fetching teams...");
-      const teams = yield* teamRepo.getTeams();
-      teamSpinner.stop("Teams loaded");
+      const teams = yield* teamRepo.getTeams().pipe(
+        Effect.tap(() => Effect.sync(() => teamSpinner.stop("Teams loaded"))),
+        Effect.tapError(() => Effect.sync(() => teamSpinner.stop("Failed to fetch teams"))),
+      );
 
       if (teams.length === 0) {
         clack.log.error("No teams found. Please create a team in Linear first.");
@@ -123,7 +125,7 @@ export const initCommand = Command.make(
                 label: `${t.key} - ${t.name}`,
               })),
             }),
-          catch: () => new Error("Prompt cancelled"),
+          catch: () => PromptCancelledError.default,
         });
 
         if (clack.isCancel(teamChoice)) {
@@ -137,8 +139,10 @@ export const initCommand = Command.make(
       // Step 3: Get projects (optional)
       const projectSpinner = clack.spinner();
       projectSpinner.start("Fetching projects...");
-      const projects = yield* projectRepo.getProjects(selectedTeam.id);
-      projectSpinner.stop("Projects loaded");
+      const projects = yield* projectRepo.getProjects(selectedTeam.id).pipe(
+        Effect.tap(() => Effect.sync(() => projectSpinner.stop("Projects loaded"))),
+        Effect.tapError(() => Effect.sync(() => projectSpinner.stop("Failed to fetch projects"))),
+      );
 
       let selectedProject: Project | undefined;
       if (Option.isSome(project)) {
@@ -161,7 +165,7 @@ export const initCommand = Command.make(
                 })),
               ],
             }),
-          catch: () => new Error("Prompt cancelled"),
+          catch: () => PromptCancelledError.default,
         });
 
         if (clack.isCancel(projectChoice)) {

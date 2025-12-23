@@ -212,6 +212,17 @@ export class WebhookRateLimitError extends Data.TaggedError("WebhookRateLimitErr
   }
 }
 
+// === Prompt Errors ===
+
+/** User cancelled an interactive prompt (e.g., Ctrl+C) */
+export class PromptCancelledError extends Data.TaggedError("PromptCancelledError")<{
+  readonly message: string;
+}> {
+  static readonly default = new PromptCancelledError({
+    message: "Prompt cancelled by user",
+  });
+}
+
 // === Linear API Errors ===
 
 export class LinearApiError extends Data.TaggedError("LinearApiError")<{

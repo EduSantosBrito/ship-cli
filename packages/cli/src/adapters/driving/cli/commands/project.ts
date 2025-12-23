@@ -6,6 +6,7 @@ import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { AuthService } from "../../../../ports/AuthService.js";
 import { ProjectRepository } from "../../../../ports/ProjectRepository.js";
 import { LinearConfig } from "../../../../domain/Config.js";
+import { PromptCancelledError } from "../../../../domain/Errors.js";
 import type { Project, ProjectId } from "../../../../domain/Task.js";
 
 const CREATE_NEW = "__create_new__" as const;
@@ -45,8 +46,10 @@ export const projectCommand = Command.make("project", {}, () =>
     // Fetch projects
     const spinner = clack.spinner();
     spinner.start("Fetching projects...");
-    const projects = yield* projectRepo.getProjects(currentConfig.teamId);
-    spinner.stop("Projects loaded");
+    const projects = yield* projectRepo.getProjects(currentConfig.teamId).pipe(
+      Effect.tap(() => Effect.sync(() => spinner.stop("Projects loaded"))),
+      Effect.tapError(() => Effect.sync(() => spinner.stop("Failed to fetch projects"))),
+    );
 
     // Select project or create new
     const currentProjectId = Option.isSome(currentConfig.projectId)
@@ -73,7 +76,7 @@ export const projectCommand = Command.make("project", {}, () =>
           message: "Select a project",
           options: projectOptions,
         }),
-      catch: () => new Error("Prompt cancelled"),
+      catch: () => PromptCancelledError.default,
     });
 
     if (clack.isCancel(projectChoice)) {
@@ -92,7 +95,7 @@ export const projectCommand = Command.make("project", {}, () =>
             placeholder: "My Project",
             validate: (v) => (!v ? "Name is required" : undefined),
           }),
-        catch: () => new Error("Prompt cancelled"),
+        catch: () => PromptCancelledError.default,
       });
 
       if (clack.isCancel(projectName)) {
@@ -106,7 +109,7 @@ export const projectCommand = Command.make("project", {}, () =>
             message: "Description (optional)",
             placeholder: "A brief description of the project",
           }),
-        catch: () => new Error("Prompt cancelled"),
+        catch: () => PromptCancelledError.default,
       });
 
       if (clack.isCancel(projectDesc)) {
@@ -122,9 +125,14 @@ export const projectCommand = Command.make("project", {}, () =>
         createInput.description = projectDesc as string;
       }
 
-      selectedProject = yield* projectRepo.createProject(currentConfig.teamId, createInput);
-
-      createSpinner.stop(`Created project: ${selectedProject.name}`);
+      selectedProject = yield* projectRepo
+        .createProject(currentConfig.teamId, createInput)
+        .pipe(
+          Effect.tap((project) =>
+            Effect.sync(() => createSpinner.stop(`Created project: ${project.name}`)),
+          ),
+          Effect.tapError(() => Effect.sync(() => createSpinner.stop("Failed to create project"))),
+        );
     } else if (projectChoice !== NO_PROJECT) {
       const found = projects.find((p) => p.id === projectChoice);
       if (!found) {

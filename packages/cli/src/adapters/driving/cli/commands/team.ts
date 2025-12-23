@@ -6,6 +6,7 @@ import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { AuthService } from "../../../../ports/AuthService.js";
 import { TeamRepository } from "../../../../ports/TeamRepository.js";
 import { LinearConfig } from "../../../../domain/Config.js";
+import { PromptCancelledError } from "../../../../domain/Errors.js";
 import type { Team, TeamId } from "../../../../domain/Task.js";
 
 const CREATE_NEW = "__create_new__" as const;
@@ -35,8 +36,10 @@ export const teamCommand = Command.make("team", {}, () =>
     // Fetch teams
     const spinner = clack.spinner();
     spinner.start("Fetching teams...");
-    const teams = yield* teamRepo.getTeams();
-    spinner.stop("Teams loaded");
+    const teams = yield* teamRepo.getTeams().pipe(
+      Effect.tap(() => Effect.sync(() => spinner.stop("Teams loaded"))),
+      Effect.tapError(() => Effect.sync(() => spinner.stop("Failed to fetch teams"))),
+    );
 
     // Select team or create new
     const currentTeamId = Option.isSome(partial.linear) ? partial.linear.value.teamId : null;
@@ -56,7 +59,7 @@ export const teamCommand = Command.make("team", {}, () =>
           message: "Select a team",
           options: teamOptions,
         }),
-      catch: () => new Error("Prompt cancelled"),
+      catch: () => PromptCancelledError.default,
     });
 
     if (clack.isCancel(teamChoice)) {
@@ -75,7 +78,7 @@ export const teamCommand = Command.make("team", {}, () =>
             placeholder: "My Team",
             validate: (v) => (!v ? "Name is required" : undefined),
           }),
-        catch: () => new Error("Prompt cancelled"),
+        catch: () => PromptCancelledError.default,
       });
 
       if (clack.isCancel(teamName)) {
@@ -93,7 +96,7 @@ export const teamCommand = Command.make("team", {}, () =>
               if (!/^[A-Z]{2,5}$/.test(v.toUpperCase())) return "Key must be 2-5 uppercase letters";
             },
           }),
-        catch: () => new Error("Prompt cancelled"),
+        catch: () => PromptCancelledError.default,
       });
 
       if (clack.isCancel(teamKey)) {
@@ -104,12 +107,15 @@ export const teamCommand = Command.make("team", {}, () =>
       const createSpinner = clack.spinner();
       createSpinner.start("Creating team...");
 
-      selectedTeam = yield* teamRepo.createTeam({
-        name: teamName as string,
-        key: (teamKey as string).toUpperCase(),
-      });
-
-      createSpinner.stop(`Created team: ${selectedTeam.key}`);
+      selectedTeam = yield* teamRepo
+        .createTeam({
+          name: teamName as string,
+          key: (teamKey as string).toUpperCase(),
+        })
+        .pipe(
+          Effect.tap((team) => Effect.sync(() => createSpinner.stop(`Created team: ${team.key}`))),
+          Effect.tapError(() => Effect.sync(() => createSpinner.stop("Failed to create team"))),
+        );
     } else {
       const found = teams.find((t) => t.id === teamChoice);
       if (!found) {
