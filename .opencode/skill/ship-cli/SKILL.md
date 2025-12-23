@@ -40,19 +40,21 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking 
 
 ### Stack Actions (VCS)
 
+All stack actions support an optional `workdir` parameter for operating in jj workspaces.
+
 | Action | Description | Required params |
 |--------|-------------|-----------------|
-| `stack-log` | View stack of changes from trunk to current | - |
-| `stack-status` | Show current change status | - |
-| `stack-create` | Create new jj change (workspace by default) | message (optional), bookmark (optional), noWorkspace (optional) |
-| `stack-describe` | Update change description | message |
-| `stack-sync` | Fetch and rebase onto trunk | - |
-| `stack-restack` | Rebase stack onto trunk (no fetch) | - |
-| `stack-submit` | Push and create/update PR (auto-subscribes to webhook events) | draft (optional) |
-| `stack-squash` | Squash current change into parent | message |
-| `stack-abandon` | Abandon current change | changeId (optional) |
-| `stack-workspaces` | List all jj workspaces | - |
-| `stack-remove-workspace` | Remove a jj workspace | name, deleteFiles (optional) |
+| `stack-log` | View stack of changes from trunk to current | workdir (optional) |
+| `stack-status` | Show current change status | workdir (optional) |
+| `stack-create` | Create new jj change (workspace by default) | message (optional), bookmark (optional), noWorkspace (optional), workdir (optional) |
+| `stack-describe` | Update change description | message, workdir (optional) |
+| `stack-sync` | Fetch and rebase onto trunk | workdir (optional) |
+| `stack-restack` | Rebase stack onto trunk (no fetch) | workdir (optional) |
+| `stack-submit` | Push and create/update PR (auto-subscribes to webhook events) | draft (optional), workdir (optional) |
+| `stack-squash` | Squash current change into parent | message, workdir (optional) |
+| `stack-abandon` | Abandon current change | changeId (optional), workdir (optional) |
+| `stack-workspaces` | List all jj workspaces | workdir (optional) |
+| `stack-remove-workspace` | Remove a jj workspace | name, deleteFiles (optional), workdir (optional) |
 
 ### Webhook Actions (GitHub Event Routing)
 
@@ -122,8 +124,9 @@ Task management and VCS operations are **separate**. You control when each happe
    - Check the project for `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, or `package-lock.json` to determine the package manager
    - Example: `bash(command="pnpm install", workdir="/path/to/workspace")`
    - This is required for TypeScript type checking to work properly
-6. **Use `workdir` parameter for all bash commands** - pass the workspace path to the `workdir` parameter
-   - Example: `bash(command="pnpm test", workdir="/path/to/workspace")`
+6. **Use `workdir` parameter for all commands** - pass the workspace path to the `workdir` parameter
+   - For bash commands: `bash(command="pnpm test", workdir="/path/to/workspace")`
+   - For ship VCS commands: `ship(action="stack-status", workdir="/path/to/workspace")`
    - **DO NOT ask the user to change directories** - use `workdir` instead
    - The agent cannot change the user's shell directory, but can execute commands in any directory
 7. Make code changes (use workspace path for all file operations)
@@ -133,12 +136,14 @@ Task management and VCS operations are **separate**. You control when each happe
 
 **These steps are MANDATORY. Do not skip any of them.**
 
-7. **Sync before submit**: `ship` tool with action `stack-sync`
+7. **Sync before submit**: `ship` tool with action `stack-sync`, workdir=`<workspace-path>`
    - Ensures your changes are rebased on latest trunk
-8. **Submit PR**: `ship` tool with action `stack-submit`
+   - **Use `workdir` parameter** when operating from a jj workspace
+8. **Submit PR**: `ship` tool with action `stack-submit`, workdir=`<workspace-path>`
    - **IMPORTANT**: This automatically subscribes you to webhook events for all stack PRs
    - You will receive notifications when the PR is merged, CI fails, or reviews are added
    - No need to manually call `webhook-subscribe` - it happens automatically
+   - **Use `workdir` parameter** when operating from a jj workspace
 9. **Mark complete**: `ship` tool with action `done`, taskId=`<id>`
    - **ONLY after PR is submitted** - the PR URL should be visible in step 8 output
 
@@ -386,3 +391,30 @@ Workspaces are automatically cleaned up when:
 - `stack-abandon` is called on a change with an associated workspace
 
 This behavior can be disabled via config: `workspace.autoCleanup: false`
+
+### Using `workdir` for Workspace VCS Operations
+
+When working in a jj workspace, **always pass the `workdir` parameter** to ship tool VCS actions. This ensures commands run in the correct workspace context.
+
+**Example workflow in a workspace:**
+
+```
+# Check status in workspace
+ship tool: action=`stack-status`, workdir="/path/to/workspace"
+
+# Update change description
+ship tool: action=`stack-describe`, message="Updated feature", workdir="/path/to/workspace"
+
+# Sync and submit from workspace
+ship tool: action=`stack-sync`, workdir="/path/to/workspace"
+ship tool: action=`stack-submit`, workdir="/path/to/workspace"
+```
+
+**Why is this important?**
+
+Without `workdir`, VCS commands run in the main project directory (where OpenCode was started), not in the workspace. This causes:
+- Changes applied to the wrong jj change
+- Bookmarks not found
+- Confusing state between the main repo and workspace
+
+**Rule**: If you're working in a workspace (created by `stack-create`), always use `workdir` for all stack-* actions.

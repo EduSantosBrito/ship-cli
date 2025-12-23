@@ -5,7 +5,7 @@
  * Instructions/guidance are handled by the ship-cli skill (.opencode/skill/ship-cli/SKILL.md)
  */
 
-import type { Plugin } from "@opencode-ai/plugin";
+import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
 import { tool as createTool } from "@opencode-ai/plugin";
 import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
@@ -359,25 +359,27 @@ interface ShipService {
   readonly addBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
   readonly removeBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
   readonly relateTask: (taskId: string, relatedTaskId: string) => Effect.Effect<void, ShipCommandError>;
-  // Stack operations
-  readonly getStackLog: () => Effect.Effect<StackChange[], ShipCommandError | JsonParseError>;
-  readonly getStackStatus: () => Effect.Effect<StackStatus, ShipCommandError | JsonParseError>;
+  // Stack operations - all accept optional workdir for workspace support
+  readonly getStackLog: (workdir?: string) => Effect.Effect<StackChange[], ShipCommandError | JsonParseError>;
+  readonly getStackStatus: (workdir?: string) => Effect.Effect<StackStatus, ShipCommandError | JsonParseError>;
   readonly createStackChange: (input: {
     message?: string;
     bookmark?: string;
     noWorkspace?: boolean;
+    workdir?: string;
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
-  readonly describeStackChange: (message: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
-  readonly syncStack: () => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
-  readonly restackStack: () => Effect.Effect<StackRestackResult, ShipCommandError | JsonParseError>;
+  readonly describeStackChange: (message: string, workdir?: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
+  readonly syncStack: (workdir?: string) => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
+  readonly restackStack: (workdir?: string) => Effect.Effect<StackRestackResult, ShipCommandError | JsonParseError>;
   readonly submitStack: (input: {
     draft?: boolean;
     title?: string;
     body?: string;
     subscribe?: string; // OpenCode session ID to subscribe to all stack PRs
+    workdir?: string;
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
-  readonly squashStack: (message: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
-  readonly abandonStack: (changeId?: string) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
+  readonly squashStack: (message: string, workdir?: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
+  readonly abandonStack: (changeId?: string, workdir?: string) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
@@ -386,9 +388,9 @@ interface ShipService {
   readonly getDaemonStatus: () => Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError>;
   readonly subscribeToPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
   readonly unsubscribeFromPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
-  // Workspace operations
-  readonly listWorkspaces: () => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
-  readonly removeWorkspace: (name: string, deleteFiles?: boolean) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
+  // Workspace operations - accept optional workdir
+  readonly listWorkspaces: (workdir?: string) => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
+  readonly removeWorkspace: (name: string, deleteFiles?: boolean, workdir?: string) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -497,69 +499,69 @@ const makeShipService = Effect.gen(function* () {
   const relateTask = (taskId: string, relatedTaskId: string) =>
     shell.run(["relate", taskId, relatedTaskId]).pipe(Effect.asVoid);
 
-  // Stack operations
-  const getStackLog = () =>
+  // Stack operations - all accept optional workdir for workspace support
+  const getStackLog = (workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "log", "--json"]);
+      const output = yield* shell.run(["stack", "log", "--json"], workdir);
       return yield* parseJson<StackChange[]>(output);
     });
 
-  const getStackStatus = () =>
+  const getStackStatus = (workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "status", "--json"]);
+      const output = yield* shell.run(["stack", "status", "--json"], workdir);
       return yield* parseJson<StackStatus>(output);
     });
 
-  const createStackChange = (input: { message?: string; bookmark?: string; noWorkspace?: boolean }) =>
+  const createStackChange = (input: { message?: string; bookmark?: string; noWorkspace?: boolean; workdir?: string }) =>
     Effect.gen(function* () {
       const args = ["stack", "create", "--json"];
       if (input.message) args.push("--message", input.message);
       if (input.bookmark) args.push("--bookmark", input.bookmark);
       if (input.noWorkspace) args.push("--no-workspace");
-      const output = yield* shell.run(args);
+      const output = yield* shell.run(args, input.workdir);
       return yield* parseJson<StackCreateResult>(output);
     });
 
-  const describeStackChange = (message: string) =>
+  const describeStackChange = (message: string, workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "describe", "--json", "--message", message]);
+      const output = yield* shell.run(["stack", "describe", "--json", "--message", message], workdir);
       return yield* parseJson<StackDescribeResult>(output);
     });
 
-  const syncStack = () =>
+  const syncStack = (workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "sync", "--json"]);
+      const output = yield* shell.run(["stack", "sync", "--json"], workdir);
       return yield* parseJson<StackSyncResult>(output);
     });
 
-  const restackStack = () =>
+  const restackStack = (workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "restack", "--json"]);
+      const output = yield* shell.run(["stack", "restack", "--json"], workdir);
       return yield* parseJson<StackRestackResult>(output);
     });
 
-  const submitStack = (input: { draft?: boolean; title?: string; body?: string; subscribe?: string }) =>
+  const submitStack = (input: { draft?: boolean; title?: string; body?: string; subscribe?: string; workdir?: string }) =>
     Effect.gen(function* () {
       const args = ["stack", "submit", "--json"];
       if (input.draft) args.push("--draft");
       if (input.title) args.push("--title", input.title);
       if (input.body) args.push("--body", input.body);
       if (input.subscribe) args.push("--subscribe", input.subscribe);
-      const output = yield* shell.run(args);
+      const output = yield* shell.run(args, input.workdir);
       return yield* parseJson<StackSubmitResult>(output);
     });
 
-  const squashStack = (message: string) =>
+  const squashStack = (message: string, workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "squash", "--json", "-m", message]);
+      const output = yield* shell.run(["stack", "squash", "--json", "-m", message], workdir);
       return yield* parseJson<StackSquashResult>(output);
     });
 
-  const abandonStack = (changeId?: string) =>
+  const abandonStack = (changeId?: string, workdir?: string) =>
     Effect.gen(function* () {
       const args = ["stack", "abandon", "--json"];
       if (changeId) args.push(changeId);
-      const output = yield* shell.run(args);
+      const output = yield* shell.run(args, workdir);
       return yield* parseJson<StackAbandonResult>(output);
     });
 
@@ -732,22 +734,23 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<WebhookUnsubscribeResult>(output);
     });
 
-  // Workspace operations
-  const listWorkspaces = (): Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError> =>
+  // Workspace operations - accept optional workdir
+  const listWorkspaces = (workdir?: string): Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "workspaces", "--json"]);
+      const output = yield* shell.run(["stack", "workspaces", "--json"], workdir);
       return yield* parseJson<WorkspaceOutput[]>(output);
     });
 
   const removeWorkspace = (
     name: string,
     deleteFiles?: boolean,
+    workdir?: string,
   ): Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       const args = ["stack", "remove-workspace", "--json"];
       if (deleteFiles) args.push("--delete");
       args.push(name);
-      const output = yield* shell.run(args);
+      const output = yield* shell.run(args, workdir);
       return yield* parseJson<RemoveWorkspaceResult>(output);
     });
 
@@ -853,6 +856,7 @@ type ToolArgs = {
   noWorkspace?: boolean; // For stack-create to skip workspace creation
   name?: string; // For remove-workspace (workspace name)
   deleteFiles?: boolean; // For remove-workspace
+  workdir?: string; // Working directory for VCS operations (for jj workspaces)
   // Webhook-specific args
   events?: string;
   // Daemon webhook subscription args
@@ -988,9 +992,9 @@ const executeAction = (
         return `Linked ${args.taskId} ↔ ${args.relatedTaskId} as related`;
       }
 
-      // Stack operations
+      // Stack operations - pass workdir for workspace support
       case "stack-log": {
-        const changes = yield* ship.getStackLog();
+        const changes = yield* ship.getStackLog(args.workdir);
         if (changes.length === 0) {
           return "No changes in stack (working copy is on trunk)";
         }
@@ -1006,7 +1010,7 @@ const executeAction = (
       }
 
       case "stack-status": {
-        const status = yield* ship.getStackStatus();
+        const status = yield* ship.getStackStatus(args.workdir);
         if (!status.isRepo) {
           return `Error: ${status.error || "Not a jj repository"}`;
         }
@@ -1029,6 +1033,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
           message: args.message,
           bookmark: args.bookmark,
           noWorkspace: args.noWorkspace,
+          workdir: args.workdir,
         });
         if (!result.created) {
           return `Error: ${result.error || "Failed to create change"}`;
@@ -1047,7 +1052,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
         if (!args.message) {
           return "Error: message is required for stack-describe action";
         }
-        const result = yield* ship.describeStackChange(args.message);
+        const result = yield* ship.describeStackChange(args.message, args.workdir);
         if (!result.updated) {
           return `Error: ${result.error || "Failed to update description"}`;
         }
@@ -1055,7 +1060,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
       }
 
       case "stack-sync": {
-        const result = yield* ship.syncStack();
+        const result = yield* ship.syncStack(args.workdir);
         if (result.error) {
           return `Sync failed: [${result.error.tag}] ${result.error.message}`;
         }
@@ -1081,7 +1086,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       }
 
       case "stack-restack": {
-        const result = yield* ship.restackStack();
+        const result = yield* ship.restackStack(args.workdir);
         if (result.error) {
           return `Restack failed: ${result.error}`;
         }
@@ -1112,6 +1117,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
           title: args.title,
           body: args.body,
           subscribe: subscribeSessionId,
+          workdir: args.workdir,
         });
         if (result.error) {
           if (result.pushed) {
@@ -1141,7 +1147,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         if (!args.message) {
           return "Error: message is required for stack-squash action";
         }
-        const result = yield* ship.squashStack(args.message);
+        const result = yield* ship.squashStack(args.message, args.workdir);
         if (!result.squashed) {
           return `Error: ${result.error || "Failed to squash"}`;
         }
@@ -1149,16 +1155,16 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       }
 
       case "stack-abandon": {
-        const result = yield* ship.abandonStack(args.changeId);
+        const result = yield* ship.abandonStack(args.changeId, args.workdir);
         if (!result.abandoned) {
           return `Error: ${result.error || "Failed to abandon"}`;
         }
         return `Abandoned ${result.changeId?.slice(0, 8) || "change"}\nWorking copy now at: ${result.newWorkingCopy?.slice(0, 8) || "unknown"}`;
       }
 
-      // Workspace operations
+      // Workspace operations - pass workdir for workspace support
       case "stack-workspaces": {
-        const workspaces = yield* ship.listWorkspaces();
+        const workspaces = yield* ship.listWorkspaces(args.workdir);
         if (workspaces.length === 0) {
           return "No workspaces found.";
         }
@@ -1176,7 +1182,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         if (!args.name) {
           return "Error: name is required for stack-remove-workspace action";
         }
-        const result = yield* ship.removeWorkspace(args.name, args.deleteFiles);
+        const result = yield* ship.removeWorkspace(args.name, args.deleteFiles, args.workdir);
         if (!result.removed) {
           return `Error: ${result.error || "Failed to remove workspace"}`;
         }
@@ -1286,8 +1292,9 @@ Subscriptions:`;
  * 
  * @param $ - Bun shell from opencode
  * @param directory - Current working directory from opencode (Instance.directory)
+ * @returns ToolDefinition for the ship tool
  */
-const createShipTool = ($: BunShell, directory: string) => {
+const createShipTool = ($: BunShell, directory: string): ToolDefinition => {
   const shellService = makeShellService($, directory);
   const ShellServiceLive = Layer.succeed(ShellService, shellService);
   const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(Layer.provide(ShellServiceLive));
@@ -1399,6 +1406,10 @@ Run 'ship init' in the terminal first if not configured.`,
         .boolean()
         .optional()
         .describe("Also delete the workspace directory from disk - for stack-remove-workspace action"),
+      workdir: createTool.schema
+        .string()
+        .optional()
+        .describe("Working directory for VCS operations - use this when operating in a jj workspace (e.g., the path returned by stack-create)"),
       draft: createTool.schema
         .boolean()
         .optional()
