@@ -15,6 +15,7 @@ import { statusCommand } from "./status.js";
 import { createCommand } from "./create.js";
 import { describeCommand } from "./describe.js";
 import { syncCommand } from "./sync.js";
+import { restackCommand } from "./restack.js";
 import { submitCommand } from "./submit.js";
 import { squashCommand } from "./squash.js";
 import { abandonCommand } from "./abandon.js";
@@ -33,6 +34,7 @@ Commands:
   create            Create a new change (workspace by default, --no-workspace to skip)
   describe          Update change description
   sync              Fetch and rebase onto trunk
+  restack           Rebase entire stack onto trunk (no fetch)
   submit            Push and create/update PR
   squash            Squash current change into parent
   abandon           Abandon a change
@@ -50,6 +52,7 @@ export const stackCommand = stack.pipe(
     createCommand,
     describeCommand,
     syncCommand,
+    restackCommand,
     submitCommand,
     squashCommand,
     abandonCommand,

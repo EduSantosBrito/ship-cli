@@ -13,7 +13,7 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
-import { checkVcsAvailability, outputError } from "./shared.js";
+import { checkVcsAvailability, outputError, extractErrorInfo } from "./shared.js";
 
 // === Options ===
 
@@ -49,11 +49,7 @@ export const syncCommand = Command.make("sync", { json: jsonOption }, ({ json })
     const syncResult = yield* vcs.sync().pipe(
       Effect.map((result) => ({ success: true as const, result })),
       Effect.catchAll((e) => {
-        const errorInfo =
-          e && typeof e === "object" && "_tag" in e
-            ? { tag: String(e._tag), message: "message" in e ? String(e.message) : String(e) }
-            : { tag: "UnknownError", message: String(e) };
-        return Effect.succeed({ success: false as const, error: errorInfo });
+        return Effect.succeed({ success: false as const, error: extractErrorInfo(e) });
       }),
     );
 

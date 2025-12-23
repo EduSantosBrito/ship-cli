@@ -172,6 +172,14 @@ interface StackSyncResult {
   error?: { tag: string; message: string };
 }
 
+interface StackRestackResult {
+  restacked: boolean;
+  stackSize?: number;
+  trunkChangeId?: string;
+  conflicted?: boolean;
+  error?: string;
+}
+
 interface StackSubmitResult {
   pushed: boolean;
   bookmark?: string;
@@ -361,6 +369,7 @@ interface ShipService {
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
   readonly describeStackChange: (message: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
   readonly syncStack: () => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
+  readonly restackStack: () => Effect.Effect<StackRestackResult, ShipCommandError | JsonParseError>;
   readonly submitStack: (input: {
     draft?: boolean;
     title?: string;
@@ -521,6 +530,12 @@ const makeShipService = Effect.gen(function* () {
     Effect.gen(function* () {
       const output = yield* shell.run(["stack", "sync", "--json"]);
       return yield* parseJson<StackSyncResult>(output);
+    });
+
+  const restackStack = () =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "restack", "--json"]);
+      return yield* parseJson<StackRestackResult>(output);
     });
 
   const submitStack = (input: { draft?: boolean; title?: string; body?: string; subscribe?: string }) =>
@@ -754,6 +769,7 @@ const makeShipService = Effect.gen(function* () {
     createStackChange,
     describeStackChange,
     syncStack,
+    restackStack,
     submitStack,
     squashStack,
     abandonStack,
@@ -1064,6 +1080,29 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
   Stack:   ${result.stackSize} change(s)`;
       }
 
+      case "stack-restack": {
+        const result = yield* ship.restackStack();
+        if (result.error) {
+          return `Restack failed: ${result.error}`;
+        }
+        if (!result.restacked) {
+          return `Nothing to restack (working copy is on trunk).
+  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`;
+        }
+        if (result.conflicted) {
+          return `Restack completed with conflicts!
+  Rebased: yes (with conflicts)
+  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack:   ${result.stackSize} change(s)
+
+Resolve conflicts with 'jj status' and edit the conflicted files.`;
+        }
+        return `Restack completed successfully.
+  Rebased: ${result.stackSize} change(s)
+  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
+  Stack:   ${result.stackSize} change(s)`;
+      }
+
       case "stack-submit": {
         // Auto-subscribe using context session ID (from OpenCode) or explicit sessionId arg
         const subscribeSessionId = args.sessionId || contextSessionId;
@@ -1293,6 +1332,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-create",
           "stack-describe",
           "stack-sync",
+          "stack-restack",
           "stack-submit",
           "stack-squash",
           "stack-abandon",
@@ -1303,7 +1343,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-unsubscribe",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
         ),
       taskId: createTool.schema
         .string()

@@ -47,6 +47,7 @@ The `ship` tool replaces built-in todo management. Use it for all task tracking 
 | `stack-create` | Create new jj change (workspace by default) | message (optional), bookmark (optional), noWorkspace (optional) |
 | `stack-describe` | Update change description | message |
 | `stack-sync` | Fetch and rebase onto trunk | - |
+| `stack-restack` | Rebase stack onto trunk (no fetch) | - |
 | `stack-submit` | Push and create/update PR (auto-subscribes to webhook events) | draft (optional) |
 | `stack-squash` | Squash current change into parent | message |
 | `stack-abandon` | Abandon current change | changeId (optional) |
@@ -113,12 +114,20 @@ Task management and VCS operations are **separate**. You control when each happe
 4. **Create VCS change (workspace created automatically)**: `ship` tool with action `stack-create`, message=`"<id>: <title>"`, bookmark=`<branch-name>`
    - Get branch name from `start` output or `show` action
    - **Workspace is created by default** for isolated development
-   - Inform the user to run the `cd` command shown in the output to switch to the workspace
+   - The output includes the workspace path - inform the user to `cd` into it
 
 ### Doing the Work
 
-5. Make code changes
-6. Run quality checks (lint, format, typecheck)
+5. **Install dependencies in workspace** - run the package manager's install command with `workdir` parameter
+   - Check the project for `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, or `package-lock.json` to determine the package manager
+   - Example: `bash(command="pnpm install", workdir="/path/to/workspace")`
+   - This is required for TypeScript type checking to work properly
+6. **Use `workdir` parameter for all bash commands** - pass the workspace path to the `workdir` parameter
+   - Example: `bash(command="pnpm test", workdir="/path/to/workspace")`
+   - **DO NOT ask the user to change directories** - use `workdir` instead
+   - The agent cannot change the user's shell directory, but can execute commands in any directory
+7. Make code changes (use workspace path for all file operations)
+8. Run quality checks (lint, format, typecheck) with `workdir` parameter
 
 ### Submitting Work
 
