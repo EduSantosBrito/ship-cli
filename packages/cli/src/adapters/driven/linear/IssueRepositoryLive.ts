@@ -422,8 +422,12 @@ const make = Effect.gen(function* () {
         };
 
         if (Option.isSome(filter.status)) {
+          // Explicit status filter provided - use it directly
           const stateType = statusToLinearStateType(filter.status.value);
           linearFilter.state = { type: { eq: stateType } };
+        } else if (!filter.includeCompleted) {
+          // No status filter and not including completed - exclude completed/canceled
+          linearFilter.state = { type: { nin: ["completed", "canceled"] } };
         }
 
         if (Option.isSome(filter.priority)) {

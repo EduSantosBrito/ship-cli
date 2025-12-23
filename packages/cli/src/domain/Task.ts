@@ -143,4 +143,6 @@ export class TaskFilter extends Schema.Class<TaskFilter>("TaskFilter")({
   priority: Schema.OptionFromNullOr(Priority),
   projectId: Schema.OptionFromNullOr(ProjectId),
   assignedToMe: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  /** When true, include completed and cancelled tasks. Default: false (excludes them) */
+  includeCompleted: Schema.optionalWith(Schema.Boolean, { default: () => false }),
 }) {}
