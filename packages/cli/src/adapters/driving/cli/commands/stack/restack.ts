@@ -66,11 +66,16 @@ export const restackCommand = Command.make("restack", { json: jsonOption }, ({ j
         Effect.catchAll(() => Effect.succeed({ success: false as const })),
       );
 
-      const output: RestackOutput = {
-        restacked: false,
-        stackSize: 0,
-        trunkChangeId: trunkResult.success ? trunkResult.trunk.shortChangeId : undefined,
-      };
+      const output: RestackOutput = trunkResult.success
+        ? {
+            restacked: false,
+            stackSize: 0,
+            trunkChangeId: trunkResult.trunk.shortChangeId,
+          }
+        : {
+            restacked: false,
+            stackSize: 0,
+          };
 
       if (json) {
         yield* Console.log(JSON.stringify(output, null, 2));
@@ -122,12 +127,18 @@ export const restackCommand = Command.make("restack", { json: jsonOption }, ({ j
       Effect.catchAll(() => Effect.succeed({ success: false as const })),
     );
 
-    const output: RestackOutput = {
-      restacked: true,
-      stackSize: stackAfter,
-      trunkChangeId: trunkResult.success ? trunkResult.trunk.shortChangeId : undefined,
-      conflicted: rebaseResult.conflicted,
-    };
+    const output: RestackOutput = trunkResult.success
+      ? {
+          restacked: true,
+          stackSize: stackAfter,
+          trunkChangeId: trunkResult.trunk.shortChangeId,
+          conflicted: rebaseResult.conflicted,
+        }
+      : {
+          restacked: true,
+          stackSize: stackAfter,
+          conflicted: rebaseResult.conflicted,
+        };
 
     if (json) {
       yield* Console.log(JSON.stringify(output, null, 2));
