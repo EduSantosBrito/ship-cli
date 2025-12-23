@@ -13,6 +13,7 @@ import { stopCommand } from "./stop.js";
 import { statusCommand } from "./status.js";
 import { subscribeCommand } from "./subscribe.js";
 import { unsubscribeCommand } from "./unsubscribe.js";
+import { cleanupCommand } from "./cleanup.js";
 
 // Webhook parent command
 const webhook = Command.make("webhook", {}, () =>
@@ -26,6 +27,7 @@ Commands:
   status            Show daemon status and subscriptions
   subscribe         Subscribe a session to PR events
   unsubscribe       Unsubscribe a session from PR events
+  cleanup           Clean up stale subscriptions
   forward           Forward GitHub events to OpenCode agent (legacy)
 
 The daemon maintains a single WebSocket connection to GitHub and routes
@@ -42,6 +44,7 @@ export const webhookCommand = webhook.pipe(
     statusCommand,
     subscribeCommand,
     unsubscribeCommand,
+    cleanupCommand,
     forwardCommand,
   ]),
 );
