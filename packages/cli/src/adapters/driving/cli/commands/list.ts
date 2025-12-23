@@ -5,7 +5,14 @@ import * as Console from "effect/Console";
 import * as Option from "effect/Option";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { TaskFilter, type TaskStatus, type Priority, type Task } from "../../../../domain/Task.js";
+import { MilestoneRepository } from "../../../../ports/MilestoneRepository.js";
+import {
+  TaskFilter,
+  type TaskStatus,
+  type Priority,
+  type Task,
+  type MilestoneId,
+} from "../../../../domain/Task.js";
 
 const jsonOption = Options.boolean("json").pipe(
   Options.withDescription("Output as JSON"),
@@ -39,6 +46,22 @@ const allOption = Options.boolean("all").pipe(
   Options.withDefault(false),
 );
 
+const milestoneOption = Options.text("milestone").pipe(
+  Options.withAlias("M"),
+  Options.withDescription("Filter by milestone (slug or ID)"),
+  Options.optional,
+);
+
+/**
+ * Generate a slug from a milestone name.
+ * e.g., "Q1 Release" -> "q1-release"
+ */
+const nameToSlug = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
 const formatTask = (task: Task): string => {
   const priority = task.priority === "urgent" ? "[!]" : task.priority === "high" ? "[^]" : "   ";
   const stateName = task.state.name.padEnd(11);
@@ -54,7 +77,10 @@ const formatTask = (task: Task): string => {
             : ""
     : "";
   const typeDisplay = typeIndicator ? `${typeIndicator.padEnd(7)} ` : "        ";
-  return `${priority} ${task.identifier.padEnd(10)} ${stateName} ${typeDisplay}${task.title}`;
+  const milestoneDisplay = Option.isSome(task.milestoneName)
+    ? ` [${nameToSlug(task.milestoneName.value)}]`
+    : "";
+  return `${priority} ${task.identifier.padEnd(10)} ${stateName} ${typeDisplay}${task.title}${milestoneDisplay}`;
 };
 
 export const listCommand = Command.make(
@@ -65,18 +91,51 @@ export const listCommand = Command.make(
     priority: priorityOption,
     mine: mineOption,
     all: allOption,
+    milestone: milestoneOption,
   },
-  ({ json, status, priority, mine, all }) =>
+  ({ json, status, priority, mine, all, milestone }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
+      const milestoneRepo = yield* MilestoneRepository;
 
       const cfg = yield* config.load();
+
+      // Resolve milestone slug to ID if provided
+      const milestoneId = yield* Option.match(milestone, {
+        onNone: () => Effect.succeed(Option.none<MilestoneId>()),
+        onSome: (slugOrId) =>
+          Effect.gen(function* () {
+            if (Option.isNone(cfg.linear.projectId)) {
+              return Option.none<MilestoneId>();
+            }
+
+            const milestones = yield* milestoneRepo.listMilestones(cfg.linear.projectId.value);
+            const bySlug = milestones.find(
+              (m) => nameToSlug(m.name) === slugOrId.toLowerCase(),
+            );
+
+            if (bySlug) {
+              return Option.some(bySlug.id);
+            }
+
+            // Try direct ID match
+            const byId = milestones.find((m) => m.id === slugOrId);
+            if (byId) {
+              return Option.some(byId.id);
+            }
+
+            // Not found - return none (will show no tasks)
+            yield* Console.error(`Milestone not found: ${slugOrId}`);
+            return Option.none<MilestoneId>();
+          }),
+      });
 
       const filter = new TaskFilter({
         status: Option.isSome(status) ? Option.some(status.value as TaskStatus) : Option.none(),
         priority: Option.isSome(priority) ? Option.some(priority.value as Priority) : Option.none(),
         projectId: cfg.linear.projectId,
+        milestoneId,
         assignedToMe: mine,
         includeCompleted: all,
       });
@@ -95,6 +154,8 @@ export const listCommand = Command.make(
           labels: t.labels,
           url: t.url,
           branchName: Option.getOrNull(t.branchName),
+          milestoneId: Option.getOrNull(t.milestoneId),
+          milestoneName: Option.getOrNull(t.milestoneName),
         }));
         yield* Console.log(JSON.stringify(output, null, 2));
       } else {

@@ -27,6 +27,7 @@ const formatTaskDetailed = (task: Task): string[] => {
 
   lines.push(`${task.identifier}: ${task.title}`);
   if (priority) lines.push(`  Priority: ${priority}`);
+  if (Option.isSome(task.milestoneName)) lines.push(`  Milestone: ${task.milestoneName.value}`);
   if (task.labels.length > 0) lines.push(`  Labels: ${task.labels.join(", ")}`);
   if (Option.isSome(task.branchName)) lines.push(`  Branch: ${task.branchName.value}`);
   lines.push(`  URL: ${task.url}`);
@@ -53,6 +54,8 @@ export const readyCommand = Command.make("ready", { json: jsonOption }, ({ json 
         labels: t.labels,
         url: t.url,
         branchName: Option.getOrNull(t.branchName),
+        milestoneId: Option.getOrNull(t.milestoneId),
+        milestoneName: Option.getOrNull(t.milestoneName),
       }));
       yield* Console.log(JSON.stringify(output, null, 2));
     } else {

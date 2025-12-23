@@ -5,12 +5,23 @@ import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
 import { IssueRepository } from "../../../../ports/IssueRepository.js";
+import { MilestoneRepository } from "../../../../ports/MilestoneRepository.js";
+import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import {
   UpdateTaskInput,
   type TaskId,
   type Priority,
   type TaskStatus,
 } from "../../../../domain/Task.js";
+
+/**
+ * Generate a slug from a milestone name.
+ */
+const nameToSlug = (name: string): string =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
 const taskIdArg = Args.text({ name: "task-id" }).pipe(
   Args.withDescription("Task identifier (e.g., ENG-123)"),
@@ -48,6 +59,12 @@ const parentOption = Options.text("parent").pipe(
   Options.optional,
 );
 
+const milestoneOption = Options.text("milestone").pipe(
+  Options.withAlias("M"),
+  Options.withDescription("Milestone slug or ID to assign, or empty string to remove"),
+  Options.optional,
+);
+
 const jsonOption = Options.boolean("json").pipe(
   Options.withDescription("Output as JSON"),
   Options.withDefault(false),
@@ -62,11 +79,14 @@ export const updateCommand = Command.make(
     priority: priorityOption,
     status: statusOption,
     parent: parentOption,
+    milestone: milestoneOption,
     json: jsonOption,
   },
-  ({ taskId, title, description, priority, status, parent, json }) =>
+  ({ taskId, title, description, priority, status, parent, milestone, json }) =>
     Effect.gen(function* () {
       const issueRepo = yield* IssueRepository;
+      const milestoneRepo = yield* MilestoneRepository;
+      const configRepo = yield* ConfigRepository;
 
       // Check if any update was provided
       const hasUpdate =
@@ -74,11 +94,12 @@ export const updateCommand = Command.make(
         Option.isSome(description) ||
         Option.isSome(priority) ||
         Option.isSome(status) ||
-        Option.isSome(parent);
+        Option.isSome(parent) ||
+        Option.isSome(milestone);
 
       if (!hasUpdate) {
         yield* Console.error(
-          "No updates provided. Use --title, --description, --priority, --status, or --parent.",
+          "No updates provided. Use --title, --description, --priority, --status, --parent, or --milestone.",
         );
         return;
       }
@@ -110,6 +131,40 @@ export const updateCommand = Command.make(
         },
       });
 
+      // Resolve milestone slug to ID if provided
+      const milestoneId = yield* Option.match(milestone, {
+        onNone: () => Effect.succeed(Option.none<string>()),
+        onSome: (value) =>
+          Effect.gen(function* () {
+            // Empty string means remove milestone
+            if (value === "") {
+              return Option.some("");
+            }
+
+            const cfg = yield* configRepo.load();
+            if (Option.isNone(cfg.linear.projectId)) {
+              yield* Console.error("No project configured. Cannot resolve milestone.");
+              return Option.none<string>();
+            }
+
+            const milestones = yield* milestoneRepo.listMilestones(cfg.linear.projectId.value);
+            const bySlug = milestones.find((m) => nameToSlug(m.name) === value.toLowerCase());
+
+            if (bySlug) {
+              return Option.some(bySlug.id);
+            }
+
+            // Try direct ID match
+            const byId = milestones.find((m) => m.id === value);
+            if (byId) {
+              return Option.some(byId.id);
+            }
+
+            yield* Console.error(`Milestone not found: ${value}`);
+            return Option.none<string>();
+          }),
+      });
+
       // Build update input
       const input = new UpdateTaskInput({
         title: Option.isSome(title) ? Option.some(title.value) : Option.none(),
@@ -118,6 +173,7 @@ export const updateCommand = Command.make(
         status: Option.isSome(status) ? Option.some(status.value as TaskStatus) : Option.none(),
         assigneeId: Option.none(),
         parentId,
+        milestoneId,
       });
 
       const task = yield* issueRepo.updateTask(existingTask.id, input);
@@ -155,6 +211,13 @@ export const updateCommand = Command.make(
             yield* Console.log(`Parent: removed`);
           } else {
             yield* Console.log(`Parent: ${parent.value}`);
+          }
+        }
+        if (Option.isSome(milestone)) {
+          if (milestone.value === "") {
+            yield* Console.log(`Milestone: removed`);
+          } else {
+            yield* Console.log(`Milestone: ${milestone.value}`);
           }
         }
         yield* Console.log(`URL: ${task.url}`);

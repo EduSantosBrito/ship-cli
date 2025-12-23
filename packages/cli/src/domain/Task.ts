@@ -85,6 +85,8 @@ export class Task extends Schema.Class<Task>("Task")({
   type: Schema.OptionFromNullOr(TaskType),
   teamId: TeamId,
   projectId: Schema.OptionFromNullOr(ProjectId),
+  milestoneId: Schema.OptionFromNullOr(MilestoneId),
+  milestoneName: Schema.OptionFromNullOr(Schema.String), // For display without extra fetch
   branchName: Schema.OptionFromNullOr(Schema.String),
   url: Schema.String,
   labels: Schema.Array(Schema.String),
@@ -140,6 +142,7 @@ export class CreateTaskInput extends Schema.Class<CreateTaskInput>("CreateTaskIn
   type: Schema.optionalWith(TaskType, { default: () => "task" as const }),
   projectId: Schema.OptionFromNullOr(ProjectId),
   parentId: Schema.OptionFromNullOr(TaskId), // For creating subtasks
+  milestoneId: Schema.OptionFromNullOr(MilestoneId),
 }) {}
 
 export class UpdateTaskInput extends Schema.Class<UpdateTaskInput>("UpdateTaskInput")({
@@ -150,12 +153,15 @@ export class UpdateTaskInput extends Schema.Class<UpdateTaskInput>("UpdateTaskIn
   assigneeId: Schema.OptionFromNullOr(Schema.String),
   /** Parent task ID for reparenting. Use empty string to remove parent. */
   parentId: Schema.OptionFromNullOr(Schema.String),
+  /** Milestone ID for assignment. Use empty string to remove milestone. */
+  milestoneId: Schema.OptionFromNullOr(Schema.String),
 }) {}
 
 export class TaskFilter extends Schema.Class<TaskFilter>("TaskFilter")({
   status: Schema.OptionFromNullOr(TaskStatus),
   priority: Schema.OptionFromNullOr(Priority),
   projectId: Schema.OptionFromNullOr(ProjectId),
+  milestoneId: Schema.OptionFromNullOr(MilestoneId),
   assignedToMe: Schema.optionalWith(Schema.Boolean, { default: () => false }),
   /** When true, include completed and cancelled tasks. Default: false (excludes them) */
   includeCompleted: Schema.optionalWith(Schema.Boolean, { default: () => false }),
