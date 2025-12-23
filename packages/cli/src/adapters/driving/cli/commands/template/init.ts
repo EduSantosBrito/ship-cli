@@ -131,7 +131,7 @@ export const initTemplateCommand = Command.make("init", { force: forceOption }, 
       yield* Console.log(`Skipped ${skipped} existing template(s)`);
     }
     yield* Console.log("");
-    yield* Console.log('Use templates with: ship create --template <name> "Task title"');
+    yield* Console.log('Use templates with: ship task create --template <name> "Task title"');
     yield* Console.log("View templates with: ship template list");
   }),
 );

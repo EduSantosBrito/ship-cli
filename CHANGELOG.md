@@ -17,17 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Milestone management commands
 - Template system for project initialization
 
-### Core Features
+### Task Commands
 
-- `ship ready` - List tasks with no blockers
-- `ship list` - List all tasks with optional filters
-- `ship show` - View task details
-- `ship start` - Mark task as in progress
-- `ship done` - Mark task as complete
-- `ship create` - Create new tasks
-- `ship update` - Update existing tasks
-- `ship block/unblock` - Manage task dependencies
-- `ship relate` - Link related tasks
+- `ship task ready` - List tasks with no blockers
+- `ship task list` - List all tasks with optional filters
+- `ship task show` - View task details
+- `ship task start` - Mark task as in progress
+- `ship task done` - Mark task as complete
+- `ship task create` - Create new tasks
+- `ship task update` - Update existing tasks
+- `ship task block/unblock` - Manage task dependencies
+- `ship task relate` - Link related tasks
 
 ### Stack (VCS) Commands
 

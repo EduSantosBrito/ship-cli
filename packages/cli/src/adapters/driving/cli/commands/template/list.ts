@@ -56,7 +56,7 @@ export const listCommand = Command.make("list", { json: jsonOption }, ({ json })
           }
           yield* Console.log("");
         }
-        yield* Console.log(`Use with: ship create --template <name> "Task title"`);
+        yield* Console.log(`Use with: ship task create --template <name> "Task title"`);
       }
     }
   }),

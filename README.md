@@ -26,8 +26,8 @@ Ship bridges [Linear](https://linear.app) task management with [jj](https://mart
 
 AI coding agents need structured workflows. Ship provides:
 
-- **Task context** - Know exactly what to work on next with `ship ready`
-- **Dependency tracking** - Understand what blocks what with `ship blocked`
+- **Task context** - Know exactly what to work on next with `ship task ready`
+- **Dependency tracking** - Understand what blocks what with `ship task blocked`
 - **Stacked changes** - Manage jj-based stacked diffs tied to Linear tasks
 - **AI-first design** - Built as an [OpenCode](https://opencode.ai) plugin for seamless integration
 
@@ -38,13 +38,13 @@ Ship enforces a structured workflow that keeps AI agents (and humans) productive
 ### The Core Loop
 
 ```
-1. ship ready          → Find a task with no blockers
-2. ship start <id>     → Mark it "In Progress" in Linear
-3. ship stack create   → Create an isolated workspace + jj change
-4. [make changes]      → Code in the workspace
-5. ship stack sync     → Rebase onto latest trunk
-6. ship stack submit   → Push and create/update PR
-7. ship done <id>      → Mark task complete
+1. ship task ready        → Find a task with no blockers
+2. ship task start <id>   → Mark it "In Progress" in Linear
+3. ship stack create      → Create an isolated workspace + jj change
+4. [make changes]         → Code in the workspace
+5. ship stack sync        → Rebase onto latest trunk
+6. ship stack submit      → Push and create/update PR
+7. ship task done <id>    → Mark task complete
 ```
 
 ### Why Workspaces?
@@ -67,13 +67,13 @@ When PR #1 merges, `ship stack sync` automatically rebases your stack onto the n
 
 ### Task Dependencies
 
-Use `ship block` to model dependencies between tasks:
+Use `ship task block` to model dependencies between tasks:
 
 ```sh
-ship block BRI-100 BRI-101  # BRI-100 must complete before BRI-101
+ship task block BRI-100 BRI-101  # BRI-100 must complete before BRI-101
 ```
 
-`ship ready` only shows tasks with **no blockers**, so agents always know what they can work on.
+`ship task ready` only shows tasks with **no blockers**, so agents always know what they can work on.
 
 ## Quick Start
 
@@ -85,7 +85,7 @@ npm install -g @ship-cli/core
 ship init
 
 # See what's ready to work on
-ship ready
+ship task ready
 ```
 
 ## Installation
@@ -121,22 +121,22 @@ Add to your `opencode.json`:
 | Command | Description |
 |---------|-------------|
 | `ship init` | Initialize ship (authenticate + select team/project) |
-| `ship ready` | List tasks with no blockers |
-| `ship list` | List all tasks |
-| `ship blocked` | List blocked tasks |
-| `ship show <id>` | Show task details |
-| `ship start <id>` | Start working on a task |
-| `ship done <id>` | Mark task as complete |
-| `ship create "<title>"` | Create a new task |
-| `ship update <id>` | Update task properties |
+| `ship task ready` | List tasks with no blockers |
+| `ship task list` | List all tasks |
+| `ship task blocked` | List blocked tasks |
+| `ship task show <id>` | Show task details |
+| `ship task start <id>` | Start working on a task |
+| `ship task done <id>` | Mark task as complete |
+| `ship task create "<title>"` | Create a new task |
+| `ship task update <id>` | Update task properties |
 
 ### Dependencies
 
 | Command | Description |
 |---------|-------------|
-| `ship block <blocker> <blocked>` | Mark task as blocking another |
-| `ship unblock <blocker> <blocked>` | Remove blocking relationship |
-| `ship relate <task> <related>` | Link related tasks |
+| `ship task block <blocker> <blocked>` | Mark task as blocking another |
+| `ship task unblock <blocker> <blocked>` | Remove blocking relationship |
+| `ship task relate <task> <related>` | Link related tasks |
 
 ### Stacked Changes (jj)
 
@@ -301,7 +301,7 @@ pnpm install
 pnpm build
 
 # Run CLI in development
-pnpm ship ready
+pnpm ship task ready
 
 # Type check
 pnpm check

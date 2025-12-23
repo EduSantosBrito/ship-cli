@@ -4,10 +4,10 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { UpdateTaskInput, type TaskId } from "../../../../domain/Task.js";
-import { dryRunOption } from "./shared.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import { UpdateTaskInput, type TaskId } from "../../../../../domain/Task.js";
+import { dryRunOption } from "../shared.js";
 
 const taskIdArg = Args.text({ name: "task-id" }).pipe(
   Args.withDescription("Task identifier (e.g., ENG-123)"),
@@ -24,7 +24,7 @@ const jsonOption = Options.boolean("json").pipe(
   Options.withDefault(false),
 );
 
-export const doneCommand = Command.make(
+export const doneTaskCommand = Command.make(
   "done",
   { taskId: taskIdArg, reason: reasonOption, json: jsonOption, dryRun: dryRunOption },
   ({ taskId, reason, json, dryRun }) =>
@@ -128,7 +128,7 @@ export const doneCommand = Command.make(
         if (unblockedTasks.length > 0) {
           yield* Console.log(`\nUnblocked: ${unblockedTasks.join(", ")}`);
         }
-        yield* Console.log(`\nRun 'ship ready' to see the next available task.`);
+        yield* Console.log(`\nRun 'ship task ready' to see the next available task.`);
       }
     }),
 );

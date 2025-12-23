@@ -113,7 +113,7 @@ export const createPrCommand = Command.make(
       // Check if change has a bookmark
       if (change.bookmarks.length === 0) {
         yield* outputError(
-          "Current change has no bookmark. Create one with 'jj bookmark create <name>' or use 'ship start <task-id>'.",
+          "Current change has no bookmark. Create one with 'jj bookmark create <name>' or use 'ship task start <task-id>'.",
           json,
         );
         return;

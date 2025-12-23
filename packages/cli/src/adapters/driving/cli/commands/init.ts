@@ -44,7 +44,7 @@ export const initCommand = Command.make(
             `Team: ${partial.linear.value.teamKey}${Option.isSome(partial.linear.value.projectId) ? `\nProject: ${partial.linear.value.projectId.value}` : ""}`,
             "Already initialized",
           );
-          clack.outro("Run 'ship ready' to see available tasks.");
+          clack.outro("Run 'ship task ready' to see available tasks.");
           return;
         }
       }
@@ -195,6 +195,6 @@ export const initCommand = Command.make(
         "Workspace initialized",
       );
 
-      clack.outro("Run 'ship ready' to see available tasks.");
+      clack.outro("Run 'ship task ready' to see available tasks.");
     }),
 );
