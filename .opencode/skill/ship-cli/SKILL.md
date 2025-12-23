@@ -97,6 +97,22 @@ All support optional `workdir` param.
 | `stack-remove-workspace` | name, deleteFiles? | Remove workspace |
 | `stack-update-stale` | - | Fix stale working copy |
 
+### Pull Requests
+
+Use these for advanced PR workflows. Note: `stack-submit` handles basic PR creation automatically.
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `pr-create` | draft?, open? | Create PR with Linear task context |
+| `pr-stack` | dryRun? | Create stacked PRs for entire stack |
+| `pr-review` | prNumber? (optional), unresolved?, json? | Fetch PR reviews and comments |
+
+**`pr-create`**: Creates a PR for current bookmark, auto-populating title and body from Linear task. Use when you need rich task context in PR description.
+
+**`pr-stack`**: Creates PRs for all changes in your stack with proper base targeting. First PR targets main, subsequent PRs target previous bookmark.
+
+**`pr-review`**: Fetches reviews and comments in AI-friendly format. Shows verdicts (APPROVED, CHANGES_REQUESTED), inline code comments with file:line, and conversation threads. Use `--unresolved` to filter to actionable items only.
+
 ### Milestones
 
 | Action | Params | Description |

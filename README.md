@@ -149,6 +149,54 @@ Add to your `opencode.json`:
 | `ship stack submit` | Push changes and create/update PRs |
 | `ship stack squash` | Squash changes in the stack |
 
+### Pull Requests
+
+| Command | Description |
+|---------|-------------|
+| `ship pr create` | Create PR for current bookmark with Linear task context |
+| `ship pr stack` | Create stacked PRs for entire stack |
+| `ship pr review [number]` | Fetch PR reviews and comments |
+
+#### `ship pr create`
+
+Creates a GitHub PR for the current bookmark with auto-populated task information:
+
+```sh
+ship pr create              # Create PR with task context from Linear
+ship pr create --draft      # Create as draft PR
+ship pr create --open       # Open PR in browser after creation
+```
+
+The command extracts the task ID from your bookmark name (e.g., `user/BRI-123-feature` → `BRI-123`) and fetches task details from Linear to generate a rich PR body with summary, acceptance criteria, and task link.
+
+#### `ship pr stack`
+
+Creates PRs for your entire stack with proper base branch targeting:
+
+```sh
+ship pr stack               # Create PRs for all changes in stack
+ship pr stack --dry-run     # Preview what would be created
+```
+
+Each PR targets the previous PR's branch, enabling incremental code review:
+
+```
+trunk ← PR #1 (base: main) ← PR #2 (base: PR #1 branch) ← PR #3 (base: PR #2 branch)
+```
+
+#### `ship pr review`
+
+Fetches PR reviews and comments in an AI-friendly format:
+
+```sh
+ship pr review              # Review for current bookmark's PR
+ship pr review 42           # Review for PR #42
+ship pr review --unresolved # Show only actionable comments
+ship pr review --json       # Machine-readable output
+```
+
+Output includes review verdicts, inline code comments with file:line context, and conversation threads - formatted for AI agents to understand and address feedback.
+
 ## OpenCode Integration
 
 The [@ship-cli/opencode](https://www.npmjs.com/package/@ship-cli/opencode) plugin provides:
@@ -166,6 +214,15 @@ ready, list, blocked, show, start, done, create, update,
 block, unblock, relate, status, stack-log, stack-status,
 stack-create, stack-describe, stack-sync, stack-submit, ...
 ```
+
+### Compaction Context Preservation
+
+When OpenCode sessions are compacted to reduce context size, the Ship plugin automatically preserves task state:
+
+- **Current task ID** - Which task the agent is working on
+- **Workspace path** - The active jj workspace directory
+
+After compaction, the agent is instructed to re-read the ship-cli skill and can seamlessly continue work on the same task without losing context.
 
 ### Webhook Integration
 
