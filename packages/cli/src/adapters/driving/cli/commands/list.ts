@@ -111,9 +111,7 @@ export const listCommand = Command.make(
             }
 
             const milestones = yield* milestoneRepo.listMilestones(cfg.linear.projectId.value);
-            const bySlug = milestones.find(
-              (m) => nameToSlug(m.name) === slugOrId.toLowerCase(),
-            );
+            const bySlug = milestones.find((m) => nameToSlug(m.name) === slugOrId.toLowerCase());
 
             if (bySlug) {
               return Option.some(bySlug.id);

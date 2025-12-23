@@ -941,6 +941,81 @@ const make = Effect.gen(function* () {
       "Clearing session label",
     );
 
+  const removeAsBlocker = (
+    blockerId: TaskId,
+  ): Effect.Effect<ReadonlyArray<string>, TaskNotFoundError | LinearApiError> =>
+    withRetryAndTimeout(
+      Effect.gen(function* () {
+        const client = yield* linearClient.client();
+
+        // Fetch the blocker issue
+        const blocker = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(client.issue(blockerId), signal),
+          catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
+        });
+
+        if (!blocker) {
+          return yield* Effect.fail(new TaskNotFoundError({ taskId: blockerId }));
+        }
+
+        // Get inverse relations - these are issues that THIS task blocks
+        const inverseRelations = yield* Effect.tryPromise({
+          try: (signal) => withAbortSignal(blocker.inverseRelations(), signal),
+          catch: (e) =>
+            new LinearApiError({ message: `Failed to fetch inverse relations: ${e}`, cause: e }),
+        });
+
+        // Filter to only "blocks" relations (where this task is the blocker)
+        const blockingRelations =
+          inverseRelations?.nodes?.filter((r: IssueRelation) => r.type === "blocks") ?? [];
+
+        if (blockingRelations.length === 0) {
+          return [];
+        }
+
+        // Delete each blocking relation in parallel and collect the unblocked task identifiers.
+        // Uses partial failure handling - if one deletion fails, we log a warning and continue
+        // with the others rather than failing the entire operation.
+        const results = yield* Effect.forEach(
+          blockingRelations,
+          (relation) =>
+            Effect.gen(function* () {
+              // The Linear SDK types don't expose `issue` on IssueRelation, but it exists
+              // on inverse relations as a Promise<Issue> pointing to the blocked issue.
+              const blockedIssue = yield* Effect.tryPromise({
+                try: (signal) =>
+                  withAbortSignal(
+                    (relation as IssueRelation & { issue: Promise<Issue> }).issue,
+                    signal,
+                  ),
+                catch: (e) =>
+                  new LinearApiError({ message: `Failed to fetch blocked issue: ${e}`, cause: e }),
+              });
+
+              // Delete the relation
+              yield* Effect.tryPromise({
+                try: (signal) => withAbortSignal(client.deleteIssueRelation(relation.id), signal),
+                catch: (e) =>
+                  new LinearApiError({ message: `Failed to delete relation: ${e}`, cause: e }),
+              });
+
+              return blockedIssue?.identifier ?? null;
+            }).pipe(
+              Effect.catchAll((error) =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(`Failed to remove blocking relation: ${error}`);
+                  return null;
+                }),
+              ),
+            ),
+          { concurrency: 3 },
+        );
+
+        return results.filter((id): id is string => id !== null);
+      }),
+      "Removing task as blocker",
+    );
+
   return {
     getTask,
     getTaskByIdentifier,
@@ -956,6 +1031,7 @@ const make = Effect.gen(function* () {
     setSessionLabel,
     setTypeLabel,
     clearSessionLabel,
+    removeAsBlocker,
   };
 });
 

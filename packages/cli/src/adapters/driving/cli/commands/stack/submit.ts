@@ -199,7 +199,11 @@ export const submitCommand = Command.make(
               result,
             })),
             Effect.catchAll((e) =>
-              Effect.succeed({ success: false as const, bookmark: bookmarkToPush, error: String(e) }),
+              Effect.succeed({
+                success: false as const,
+                bookmark: bookmarkToPush,
+                error: String(e),
+              }),
             ),
           ),
         { concurrency: 3 },
