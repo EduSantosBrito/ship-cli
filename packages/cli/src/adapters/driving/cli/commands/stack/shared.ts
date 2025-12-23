@@ -5,6 +5,7 @@
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import { VcsService } from "../../../../../ports/VcsService.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import { JjNotInstalledError, VcsError } from "../../../../../domain/Errors.js";
 
 /**
@@ -114,3 +115,27 @@ export const formatEffectError = (e: unknown): string => {
   const { tag, message } = extractErrorInfo(e);
   return `[${tag}] ${message}`;
 };
+
+/**
+ * Get the configured default branch (trunk) from config.
+ *
+ * Loads the config and extracts git.defaultBranch, falling back to "main"
+ * if config loading fails or the field is not set.
+ *
+ * This helper provides type-safe access to just the defaultBranch value,
+ * avoiding the need to create partial config objects with incorrect shapes.
+ *
+ * @example
+ * ```ts
+ * const defaultBranch = yield* getDefaultBranch();
+ * yield* vcs.sync(defaultBranch);
+ * ```
+ */
+export const getDefaultBranch = (): Effect.Effect<string, never, ConfigRepository> =>
+  Effect.gen(function* () {
+    const configRepo = yield* ConfigRepository;
+    return yield* configRepo.load().pipe(
+      Effect.map((c) => c.git.defaultBranch),
+      Effect.catchAll(() => Effect.succeed("main")),
+    );
+  });

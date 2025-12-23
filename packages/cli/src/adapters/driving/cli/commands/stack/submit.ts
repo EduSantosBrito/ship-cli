@@ -20,7 +20,7 @@ import * as Option from "effect/Option";
 import * as Array from "effect/Array";
 import * as Console from "effect/Console";
 import { pipe } from "effect/Function";
-import { checkVcsAvailability, outputError } from "./shared.js";
+import { checkVcsAvailability, outputError, getDefaultBranch } from "./shared.js";
 import { PrService, CreatePrInput, UpdatePrInput } from "../../../../../ports/PrService.js";
 import { DaemonService } from "../../../../../ports/DaemonService.js";
 
@@ -187,10 +187,13 @@ export const submitCommand = Command.make(
         return;
       }
 
+      // Get configured default branch (trunk)
+      const defaultBranch = yield* getDefaultBranch();
+
       // Determine base branch for PR
       // If we're submitting the parent (because current was empty), look at grandparent
       // Otherwise, use the parent's bookmark for stacked PR workflow
-      // Fall back to main/trunk if no parent bookmark
+      // Fall back to configured default branch if no parent bookmark
       const submitParentChange =
         change === parentChange
           ? yield* vcs.getLog("@--").pipe(
@@ -202,7 +205,7 @@ export const submitCommand = Command.make(
       const baseBranch = pipe(
         Option.fromNullable(submitParentChange),
         Option.flatMap((p) => Array.head(p.bookmarks)),
-        Option.getOrElse(() => "main"),
+        Option.getOrElse(() => defaultBranch),
       );
 
       // Resolve PR title and body using Option.getOrElse

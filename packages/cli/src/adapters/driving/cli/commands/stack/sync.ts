@@ -21,7 +21,7 @@ import * as clack from "@clack/prompts";
 import * as Console from "effect/Console";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
-import { checkVcsAvailability, outputError, extractErrorInfo } from "./shared.js";
+import { checkVcsAvailability, outputError, extractErrorInfo, getDefaultBranch } from "./shared.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import { PrService, type PullRequest } from "../../../../../ports/PrService.js";
 import type { Change } from "../../../../../ports/VcsService.js";
@@ -93,8 +93,11 @@ export const syncCommand = Command.make(
       }
       const { vcs } = vcsCheck;
 
+      // Get configured default branch (trunk)
+      const defaultBranch = yield* getDefaultBranch();
+
       // Run sync operation - handle errors with preserved context
-      const syncResult = yield* vcs.sync().pipe(
+      const syncResult = yield* vcs.sync(defaultBranch).pipe(
         Effect.map((result) => ({ success: true as const, result })),
         Effect.catchAll((e) => {
           return Effect.succeed({ success: false as const, error: extractErrorInfo(e) });
@@ -161,7 +164,7 @@ export const syncCommand = Command.make(
       // If changes were abandoned (parent PRs merged), update child PR base branches
       // This ensures GitHub PRs point to the correct base after parent merges
       if (abandonedChanges.length > 0 && !result.stackFullyMerged) {
-        const updatedBases = yield* updatePrBasesAfterMerge(vcs, abandonedChanges);
+        const updatedBases = yield* updatePrBasesAfterMerge(vcs, abandonedChanges, defaultBranch);
         if (updatedBases.length > 0) {
           output.updatedPrBases = updatedBases;
         }
@@ -381,11 +384,12 @@ const cleanupWorkspaceAfterMerge = (vcs: {
  * Logic:
  * - Get the current stack after sync (which already abandoned merged changes)
  * - For each change with a bookmark, check if there's a PR
- * - Determine the correct base: parent's bookmark, or "main" if no parent
+ * - Determine the correct base: parent's bookmark, or configured default branch if no parent
  * - If PR's current base is a merged bookmark, update it to the correct base
  *
  * @param vcs - VCS service for getting stack info
  * @param abandonedChanges - Changes that were abandoned (merged PRs)
+ * @param defaultBranch - The configured trunk branch name (from config.git.defaultBranch)
  * @returns Array of PRs whose base was updated
  */
 const updatePrBasesAfterMerge = (
@@ -393,6 +397,7 @@ const updatePrBasesAfterMerge = (
     getStack: () => Effect.Effect<ReadonlyArray<Change>, unknown>;
   },
   abandonedChanges: AbandonedChangeOutput[],
+  defaultBranch: string,
 ): Effect.Effect<UpdatedPrBaseOutput[], never, PrService> =>
   Effect.gen(function* () {
     const prService = yield* PrService;
@@ -423,14 +428,14 @@ const updatePrBasesAfterMerge = (
 
     const updatedPrBases: UpdatedPrBaseOutput[] = [];
 
-    // Build a map of bookmark -> parent bookmark (or "main" if at base of stack)
+    // Build a map of bookmark -> parent bookmark (or default branch if at base of stack)
     const bookmarkToParent = new Map<string, string>();
     for (let i = 0; i < stackFromTrunk.length; i++) {
       const change = stackFromTrunk[i];
       if (change.bookmarks.length > 0) {
         const bookmark = change.bookmarks[0];
         // Find parent bookmark by looking at previous changes in stack
-        let parentBookmark = "main";
+        let parentBookmark = defaultBranch;
         for (let j = i - 1; j >= 0; j--) {
           const parentChange = stackFromTrunk[j];
           if (parentChange.bookmarks.length > 0) {

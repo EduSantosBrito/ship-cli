@@ -230,7 +230,7 @@ const make = Effect.gen(function* () {
       });
     });
 
-  const rebase = (source: ChangeId, destination = "main"): Effect.Effect<void, VcsErrors> =>
+  const rebase = (source: ChangeId, destination: string): Effect.Effect<void, VcsErrors> =>
     runJj("rebase", "-s", source, "-d", destination).pipe(Effect.asVoid);
 
   const getParentChange = (): Effect.Effect<Change | null, VcsErrors> =>
@@ -261,7 +261,7 @@ const make = Effect.gen(function* () {
       return parent;
     });
 
-  const sync = (): Effect.Effect<SyncResult, VcsErrors> =>
+  const sync = (defaultBranch: string): Effect.Effect<SyncResult, VcsErrors> =>
     Effect.gen(function* () {
       // 1. Fetch from remote
       yield* fetch();
@@ -287,8 +287,8 @@ const make = Effect.gen(function* () {
       // Stack is returned with newest first, so last element is the base
       const firstInStack = stackBefore[stackBefore.length - 1];
 
-      // 4. Rebase stack onto trunk
-      const rebaseResult = yield* runJj("rebase", "-s", firstInStack.id, "-d", "main").pipe(
+      // 4. Rebase stack onto trunk (using configured default branch)
+      const rebaseResult = yield* runJj("rebase", "-s", firstInStack.id, "-d", defaultBranch).pipe(
         Effect.map(() => ({ conflicted: false })),
         Effect.catchTag("JjConflictError", () => Effect.succeed({ conflicted: true })),
       );
