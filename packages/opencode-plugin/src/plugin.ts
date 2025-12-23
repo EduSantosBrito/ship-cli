@@ -321,11 +321,38 @@ const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
     return ["ship"];
   };
 
+  /**
+   * Extract JSON from CLI output by finding the last valid JSON object or array.
+   *
+   * The CLI may output non-JSON content before the actual JSON response (e.g., spinner
+   * output, progress messages). Additionally, task descriptions may contain JSON code
+   * blocks which could be incorrectly matched if we search from the start.
+   *
+   * This function searches backwards from the end to find the last `{` or `[` that
+   * starts a complete JSON value, ensuring we capture the actual response.
+   */
   const extractJson = (output: string): string => {
-    const jsonMatch = output.match(/^\s*[\[{]/m);
-    if (jsonMatch && jsonMatch.index !== undefined) {
-      return output.slice(jsonMatch.index);
+    // Find all potential JSON start positions (lines starting with { or [)
+    const matches = [...output.matchAll(/^\s*([\[{])/gm)];
+    if (matches.length === 0) {
+      return output;
     }
+
+    // Try each match from the end (last match is most likely the actual response)
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const match = matches[i];
+      if (match.index === undefined) continue;
+
+      const candidate = output.slice(match.index).trim();
+      // Quick validation: check if it looks like complete JSON
+      // (ends with } or ] after trimming)
+      const lastChar = candidate[candidate.length - 1];
+      if (lastChar === "}" || lastChar === "]") {
+        return candidate;
+      }
+    }
+
+    // Fallback to original behavior if no valid JSON found
     return output;
   };
 
