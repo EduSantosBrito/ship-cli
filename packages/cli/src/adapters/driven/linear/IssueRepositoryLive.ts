@@ -72,6 +72,61 @@ const withRetryAndTimeout = <A, E>(
     Effect.retry(retryPolicy),
   );
 
+/**
+ * Checks if an issue has any incomplete (non-completed, non-canceled) blockers.
+ * Returns true if the issue is blocked by at least one incomplete task.
+ */
+const hasIncompleteBlockers = (
+  issue: Issue,
+): Effect.Effect<boolean, LinearApiError> =>
+  Effect.gen(function* () {
+    const inverseRelations = yield* Effect.tryPromise({
+      try: (signal) => withAbortSignal(issue.inverseRelations(), signal),
+      catch: (e) => new LinearApiError({ message: `Failed to fetch inverse relations: ${e}`, cause: e }),
+    });
+
+    const blockedByRelations = inverseRelations?.nodes?.filter(
+      (r: IssueRelation) => r.type === "blocks",
+    ) ?? [];
+
+    if (blockedByRelations.length === 0) {
+      return false;
+    }
+
+    // Check each blocker's state - if any is incomplete, the issue is blocked
+    const blockerStates = yield* Effect.forEach(
+      blockedByRelations,
+      (relation) =>
+        Effect.gen(function* () {
+          const relatedIssueFetch = relation.relatedIssue;
+          if (!relatedIssueFetch) return null;
+
+          const blockerIssue = yield* Effect.tryPromise({
+            try: (signal) => withAbortSignal(relatedIssueFetch, signal),
+            catch: (e) => new LinearApiError({ message: `Failed to fetch blocker issue: ${e}`, cause: e }),
+          });
+
+          if (!blockerIssue) return null;
+
+          const stateFetch = blockerIssue.state;
+          if (!stateFetch) return null;
+
+          const state = yield* Effect.tryPromise({
+            try: (signal) => withAbortSignal(stateFetch, signal),
+            catch: (e) => new LinearApiError({ message: `Failed to fetch blocker state: ${e}`, cause: e }),
+          });
+
+          return state?.type ?? null;
+        }),
+      { concurrency: 5 },
+    );
+
+    // If any blocker is incomplete (not completed/canceled), the issue is blocked
+    return blockerStates.some(
+      (stateType) => stateType !== null && stateType !== "completed" && stateType !== "canceled",
+    );
+  });
+
 const make = Effect.gen(function* () {
   const linearClient = yield* LinearClientService;
 
@@ -519,26 +574,20 @@ const make = Effect.gen(function* () {
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
-        const tasks = yield* Effect.all(
-          issues.nodes.map((issue: Issue) =>
-            Effect.tryPromise({
-              try: async (signal) => {
-                const task = await withAbortSignal(mapIssueToTask(issue), signal);
-                // Use inverseRelations to find issues that BLOCK this issue
-                // When another issue has a "blocks" relation pointing to this issue,
-                // it appears in inverseRelations with type "blocks"
-                const inverseRelations = await withAbortSignal(issue.inverseRelations(), signal);
-                const blockedByRelations = inverseRelations?.nodes?.filter(
-                  (r: IssueRelation) => r.type === "blocks",
-                );
-                if (blockedByRelations && blockedByRelations.length > 0) {
-                  return null;
-                }
-                return task;
-              },
-              catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
+        const tasks = yield* Effect.forEach(
+          issues.nodes,
+          (issue: Issue) =>
+            Effect.gen(function* () {
+              const isBlocked = yield* hasIncompleteBlockers(issue);
+              if (isBlocked) {
+                return null;
+              }
+              return yield* Effect.tryPromise({
+                try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+                catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
+              });
             }),
-          ),
+          { concurrency: 5 },
         );
 
         return tasks.filter((t): t is Task => t !== null);
@@ -568,26 +617,20 @@ const make = Effect.gen(function* () {
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
-        const tasks = yield* Effect.all(
-          issues.nodes.map((issue: Issue) =>
-            Effect.tryPromise({
-              try: async (signal) => {
-                // Use inverseRelations to find issues that BLOCK this issue
-                // When another issue has a "blocks" relation pointing to this issue,
-                // it appears in inverseRelations with type "blocks"
-                const inverseRelations = await withAbortSignal(issue.inverseRelations(), signal);
-                const blockedByRelations = inverseRelations?.nodes?.filter(
-                  (r: IssueRelation) => r.type === "blocks",
-                );
-                if (!blockedByRelations || blockedByRelations.length === 0) {
-                  return null;
-                }
-                return withAbortSignal(mapIssueToTask(issue), signal);
-              },
-              catch: (e) =>
-                new LinearApiError({ message: `Failed to process issue: ${e}`, cause: e }),
+        const tasks = yield* Effect.forEach(
+          issues.nodes,
+          (issue: Issue) =>
+            Effect.gen(function* () {
+              const isBlocked = yield* hasIncompleteBlockers(issue);
+              if (!isBlocked) {
+                return null;
+              }
+              return yield* Effect.tryPromise({
+                try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+                catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
+              });
             }),
-          ),
+          { concurrency: 5 },
         );
 
         return tasks.filter((t): t is Task => t !== null);
