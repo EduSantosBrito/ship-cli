@@ -455,6 +455,7 @@ interface ShipService {
       description?: string;
       priority?: string;
       status?: string;
+      parentId?: string;
     }
   ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
   readonly addBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
@@ -593,7 +594,7 @@ const makeShipService = Effect.gen(function* () {
 
   const updateTask = (
     taskId: string,
-    input: { title?: string; description?: string; priority?: string; status?: string }
+    input: { title?: string; description?: string; priority?: string; status?: string; parentId?: string }
   ) =>
     Effect.gen(function* () {
       const args = ["update", "--json"];
@@ -601,6 +602,7 @@ const makeShipService = Effect.gen(function* () {
       if (input.description) args.push("--description", input.description);
       if (input.priority) args.push("--priority", input.priority);
       if (input.status) args.push("--status", input.status);
+      if (input.parentId !== undefined) args.push("--parent", input.parentId);
       args.push(taskId);
 
       const output = yield* shell.run(args);
@@ -1137,16 +1139,22 @@ const actionHandlers: Record<string, ActionHandler> = {
       if (!args.taskId) {
         return "Error: taskId is required for update action";
       }
-      if (!args.title && !args.description && !args.priority && !args.status) {
-        return "Error: at least one of title, description, priority, or status is required for update";
+      if (!args.title && !args.description && !args.priority && !args.status && args.parentId === undefined) {
+        return "Error: at least one of title, description, priority, status, or parentId is required for update";
       }
       const task = yield* ship.updateTask(args.taskId, {
         title: args.title,
         description: args.description,
         priority: args.priority,
         status: args.status,
+        parentId: args.parentId,
       });
-      return `Updated task ${task.identifier}: ${task.title}\nURL: ${task.url}`;
+      let output = `Updated task ${task.identifier}: ${task.title}`;
+      if (args.parentId !== undefined) {
+        output += args.parentId === "" ? "\nParent: removed" : `\nParent: ${args.parentId}`;
+      }
+      output += `\nURL: ${task.url}`;
+      return output;
     }),
 
   block: (ship, args) =>

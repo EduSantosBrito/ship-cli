@@ -326,6 +326,16 @@ const make = Effect.gen(function* () {
       "Creating task",
     );
 
+  /** Typed payload for Linear issue update API */
+  interface LinearIssueUpdatePayload {
+    title?: string;
+    description?: string;
+    priority?: number;
+    stateId?: string;
+    assigneeId?: string;
+    parentId?: string | null;
+  }
+
   const updateTask = (
     id: TaskId,
     input: UpdateTaskInput,
@@ -334,7 +344,7 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const client = yield* linearClient.client();
 
-        const updatePayload: Record<string, unknown> = {};
+        const updatePayload: LinearIssueUpdatePayload = {};
 
         if (Option.isSome(input.title)) {
           updatePayload.title = input.title.value;
@@ -350,6 +360,11 @@ const make = Effect.gen(function* () {
 
         if (Option.isSome(input.assigneeId)) {
           updatePayload.assigneeId = input.assigneeId.value;
+        }
+
+        if (Option.isSome(input.parentId)) {
+          // Empty string means remove parent, otherwise set the parent ID
+          updatePayload.parentId = input.parentId.value === "" ? null : input.parentId.value;
         }
 
         if (Option.isSome(input.status)) {

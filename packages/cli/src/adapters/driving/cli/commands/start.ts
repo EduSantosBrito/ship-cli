@@ -87,6 +87,7 @@ export const startCommand = Command.make(
           status: Option.some("in_progress"),
           priority: Option.none(),
           assigneeId: Option.some(viewer.id),
+          parentId: Option.none(),
         }),
       );
 

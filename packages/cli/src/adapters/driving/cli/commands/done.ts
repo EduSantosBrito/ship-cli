@@ -55,6 +55,7 @@ export const doneCommand = Command.make(
         status: Option.some("done"),
         priority: Option.none(),
         assigneeId: Option.none(),
+        parentId: Option.none(),
       });
 
       const updatedTask = yield* issueRepo.updateTask(task.id, updateInput);
