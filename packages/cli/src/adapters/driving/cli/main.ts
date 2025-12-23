@@ -19,6 +19,7 @@ import { statusCommand } from "./commands/status.js";
 import { stackCommand } from "./commands/stack/index.js";
 import { webhookCommand } from "./commands/webhook/index.js";
 import { templateCommand } from "./commands/template/index.js";
+import { milestoneCommand } from "./commands/milestone/index.js";
 
 // Root command
 const ship = Command.make("ship", {}, () =>
@@ -48,6 +49,7 @@ Commands:
   relate <a> <b>    Link two tasks as related
   
   template          Manage task templates
+  milestone         Manage project milestones
   stack             VCS operations (jj wrapper for AI agents)
   webhook           GitHub webhook operations
 
@@ -74,6 +76,7 @@ export const command = ship.pipe(
     relateCommand,
     blockedCommand,
     templateCommand,
+    milestoneCommand,
     stackCommand,
     webhookCommand,
   ]),
