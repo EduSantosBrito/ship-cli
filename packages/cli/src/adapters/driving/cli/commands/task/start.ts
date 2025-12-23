@@ -1,5 +1,5 @@
 /**
- * ship start - Start working on a task
+ * ship task start - Start working on a task
  *
  * Updates the task status to "In Progress" in Linear.
  * Does NOT create VCS changes - use `ship stack create` for that.
@@ -15,12 +15,12 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { UpdateTaskInput, type TaskId } from "../../../../domain/Task.js";
-import { LinearApiError } from "../../../../domain/Errors.js";
-import { LinearClientService } from "../../../driven/linear/LinearClient.js";
-import { dryRunOption } from "./shared.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import { UpdateTaskInput, type TaskId } from "../../../../../domain/Task.js";
+import { LinearApiError } from "../../../../../domain/Errors.js";
+import { LinearClientService } from "../../../../driven/linear/LinearClient.js";
+import { dryRunOption } from "../shared.js";
 
 // === Command Definition ===
 
@@ -40,7 +40,7 @@ const sessionOption = Options.text("session").pipe(
   Options.optional,
 );
 
-export const startCommand = Command.make(
+export const startTaskCommand = Command.make(
   "start",
   { taskId: taskIdArg, json: jsonOption, session: sessionOption, dryRun: dryRunOption },
   ({ taskId, json, session, dryRun }) =>

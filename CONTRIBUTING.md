@@ -29,7 +29,7 @@ pnpm install
 pnpm build
 
 # Run the CLI in development mode
-pnpm ship ready
+pnpm ship task ready
 
 # Run tests
 pnpm test

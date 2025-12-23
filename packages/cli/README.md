@@ -27,10 +27,10 @@ npx @ship-cli/core init
 ship init
 
 # See what's ready to work on
-ship ready
+ship task ready
 
 # Start working on a task
-ship start BRI-123
+ship task start BRI-123
 
 # Create a workspace and change
 ship stack create
@@ -39,7 +39,7 @@ ship stack create
 ship stack submit
 
 # Mark task complete
-ship done BRI-123
+ship task done BRI-123
 ```
 
 ## Requirements
@@ -55,13 +55,13 @@ ship done BRI-123
 | Command | Description |
 |---------|-------------|
 | `ship init` | Initialize ship (authenticate + select team/project) |
-| `ship ready` | List tasks with no blockers |
-| `ship list` | List all tasks |
-| `ship blocked` | List blocked tasks |
-| `ship show <id>` | Show task details |
-| `ship start <id>` | Start working on a task |
-| `ship done <id>` | Mark task as complete |
-| `ship create "<title>"` | Create a new task |
+| `ship task ready` | List tasks with no blockers |
+| `ship task list` | List all tasks |
+| `ship task blocked` | List blocked tasks |
+| `ship task show <id>` | Show task details |
+| `ship task start <id>` | Start working on a task |
+| `ship task done <id>` | Mark task as complete |
+| `ship task create "<title>"` | Create a new task |
 
 ### Stacked Changes (jj)
 

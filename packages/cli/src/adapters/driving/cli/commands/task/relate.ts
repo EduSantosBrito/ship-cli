@@ -3,9 +3,9 @@ import * as Args from "@effect/cli/Args";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import type { TaskId } from "../../../../domain/Task.js";
-import { dryRunOption } from "./shared.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import type { TaskId } from "../../../../../domain/Task.js";
+import { dryRunOption } from "../shared.js";
 
 const taskAArg = Args.text({ name: "task-a" }).pipe(
   Args.withDescription("First task identifier (e.g., BRI-123)"),
@@ -20,7 +20,7 @@ const jsonOption = Options.boolean("json").pipe(
   Options.withDefault(false),
 );
 
-export const relateCommand = Command.make(
+export const relateTaskCommand = Command.make(
   "relate",
   { taskA: taskAArg, taskB: taskBArg, json: jsonOption, dryRun: dryRunOption },
   ({ taskA, taskB, json, dryRun }) =>

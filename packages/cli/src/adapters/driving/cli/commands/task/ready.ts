@@ -3,9 +3,9 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import type { Task } from "../../../../domain/Task.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import type { Task } from "../../../../../domain/Task.js";
 
 const jsonOption = Options.boolean("json").pipe(
   Options.withDescription("Output as JSON"),
@@ -34,7 +34,7 @@ const formatTaskDetailed = (task: Task): string[] => {
   return lines;
 };
 
-export const readyCommand = Command.make("ready", { json: jsonOption }, ({ json }) =>
+export const readyTaskCommand = Command.make("ready", { json: jsonOption }, ({ json }) =>
   Effect.gen(function* () {
     const config = yield* ConfigRepository;
     const issueRepo = yield* IssueRepository;

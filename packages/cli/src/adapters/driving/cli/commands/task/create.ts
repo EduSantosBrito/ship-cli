@@ -4,12 +4,12 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { TemplateService } from "../../../../ports/TemplateService.js";
-import { CreateTaskInput, Priority, TaskType, TaskId } from "../../../../domain/Task.js";
-import { TaskError } from "../../../../domain/Errors.js";
-import { dryRunOption } from "./shared.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import { TemplateService } from "../../../../../ports/TemplateService.js";
+import { CreateTaskInput, Priority, TaskType, TaskId } from "../../../../../domain/Task.js";
+import { TaskError } from "../../../../../domain/Errors.js";
+import { dryRunOption } from "../shared.js";
 
 const titleArg = Args.text({ name: "title" }).pipe(Args.withDescription("Task title"));
 
@@ -49,7 +49,7 @@ const jsonOption = Options.boolean("json").pipe(
   Options.withDefault(false),
 );
 
-export const createCommand = Command.make(
+export const createTaskCommand = Command.make(
   "create",
   {
     title: titleArg,
@@ -200,7 +200,7 @@ export const createCommand = Command.make(
         yield* Console.log(`Priority: ${task.priority}`);
         yield* Console.log(`Type: ${finalType}`);
         yield* Console.log(`URL: ${task.url}`);
-        yield* Console.log(`\nRun 'ship start ${task.identifier}' to begin work.`);
+        yield* Console.log(`\nRun 'ship task start ${task.identifier}' to begin work.`);
       }
     }),
 );

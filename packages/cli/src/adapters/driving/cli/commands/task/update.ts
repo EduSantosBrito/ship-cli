@@ -4,16 +4,16 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { MilestoneRepository } from "../../../../ports/MilestoneRepository.js";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import { MilestoneRepository } from "../../../../../ports/MilestoneRepository.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import {
   UpdateTaskInput,
   type TaskId,
   type Priority,
   type TaskStatus,
-} from "../../../../domain/Task.js";
-import { dryRunOption } from "./shared.js";
+} from "../../../../../domain/Task.js";
+import { dryRunOption } from "../shared.js";
 
 /**
  * Generate a slug from a milestone name.
@@ -73,7 +73,7 @@ const jsonOption = Options.boolean("json").pipe(
   Options.withDefault(false),
 );
 
-export const updateCommand = Command.make(
+export const updateTaskCommand = Command.make(
   "update",
   {
     taskId: taskIdArg,

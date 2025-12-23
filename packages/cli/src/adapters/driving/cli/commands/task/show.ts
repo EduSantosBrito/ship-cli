@@ -4,8 +4,8 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import type { Task, TaskId } from "../../../../domain/Task.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import type { Task, TaskId } from "../../../../../domain/Task.js";
 
 const taskIdArg = Args.text({ name: "task-id" }).pipe(
   Args.withDescription("Task identifier (e.g., ENG-123)"),
@@ -72,7 +72,7 @@ const formatTask = (task: Task): string[] => {
   return lines;
 };
 
-export const showCommand = Command.make(
+export const showTaskCommand = Command.make(
   "show",
   { taskId: taskIdArg, json: jsonOption },
   ({ taskId, json }) =>

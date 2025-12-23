@@ -3,17 +3,17 @@ import * as Args from "@effect/cli/Args";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import type { TaskId } from "../../../../domain/Task.js";
-import { dryRunOption } from "./shared.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import type { TaskId } from "../../../../../domain/Task.js";
+import { dryRunOption } from "../shared.js";
 
 const blockerArg = Args.text({ name: "blocker" }).pipe(
-  Args.withDescription("Task that was blocking (e.g., ENG-123)"),
+  Args.withDescription("Task that is blocking (e.g., ENG-123)"),
 );
 
 const blockedArg = Args.text({ name: "blocked" }).pipe(
-  Args.withDescription("Task that was blocked (e.g., ENG-456)"),
+  Args.withDescription("Task that is blocked (e.g., ENG-456)"),
 );
 
 const jsonOption = Options.boolean("json").pipe(
@@ -21,8 +21,8 @@ const jsonOption = Options.boolean("json").pipe(
   Options.withDefault(false),
 );
 
-export const unblockCommand = Command.make(
-  "unblock",
+export const blockTaskCommand = Command.make(
+  "block",
   { blocker: blockerArg, blocked: blockedArg, json: jsonOption, dryRun: dryRunOption },
   ({ blocker, blocked, json, dryRun }) =>
     Effect.gen(function* () {
@@ -46,7 +46,7 @@ export const unblockCommand = Command.make(
           yield* Console.log(
             JSON.stringify({
               dryRun: true,
-              wouldUnblock: {
+              wouldBlock: {
                 blocker: {
                   id: blockerTask.id,
                   identifier: blockerTask.identifier,
@@ -60,19 +60,19 @@ export const unblockCommand = Command.make(
           );
         } else {
           yield* Console.log(
-            `[DRY RUN] Would remove ${blockerTask.identifier} as blocker of ${blockedTask.identifier}`,
+            `[DRY RUN] Would make ${blockerTask.identifier} block ${blockedTask.identifier}`,
           );
         }
         return;
       }
 
-      // Remove the blocking relationship
-      yield* issueRepo.removeBlocker(blockedTask.id, blockerTask.id);
+      // Add the blocking relationship
+      yield* issueRepo.addBlocker(blockedTask.id, blockerTask.id);
 
       if (json) {
         yield* Console.log(
           JSON.stringify({
-            status: "unblocked",
+            status: "blocked",
             blocker: {
               id: blockerTask.id,
               identifier: blockerTask.identifier,
@@ -84,7 +84,7 @@ export const unblockCommand = Command.make(
           }),
         );
       } else {
-        yield* Console.log(`${blockerTask.identifier} no longer blocks ${blockedTask.identifier}`);
+        yield* Console.log(`${blockerTask.identifier} now blocks ${blockedTask.identifier}`);
       }
     }),
 );

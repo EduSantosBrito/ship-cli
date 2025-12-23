@@ -156,6 +156,6 @@ export const projectCommand = Command.make("project", {}, () =>
       clack.log.success("Cleared project filter");
     }
 
-    clack.outro("Run 'ship ready' to see available tasks.");
+    clack.outro("Run 'ship task ready' to see available tasks.");
   }),
 );

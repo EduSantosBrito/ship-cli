@@ -3,16 +3,16 @@ import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import * as Option from "effect/Option";
-import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
-import { IssueRepository } from "../../../../ports/IssueRepository.js";
-import { MilestoneRepository } from "../../../../ports/MilestoneRepository.js";
+import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { IssueRepository } from "../../../../../ports/IssueRepository.js";
+import { MilestoneRepository } from "../../../../../ports/MilestoneRepository.js";
 import {
   TaskFilter,
   type TaskStatus,
   type Priority,
   type Task,
   type MilestoneId,
-} from "../../../../domain/Task.js";
+} from "../../../../../domain/Task.js";
 
 const jsonOption = Options.boolean("json").pipe(
   Options.withDescription("Output as JSON"),
@@ -83,7 +83,7 @@ const formatTask = (task: Task): string => {
   return `${priority} ${task.identifier.padEnd(10)} ${stateName} ${typeDisplay}${task.title}${milestoneDisplay}`;
 };
 
-export const listCommand = Command.make(
+export const listTaskCommand = Command.make(
   "list",
   {
     json: jsonOption,
