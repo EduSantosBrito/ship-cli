@@ -23,46 +23,24 @@ import {
   CreateMilestoneInput,
   UpdateMilestoneInput,
 } from "../../src/domain/Task.js"
+import { makeTask as makeTaskFixture, makeSubtask as makeSubtaskFixture } from "../fixtures/index.js"
 
-// === Test Fixtures ===
-
-const makeWorkflowState = (type: WorkflowStateType): WorkflowState =>
-  new WorkflowState({ id: "state-1", name: "Test State", type })
+// === Test Helpers ===
+// Convenience wrappers around shared fixtures for this file's specific patterns
 
 const makeSubtask = (stateType: WorkflowStateType): Subtask =>
-  new Subtask({
-    id: "subtask-1" as TaskId,
-    identifier: "TEST-1",
-    title: "Test Subtask",
-    state: "Test State",
-    stateType,
-    priority: "medium",
-  })
+  makeSubtaskFixture({ stateType, state: "Test State", identifier: "TEST-1" })
 
 const makeTask = (
   stateType: WorkflowStateType,
   subtasks: Subtask[] = [],
 ): Task =>
-  new Task({
-    id: "task-1" as TaskId,
-    identifier: "TEST-1",
-    title: "Test Task",
-    description: Option.none(),
-    state: makeWorkflowState(stateType),
-    priority: "medium",
-    type: Option.none(),
-    teamId: "team-1" as TeamId,
-    projectId: Option.none(),
-    milestoneId: Option.none(),
-    milestoneName: Option.none(),
-    branchName: Option.none(),
-    url: "https://example.com/task-1",
-    labels: [],
-    blockedBy: [],
-    blocks: [],
+  makeTaskFixture({
+    stateType,
     subtasks,
-    createdAt: new Date("2024-01-01"),
-    updatedAt: new Date("2024-01-01"),
+    description: null,
+    type: null,
+    url: "https://example.com/task-1",
   })
 
 describe("Task Domain", () => {

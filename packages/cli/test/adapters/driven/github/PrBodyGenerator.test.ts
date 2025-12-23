@@ -1,65 +1,49 @@
 import { describe, it, expect } from "@effect/vitest"
-import { Option, Schema } from "effect"
 import {
   generatePrBody,
   generateMinimalPrBody,
   parseTaskIdentifierFromBookmark,
 } from "../../../../src/adapters/driven/github/PrBodyGenerator.js"
-import { Task, TaskId, TeamId, WorkflowState } from "../../../../src/domain/Task.js"
-import { Change, ChangeId } from "../../../../src/ports/VcsService.js"
+import {
+  makeTask as makeTaskFixture,
+  makeChange as makeChangeFixture,
+} from "../../../fixtures/index.js"
 
-// === Test Fixtures ===
+// === Test Helpers ===
+// Convenience wrappers around shared fixtures for this file's specific patterns
 
-const makeWorkflowState = (): WorkflowState =>
-  new WorkflowState({ id: "state-1", name: "In Progress", type: "started" })
-
-const makeTask = (overrides: Partial<{
-  title: string
-  description: string | null
-  identifier: string
-  url: string
-}>): Task =>
-  new Task({
-    id: Schema.decodeSync(TaskId)("task-1"),
+const makeTask = (
+  overrides: Partial<{
+    title: string
+    description: string | null
+    identifier: string
+    url: string
+  }> = {},
+) =>
+  makeTaskFixture({
     identifier: overrides.identifier ?? "BRI-123",
     title: overrides.title ?? "Test Task Title",
-    description: overrides.description === null
-      ? Option.none()
-      : Option.some(overrides.description ?? "Test task description"),
-    state: makeWorkflowState(),
-    priority: "medium",
-    type: Option.none(),
-    teamId: Schema.decodeSync(TeamId)("team-1"),
-    projectId: Option.none(),
-    milestoneId: Option.none(),
-    milestoneName: Option.none(),
-    branchName: Option.none(),
+    description:
+      overrides.description === undefined
+        ? "Test task description"
+        : overrides.description,
     url: overrides.url ?? "https://linear.app/test/issue/BRI-123",
-    labels: [],
-    blockedBy: [],
-    blocks: [],
-    subtasks: [],
-    createdAt: new Date("2024-01-01"),
-    updatedAt: new Date("2024-01-01"),
+    type: null,
   })
 
-const makeChange = (overrides: Partial<{
-  description: string
-  changeId: string
-  isEmpty: boolean
-}>): Change => {
-  const changeIdValue = overrides.changeId ?? "abc12345"
-  return new Change({
-    id: Schema.decodeSync(ChangeId)(changeIdValue),
-    changeId: changeIdValue,
+const makeChange = (
+  overrides: Partial<{
+    description: string
+    changeId: string
+    isEmpty: boolean
+  }> = {},
+) =>
+  makeChangeFixture({
+    changeId: overrides.changeId ?? "abc12345",
     description: overrides.description ?? "Test change description",
-    author: "test@example.com",
-    timestamp: new Date("2024-01-01"),
-    bookmarks: ["test-bookmark"],
-    isWorkingCopy: true,
     isEmpty: overrides.isEmpty ?? false,
+    bookmarks: ["test-bookmark"],
   })
-}
 
 describe("PrBodyGenerator", () => {
   describe("parseTaskIdentifierFromBookmark", () => {

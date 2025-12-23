@@ -2,12 +2,9 @@ import { describe, it, expect } from "@effect/vitest"
 import { Option } from "effect"
 import type {
   Issue,
-  Team as LinearTeam,
   Project as LinearProject,
   ProjectMilestone as LinearProjectMilestone,
   WorkflowState as LinearWorkflowState,
-  IssueLabel,
-  IssueConnection,
 } from "@linear/sdk"
 import {
   TYPE_LABEL_PREFIX,
@@ -18,38 +15,15 @@ import {
   mapProject,
   mapMilestone,
 } from "../../../../src/adapters/driven/linear/Mapper.js"
+import {
+  createMockWorkflowState,
+  createMockLabel,
+  createMockTeam,
+  createMockIssue,
+} from "../../../fixtures/index.js"
 
-// === Mock Factories ===
-
-const createMockWorkflowState = (
-  overrides: Partial<LinearWorkflowState> = {},
-): LinearWorkflowState =>
-  ({
-    id: "state-1",
-    name: "In Progress",
-    type: "started",
-    ...overrides,
-  }) as LinearWorkflowState
-
-const createMockLabel = (name: string): IssueLabel =>
-  ({
-    id: `label-${name}`,
-    name,
-  }) as IssueLabel
-
-const createMockLabelsConnection = (
-  labels: IssueLabel[],
-): { nodes: IssueLabel[] } => ({
-  nodes: labels,
-})
-
-const createMockTeam = (overrides: Partial<LinearTeam> = {}): LinearTeam =>
-  ({
-    id: "team-123",
-    name: "Engineering",
-    key: "ENG",
-    ...overrides,
-  }) as LinearTeam
+// === Test Helpers ===
+// Local wrapper for child issue creation (specific pattern used in this file)
 
 const createMockChildIssue = (
   id: string,
@@ -64,61 +38,6 @@ const createMockChildIssue = (
   priority,
   state: Promise.resolve(state),
 })
-
-const createMockIssue = (
-  overrides: Partial<{
-    id: string
-    identifier: string
-    title: string
-    description: string | undefined
-    priority: number
-    branchName: string | undefined
-    url: string
-    createdAt: Date
-    updatedAt: Date
-    state: LinearWorkflowState | undefined
-    team: LinearTeam | undefined
-    labels: IssueLabel[]
-    children: Partial<Issue>[]
-  }> = {},
-): Issue => {
-  const defaults = {
-    id: "issue-1",
-    identifier: "ENG-123",
-    title: "Test Issue",
-    description: undefined,
-    priority: 3,
-    branchName: undefined,
-    url: "https://linear.app/team/issue/ENG-123",
-    createdAt: new Date("2024-01-01"),
-    updatedAt: new Date("2024-01-02"),
-    state: createMockWorkflowState(),
-    team: createMockTeam(),
-    labels: [],
-    children: [],
-  }
-
-  const config = { ...defaults, ...overrides }
-
-  return {
-    id: config.id,
-    identifier: config.identifier,
-    title: config.title,
-    description: config.description,
-    priority: config.priority,
-    branchName: config.branchName,
-    url: config.url,
-    createdAt: config.createdAt,
-    updatedAt: config.updatedAt,
-    state: Promise.resolve(config.state),
-    team: Promise.resolve(config.team),
-    labels: () => Promise.resolve(createMockLabelsConnection(config.labels)),
-    children: () =>
-      Promise.resolve({
-        nodes: config.children,
-      } as IssueConnection),
-  } as unknown as Issue
-}
 
 describe("Linear Mapper", () => {
   describe("TYPE_LABEL_PREFIX", () => {
@@ -208,9 +127,8 @@ describe("Linear Mapper", () => {
     })
 
     it("should map description as None when not present", async () => {
-      const issue = createMockIssue({
-        description: undefined,
-      })
+      // Create issue without description (uses default undefined from fixture)
+      const issue = createMockIssue({})
 
       const task = await mapIssueToTask(issue)
 
@@ -229,9 +147,8 @@ describe("Linear Mapper", () => {
     })
 
     it("should map branchName as None when not present", async () => {
-      const issue = createMockIssue({
-        branchName: undefined,
-      })
+      // Create issue without branchName (uses default undefined from fixture)
+      const issue = createMockIssue({})
 
       const task = await mapIssueToTask(issue)
 
@@ -255,9 +172,11 @@ describe("Linear Mapper", () => {
     })
 
     it("should handle undefined state with defaults", async () => {
-      const issue = createMockIssue({
-        state: undefined,
-      })
+      // Test with undefined state - need to create issue manually for this edge case
+      const issue = {
+        ...createMockIssue({}),
+        state: Promise.resolve(undefined),
+      } as unknown as Issue
 
       const task = await mapIssueToTask(issue)
 
@@ -277,9 +196,11 @@ describe("Linear Mapper", () => {
     })
 
     it("should handle undefined team with empty id", async () => {
-      const issue = createMockIssue({
-        team: undefined,
-      })
+      // Test with undefined team - need to create issue manually for this edge case
+      const issue = {
+        ...createMockIssue({}),
+        team: Promise.resolve(undefined),
+      } as unknown as Issue
 
       const task = await mapIssueToTask(issue)
 
