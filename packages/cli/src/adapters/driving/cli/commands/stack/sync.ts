@@ -131,9 +131,7 @@ export const syncCommand = Command.make(
         // In non-interactive mode (--yes) or JSON mode with --yes, auto-delete
         // In JSON mode without --yes, skip deletion (can't prompt)
         // Otherwise, prompt the user
-        const shouldDelete = shouldPrompt
-          ? yield* promptToDeleteBookmark(bookmark)
-          : yes; // Only delete if --yes was passed
+        const shouldDelete = shouldPrompt ? yield* promptToDeleteBookmark(bookmark) : yes; // Only delete if --yes was passed
 
         if (shouldDelete) {
           const deleteResult = yield* vcs.deleteBookmark(bookmark).pipe(
@@ -450,9 +448,9 @@ const updatePrBasesAfterMerge = (
     // For each bookmark in the stack, check if its PR needs a base update
     for (const [bookmark, expectedBase] of bookmarkToParent) {
       // Get PR for this bookmark
-      const pr = yield* prService.getPrByBranch(bookmark).pipe(
-        Effect.catchAll(() => Effect.succeed(null as PullRequest | null)),
-      );
+      const pr = yield* prService
+        .getPrByBranch(bookmark)
+        .pipe(Effect.catchAll(() => Effect.succeed(null as PullRequest | null)));
 
       if (!pr || pr.state !== "open") {
         // No PR or PR is not open, skip

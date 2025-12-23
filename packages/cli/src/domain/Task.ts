@@ -167,20 +167,20 @@ export class TaskFilter extends Schema.Class<TaskFilter>("TaskFilter")({
   includeCompleted: Schema.optionalWith(Schema.Boolean, { default: () => false }),
 }) {}
 
-export class CreateMilestoneInput extends Schema.Class<CreateMilestoneInput>("CreateMilestoneInput")(
-  {
-    name: Schema.String,
-    description: Schema.OptionFromNullOr(Schema.String),
-    targetDate: Schema.OptionFromNullOr(Schema.Date),
-    sortOrder: Schema.optionalWith(Schema.Number, { default: () => 0 }),
-  },
-) {}
+export class CreateMilestoneInput extends Schema.Class<CreateMilestoneInput>(
+  "CreateMilestoneInput",
+)({
+  name: Schema.String,
+  description: Schema.OptionFromNullOr(Schema.String),
+  targetDate: Schema.OptionFromNullOr(Schema.Date),
+  sortOrder: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+}) {}
 
-export class UpdateMilestoneInput extends Schema.Class<UpdateMilestoneInput>("UpdateMilestoneInput")(
-  {
-    name: Schema.OptionFromNullOr(Schema.String),
-    description: Schema.OptionFromNullOr(Schema.String),
-    targetDate: Schema.OptionFromNullOr(Schema.Date),
-    sortOrder: Schema.OptionFromNullOr(Schema.Number),
-  },
-) {}
+export class UpdateMilestoneInput extends Schema.Class<UpdateMilestoneInput>(
+  "UpdateMilestoneInput",
+)({
+  name: Schema.OptionFromNullOr(Schema.String),
+  description: Schema.OptionFromNullOr(Schema.String),
+  targetDate: Schema.OptionFromNullOr(Schema.Date),
+  sortOrder: Schema.OptionFromNullOr(Schema.Number),
+}) {}

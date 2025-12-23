@@ -169,10 +169,7 @@ const make = Effect.gen(function* () {
 
         const milestone = yield* Effect.tryPromise({
           try: async (signal) => {
-            const m = await withAbortSignal(
-              result.projectMilestone as Promise<unknown>,
-              signal,
-            );
+            const m = await withAbortSignal(result.projectMilestone as Promise<unknown>, signal);
             if (!m) throw new Error("Milestone not returned");
             return m as typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
           },
@@ -229,10 +226,7 @@ const make = Effect.gen(function* () {
 
         const milestone = yield* Effect.tryPromise({
           try: async (signal) => {
-            const m = await withAbortSignal(
-              result.projectMilestone as Promise<unknown>,
-              signal,
-            );
+            const m = await withAbortSignal(result.projectMilestone as Promise<unknown>, signal);
             if (!m) throw new Error("Milestone not returned");
             return m as typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
           },

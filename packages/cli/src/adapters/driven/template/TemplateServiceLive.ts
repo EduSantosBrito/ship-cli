@@ -80,11 +80,15 @@ const make = Effect.gen(function* () {
       const templatesDir = yield* getTemplatesDir();
       const templatePath = path.join(templatesDir, `${name}.yaml`);
 
-      const exists = yield* fs.exists(templatePath).pipe(Effect.catchAll(() => Effect.succeed(false)));
+      const exists = yield* fs
+        .exists(templatePath)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)));
       if (!exists) {
         // Also try .yml extension
         const templatePathYml = path.join(templatesDir, `${name}.yml`);
-        const existsYml = yield* fs.exists(templatePathYml).pipe(Effect.catchAll(() => Effect.succeed(false)));
+        const existsYml = yield* fs
+          .exists(templatePathYml)
+          .pipe(Effect.catchAll(() => Effect.succeed(false)));
         if (!existsYml) {
           return yield* TemplateNotFoundError.forName(name);
         }
@@ -98,7 +102,9 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const templatesDir = yield* getTemplatesDir();
 
-      const dirExists = yield* fs.exists(templatesDir).pipe(Effect.catchAll(() => Effect.succeed(false)));
+      const dirExists = yield* fs
+        .exists(templatesDir)
+        .pipe(Effect.catchAll(() => Effect.succeed(false)));
       if (!dirExists) {
         return [];
       }
@@ -114,7 +120,9 @@ const make = Effect.gen(function* () {
       );
 
       // Filter for .yaml and .yml files
-      const templateFiles = entries.filter((entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"));
+      const templateFiles = entries.filter(
+        (entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"),
+      );
 
       // Parse each template file using Effect.forEach with Option for graceful error handling
       const results = yield* Effect.forEach(

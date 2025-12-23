@@ -14,7 +14,12 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
-import { checkVcsAvailability, outputError, formatEffectError, getDefaultBranch } from "./shared.js";
+import {
+  checkVcsAvailability,
+  outputError,
+  formatEffectError,
+  getDefaultBranch,
+} from "./shared.js";
 
 // === Options ===
 

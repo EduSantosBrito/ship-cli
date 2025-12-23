@@ -125,14 +125,12 @@ export const projectCommand = Command.make("project", {}, () =>
         createInput.description = projectDesc as string;
       }
 
-      selectedProject = yield* projectRepo
-        .createProject(currentConfig.teamId, createInput)
-        .pipe(
-          Effect.tap((project) =>
-            Effect.sync(() => createSpinner.stop(`Created project: ${project.name}`)),
-          ),
-          Effect.tapError(() => Effect.sync(() => createSpinner.stop("Failed to create project"))),
-        );
+      selectedProject = yield* projectRepo.createProject(currentConfig.teamId, createInput).pipe(
+        Effect.tap((project) =>
+          Effect.sync(() => createSpinner.stop(`Created project: ${project.name}`)),
+        ),
+        Effect.tapError(() => Effect.sync(() => createSpinner.stop("Failed to create project"))),
+      );
     } else if (projectChoice !== NO_PROJECT) {
       const found = projects.find((p) => p.id === projectChoice);
       if (!found) {
