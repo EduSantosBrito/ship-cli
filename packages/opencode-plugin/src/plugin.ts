@@ -92,6 +92,17 @@ interface ShipSubtask {
   isDone: boolean;
 }
 
+// Milestone types
+interface ShipMilestone {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  targetDate?: string | null;
+  projectId: string;
+  sortOrder: number;
+}
+
 interface ShipTask {
   identifier: string;
   title: string;
@@ -103,6 +114,8 @@ interface ShipTask {
   url: string;
   branchName?: string;
   subtasks?: ShipSubtask[];
+  milestoneId?: string | null;
+  milestoneName?: string | null;
 }
 
 // Stack types
@@ -503,6 +516,14 @@ interface ShipService {
   // Workspace operations - accept optional workdir
   readonly listWorkspaces: (workdir?: string) => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
   readonly removeWorkspace: (name: string, deleteFiles?: boolean, workdir?: string) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
+  // Milestone operations
+  readonly listMilestones: () => Effect.Effect<ShipMilestone[], ShipCommandError | JsonParseError>;
+  readonly getMilestone: (milestoneId: string) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
+  readonly createMilestone: (input: { name: string; description?: string; targetDate?: string }) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
+  readonly updateMilestone: (milestoneId: string, input: { name?: string; description?: string; targetDate?: string }) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
+  readonly deleteMilestone: (milestoneId: string) => Effect.Effect<void, ShipCommandError>;
+  readonly setTaskMilestone: (taskId: string, milestoneId: string) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
+  readonly unsetTaskMilestone: (taskId: string) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -918,6 +939,74 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<RemoveWorkspaceResult>(output);
     });
 
+  // Milestone operations
+  const listMilestones = (): Effect.Effect<ShipMilestone[], ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["milestone", "list", "--json"]);
+      return yield* parseJson<ShipMilestone[]>(output);
+    });
+
+  const getMilestone = (milestoneId: string): Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["milestone", "show", "--json", milestoneId]);
+      return yield* parseJson<ShipMilestone>(output);
+    });
+
+  const createMilestone = (input: {
+    name: string;
+    description?: string;
+    targetDate?: string;
+  }): Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const args = ["milestone", "create", "--json"];
+      if (input.description) args.push("--description", input.description);
+      if (input.targetDate) args.push("--target-date", input.targetDate);
+      args.push(input.name);
+
+      const output = yield* shell.run(args);
+      const response = yield* parseJson<{ milestone: ShipMilestone }>(output);
+      return response.milestone;
+    });
+
+  const updateMilestone = (
+    milestoneId: string,
+    input: { name?: string; description?: string; targetDate?: string },
+  ): Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const args = ["milestone", "update", "--json"];
+      if (input.name) args.push("--name", input.name);
+      if (input.description) args.push("--description", input.description);
+      if (input.targetDate) args.push("--target-date", input.targetDate);
+      args.push(milestoneId);
+
+      const output = yield* shell.run(args);
+      const response = yield* parseJson<{ milestone: ShipMilestone }>(output);
+      return response.milestone;
+    });
+
+  const deleteMilestone = (milestoneId: string): Effect.Effect<void, ShipCommandError> =>
+    shell.run(["milestone", "delete", milestoneId]).pipe(Effect.asVoid);
+
+  const setTaskMilestone = (
+    taskId: string,
+    milestoneId: string,
+  ): Effect.Effect<ShipTask, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const args = ["update", "--json", "--milestone", milestoneId, taskId];
+      const output = yield* shell.run(args);
+      const response = yield* parseJson<{ task: ShipTask }>(output);
+      return response.task;
+    });
+
+  const unsetTaskMilestone = (taskId: string): Effect.Effect<ShipTask, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      // Empty string removes milestone
+      const args = ["update", "--json", "--milestone", "", taskId];
+      const output = yield* shell.run(args);
+      const response = yield* parseJson<{ task: ShipTask }>(output);
+      return response.task;
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -954,6 +1043,13 @@ const makeShipService = Effect.gen(function* () {
     cleanupStaleSubscriptions,
     listWorkspaces,
     removeWorkspace,
+    listMilestones,
+    getMilestone,
+    createMilestone,
+    updateMilestone,
+    deleteMilestone,
+    setTaskMilestone,
+    unsetTaskMilestone,
   } satisfies ShipService;
 });
 
@@ -1033,6 +1129,11 @@ type ToolArgs = {
   // Daemon webhook subscription args
   sessionId?: string;
   prNumbers?: number[];
+  // Milestone-specific args
+  milestoneId?: string;
+  milestoneName?: string;
+  milestoneDescription?: string;
+  milestoneTargetDate?: string;
 };
 
 /**
@@ -1564,6 +1665,106 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       }
       return `Cleaned up ${result.removedSessions.length} stale subscription(s):\n${result.removedSessions.map((s: string) => `  - ${s}`).join("\n")}\n\nThese sessions no longer exist in OpenCode.`;
     }),
+
+  // Milestone actions
+  "milestone-list": (ship) =>
+    Effect.gen(function* () {
+      const milestones = yield* ship.listMilestones();
+      if (milestones.length === 0) {
+        return "No milestones found for this project.\n\nCreate one with: milestone-create action";
+      }
+      return `Milestones (${milestones.length}):\n\n${milestones
+        .map((m) => {
+          const targetDate = m.targetDate ? ` (due: ${m.targetDate})` : "";
+          return `${m.slug.padEnd(25)} ${m.name}${targetDate}`;
+        })
+        .join("\n")}`;
+    }),
+
+  "milestone-show": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.milestoneId) {
+        return "Error: milestoneId is required for milestone-show action";
+      }
+      const milestone = yield* ship.getMilestone(args.milestoneId);
+      let output = `# ${milestone.name}\n\n`;
+      output += `**Slug:** ${milestone.slug}\n`;
+      output += `**ID:** ${milestone.id}\n`;
+      if (milestone.targetDate) {
+        output += `**Target Date:** ${milestone.targetDate}\n`;
+      }
+      if (milestone.description) {
+        output += `\n## Description\n\n${milestone.description}`;
+      }
+      return output;
+    }),
+
+  "milestone-create": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.milestoneName) {
+        return "Error: milestoneName is required for milestone-create action";
+      }
+      const milestone = yield* ship.createMilestone({
+        name: args.milestoneName,
+        description: args.milestoneDescription,
+        targetDate: args.milestoneTargetDate,
+      });
+      let output = `Created milestone: ${milestone.name}\nSlug: ${milestone.slug}`;
+      if (milestone.targetDate) {
+        output += `\nTarget Date: ${milestone.targetDate}`;
+      }
+      return output;
+    }),
+
+  "milestone-update": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.milestoneId) {
+        return "Error: milestoneId is required for milestone-update action";
+      }
+      if (!args.milestoneName && !args.milestoneDescription && !args.milestoneTargetDate) {
+        return "Error: at least one of milestoneName, milestoneDescription, or milestoneTargetDate is required";
+      }
+      const milestone = yield* ship.updateMilestone(args.milestoneId, {
+        name: args.milestoneName,
+        description: args.milestoneDescription,
+        targetDate: args.milestoneTargetDate,
+      });
+      let output = `Updated milestone: ${milestone.name}\nSlug: ${milestone.slug}`;
+      if (milestone.targetDate) {
+        output += `\nTarget Date: ${milestone.targetDate}`;
+      }
+      return output;
+    }),
+
+  "milestone-delete": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.milestoneId) {
+        return "Error: milestoneId is required for milestone-delete action";
+      }
+      yield* ship.deleteMilestone(args.milestoneId);
+      return `Deleted milestone: ${args.milestoneId}`;
+    }),
+
+  "task-set-milestone": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.taskId) {
+        return "Error: taskId is required for task-set-milestone action";
+      }
+      if (!args.milestoneId) {
+        return "Error: milestoneId is required for task-set-milestone action";
+      }
+      const task = yield* ship.setTaskMilestone(args.taskId, args.milestoneId);
+      return `Assigned ${task.identifier} to milestone: ${task.milestoneName || args.milestoneId}\nURL: ${task.url}`;
+    }),
+
+  "task-unset-milestone": (ship, args) =>
+    Effect.gen(function* () {
+      if (!args.taskId) {
+        return "Error: taskId is required for task-unset-milestone action";
+      }
+      const task = yield* ship.unsetTaskMilestone(args.taskId);
+      return `Removed ${task.identifier} from its milestone\nURL: ${task.url}`;
+    }),
 };
 
 const executeAction = (
@@ -1667,9 +1868,16 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-subscribe",
           "webhook-unsubscribe",
           "webhook-cleanup",
+          "milestone-list",
+          "milestone-show",
+          "milestone-create",
+          "milestone-update",
+          "milestone-delete",
+          "task-set-milestone",
+          "task-unset-milestone",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist), milestone-list (list project milestones), milestone-show (view milestone details), milestone-create (create new milestone), milestone-update (modify milestone), milestone-delete (delete milestone), task-set-milestone (assign task to milestone), task-unset-milestone (remove task from milestone)"
         ),
       taskId: createTool.schema
         .string()
@@ -1757,6 +1965,22 @@ Run 'ship init' in the terminal first if not configured.`,
         .array(createTool.schema.number())
         .optional()
         .describe("PR numbers to subscribe/unsubscribe - for webhook-subscribe/unsubscribe actions"),
+      milestoneId: createTool.schema
+        .string()
+        .optional()
+        .describe("Milestone identifier (slug like 'q1-release' or UUID) - required for milestone-show, milestone-update, task-set-milestone"),
+      milestoneName: createTool.schema
+        .string()
+        .optional()
+        .describe("Milestone name - required for milestone-create, optional for milestone-update"),
+      milestoneDescription: createTool.schema
+        .string()
+        .optional()
+        .describe("Milestone description - optional for milestone-create/update"),
+      milestoneTargetDate: createTool.schema
+        .string()
+        .optional()
+        .describe("Milestone target date (ISO format like '2024-03-31') - optional for milestone-create/update"),
     },
 
     async execute(args, context) {

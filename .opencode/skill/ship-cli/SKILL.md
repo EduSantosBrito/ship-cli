@@ -114,6 +114,18 @@ All stack actions support an optional `workdir` parameter for operating in jj wo
 | `webhook-subscribe` | Subscribe to PR events | sessionId, prNumbers |
 | `webhook-unsubscribe` | Unsubscribe from PR events | sessionId, prNumbers |
 
+### Milestone Actions
+
+| Action | Description | Required params |
+|--------|-------------|-----------------|
+| `milestone-list` | List project milestones | - |
+| `milestone-show` | Get milestone details | milestoneId |
+| `milestone-create` | Create new milestone | milestoneName |
+| `milestone-update` | Update milestone | milestoneId |
+| `milestone-delete` | Delete milestone | milestoneId |
+| `task-set-milestone` | Assign task to milestone | taskId, milestoneId |
+| `task-unset-milestone` | Remove task from milestone | taskId |
+
 ---
 
 ## Webhook Daemon & GitHub Events
@@ -539,6 +551,51 @@ Without `workdir`, VCS commands run in the main project directory (where OpenCod
 - Confusing state between the main repo and workspace
 
 **Rule**: If you're working in a workspace (created by `stack-create`), always use `workdir` for all stack-* actions.
+
+---
+
+## Milestone Management
+
+Milestones group tasks by release or deadline. Use milestones to track progress toward time-based goals.
+
+### Viewing Milestones
+
+```
+ship tool: action=`milestone-list`
+```
+
+Lists all milestones with their names, slugs, and target dates.
+
+### Creating a Milestone
+
+```
+ship tool: action=`milestone-create`, milestoneName="Q1 Release", milestoneDescription="First quarter release", milestoneTargetDate="2024-03-31"
+```
+
+- `milestoneName` - Required. The name of the milestone.
+- `milestoneDescription` - Optional. Description of the milestone.
+- `milestoneTargetDate` - Optional. Target date in ISO format (YYYY-MM-DD).
+
+### Assigning Tasks to Milestones
+
+```
+ship tool: action=`task-set-milestone`, taskId="BRI-123", milestoneId="q1-release"
+```
+
+The `milestoneId` can be either the slug (e.g., "q1-release") or the UUID.
+
+### Removing a Task from a Milestone
+
+```
+ship tool: action=`task-unset-milestone`, taskId="BRI-123"
+```
+
+### Workflow with Milestones
+
+1. **List milestones** to see upcoming deadlines: `milestone-list`
+2. **View milestone details**: `milestone-show` with milestoneId
+3. **Assign tasks** to the appropriate milestone: `task-set-milestone`
+4. **Track progress** by checking which tasks remain in each milestone
 
 ---
 
