@@ -103,7 +103,9 @@ export const createMilestoneCommand = Command.make(
           );
         }
         yield* Console.log("");
-        yield* Console.log(`Use 'ship milestone show ${nameToSlug(milestone.name)}' to view details.`);
+        yield* Console.log(
+          `Use 'ship milestone show ${nameToSlug(milestone.name)}' to view details.`,
+        );
       }
     }),
 );

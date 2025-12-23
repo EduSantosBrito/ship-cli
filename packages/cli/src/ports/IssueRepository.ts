@@ -88,6 +88,12 @@ export interface IssueRepository {
   readonly clearSessionLabel: (
     id: TaskId,
   ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
+
+  /** Remove all blocking relationships where this task is the blocker.
+   * Returns the identifiers of tasks that were unblocked. */
+  readonly removeAsBlocker: (
+    blockerId: TaskId,
+  ) => Effect.Effect<ReadonlyArray<string>, TaskNotFoundError | LinearApiError>;
 }
 
 export const IssueRepository = Context.GenericTag<IssueRepository>("IssueRepository");

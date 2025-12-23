@@ -64,6 +64,9 @@ export const doneCommand = Command.make(
       // Clear session label from the task and delete if no longer used
       yield* issueRepo.clearSessionLabel(task.id);
 
+      // Auto-unblock: remove this task as a blocker from any tasks it was blocking
+      const unblockedTasks = yield* issueRepo.removeAsBlocker(task.id);
+
       if (json) {
         yield* Console.log(
           JSON.stringify({
@@ -75,12 +78,16 @@ export const doneCommand = Command.make(
               state: updatedTask.state.name,
             },
             reason: Option.getOrNull(reason),
+            unblocked: unblockedTasks,
           }),
         );
       } else {
         yield* Console.log(`Completed: ${updatedTask.identifier} - ${updatedTask.title}`);
         if (Option.isSome(reason)) {
           yield* Console.log(`Reason: ${reason.value}`);
+        }
+        if (unblockedTasks.length > 0) {
+          yield* Console.log(`\nUnblocked: ${unblockedTasks.join(", ")}`);
         }
         yield* Console.log(`\nRun 'ship ready' to see the next available task.`);
       }

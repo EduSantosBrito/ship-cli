@@ -112,7 +112,9 @@ export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Prom
 
   // Fetch milestone info if available
   // Linear SDK exposes projectMilestone as a relation
-  const milestone = await (issue as unknown as { projectMilestone?: Promise<{ id: string; name: string } | null> }).projectMilestone;
+  const milestone = await (
+    issue as unknown as { projectMilestone?: Promise<{ id: string; name: string } | null> }
+  ).projectMilestone;
 
   // Get blocking relations
   // Note: Linear SDK doesn't directly expose relations, we'll handle this in the repository
