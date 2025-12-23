@@ -1,0 +1,38 @@
+/**
+ * Integration test fixtures re-exports.
+ *
+ * Provides a unified entry point for all test fixtures.
+ */
+
+// Commit history presets
+export {
+  SINGLE_COMMIT,
+  LINEAR_HISTORY,
+  HISTORY_WITH_BOOKMARKS,
+  FEATURE_BRANCH_HISTORY,
+  MULTI_FILE_COMMIT,
+  EMPTY_HISTORY,
+  STACKED_CHANGES,
+  CONFLICT_PRONE_HISTORY,
+} from "./commits.js";
+
+// Configuration presets
+export {
+  DEFAULT_CONFIG,
+  CONFIG_WITH_PROJECT,
+  CONFIG_MASTER_BRANCH,
+  CONFIG_OPEN_BROWSER,
+  CONFIG_NO_CONVENTIONAL,
+  CONFIG_UNINITIALIZED,
+  SINGLE_BACKLOG_TASK,
+  TASK_IN_PROGRESS,
+  COMPLETED_TASK,
+  EMPTY_ISSUES,
+  MIXED_TASKS,
+  BLOCKED_TASKS,
+  PRIORITY_TASKS,
+  type TestEnvironment,
+  DEFAULT_ENVIRONMENT,
+  EMPTY_ENVIRONMENT,
+  UNINITIALIZED_ENVIRONMENT,
+} from "./configs.js";
