@@ -13,7 +13,11 @@ import * as Console from "effect/Console";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { checkVcsAvailability, outputError } from "./shared.js";
-import { modifyWorkspacesFile, WorkspacesFile } from "../../../../../domain/Config.js";
+import {
+  loadWorkspacesFile,
+  modifyWorkspacesFile,
+  WorkspacesFile,
+} from "../../../../../domain/Config.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 
 // === Options ===
@@ -69,35 +73,46 @@ export const removeWorkspaceCommand = Command.make(
         return;
       }
 
-      // Get workspace info before removal (for path)
-      const workspaces = yield* vcs.listWorkspaces();
-      const workspace = workspaces.find((ws) => ws.name === name);
+      const configRepo = yield* ConfigRepository;
 
-      if (!workspace) {
+      // Get workspace info from jj (may not exist if already removed)
+      const workspaces = yield* vcs.listWorkspaces();
+      const jjWorkspace = workspaces.find((ws) => ws.name === name);
+
+      // Also check ship metadata (for cases where jj workspace was already removed)
+      const workspacesFile = yield* loadWorkspacesFile(configRepo);
+      const metadataEntry = workspacesFile.workspaces.find((m) => m.name === name);
+
+      // If workspace doesn't exist in either jj or metadata, it's not found
+      if (!jjWorkspace && !metadataEntry) {
         yield* outputError(`Workspace '${name}' not found`, json);
         return;
       }
 
-      // Forget the workspace in jj
-      const forgetResult = yield* vcs.forgetWorkspace(name).pipe(
-        Effect.map(() => ({ success: true as const })),
-        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
-      );
+      // Determine the path for file deletion (prefer jj workspace path, fallback to metadata)
+      const workspacePath = jjWorkspace?.path ?? metadataEntry?.path;
 
-      if (!forgetResult.success) {
-        yield* outputError(`Failed to forget workspace: ${forgetResult.error}`, json);
-        return;
+      // Forget the workspace in jj (only if it still exists)
+      if (jjWorkspace) {
+        const forgetResult = yield* vcs.forgetWorkspace(name).pipe(
+          Effect.map(() => ({ success: true as const })),
+          Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
+        );
+
+        if (!forgetResult.success) {
+          yield* outputError(`Failed to forget workspace: ${forgetResult.error}`, json);
+          return;
+        }
       }
 
-      // Remove from ship metadata
-      const configRepo = yield* ConfigRepository;
+      // Always remove from ship metadata (even if jj workspace was already gone)
       yield* removeWorkspaceMetadata(configRepo, name);
 
       // Optionally delete files
       let filesDeleted = false;
-      if (deleteFiles) {
+      if (deleteFiles && workspacePath) {
         const fs = yield* FileSystem.FileSystem;
-        const deleteResult = yield* fs.remove(workspace.path, { recursive: true }).pipe(
+        const deleteResult = yield* fs.remove(workspacePath, { recursive: true }).pipe(
           Effect.map(() => ({ success: true as const })),
           Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
         );
@@ -111,15 +126,20 @@ export const removeWorkspaceCommand = Command.make(
       if (json) {
         yield* Console.log(JSON.stringify(output, null, 2));
       } else {
-        yield* Console.log(`Removed workspace: ${name}`);
-        if (deleteFiles) {
-          if (filesDeleted) {
-            yield* Console.log(`Deleted files at: ${workspace.path}`);
-          } else {
-            yield* Console.log(`Warning: Could not delete files at: ${workspace.path}`);
-          }
+        const wasOnlyMetadata = !jjWorkspace && metadataEntry;
+        if (wasOnlyMetadata) {
+          yield* Console.log(`Removed workspace metadata: ${name} (jj workspace was already removed)`);
         } else {
-          yield* Console.log(`Files remain at: ${workspace.path}`);
+          yield* Console.log(`Removed workspace: ${name}`);
+        }
+        if (deleteFiles && workspacePath) {
+          if (filesDeleted) {
+            yield* Console.log(`Deleted files at: ${workspacePath}`);
+          } else {
+            yield* Console.log(`Warning: Could not delete files at: ${workspacePath}`);
+          }
+        } else if (!deleteFiles && workspacePath) {
+          yield* Console.log(`Files remain at: ${workspacePath}`);
           yield* Console.log(`Use --delete to remove the directory.`);
         }
       }
