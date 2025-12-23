@@ -54,7 +54,8 @@ const formatTask = (task: Task): string[] => {
     lines.push("Subtasks:");
     for (const subtask of task.subtasks) {
       const statusIndicator = subtask.isDone ? "✓" : "○";
-      lines.push(`  ${statusIndicator} ${subtask.identifier}: ${subtask.title} (${subtask.state})`);
+      const priorityDisplay = subtask.priority !== "none" ? ` [${subtask.priority}]` : "";
+      lines.push(`  ${statusIndicator} ${subtask.identifier}${priorityDisplay}: ${subtask.title} (${subtask.state})`);
     }
   }
 
@@ -96,6 +97,7 @@ export const showCommand = Command.make(
             title: s.title,
             state: s.state,
             stateType: s.stateType,
+            priority: s.priority,
             isDone: s.isDone,
           })),
           createdAt: task.createdAt.toISOString(),

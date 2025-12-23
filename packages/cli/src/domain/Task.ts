@@ -58,6 +58,7 @@ export class Subtask extends Schema.Class<Subtask>("Subtask")({
   title: Schema.String,
   state: Schema.String, // State name (e.g., "In Progress")
   stateType: WorkflowStateType, // For determining completion status
+  priority: Priority,
 }) {
   get isDone(): boolean {
     return this.stateType === "completed" || this.stateType === "canceled";

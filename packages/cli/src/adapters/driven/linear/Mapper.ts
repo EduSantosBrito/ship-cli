@@ -122,6 +122,7 @@ export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Prom
             title: child.title,
             state: childState?.name ?? "Unknown",
             stateType: mapStateType(childState?.type ?? "unstarted"),
+            priority: mapPriority(child.priority),
           }),
         );
       }
