@@ -32,6 +32,7 @@ import {
   SuccessResponse,
   ErrorResponse,
   StatusResponse,
+  CleanupResponse,
   DaemonError,
   DaemonNotRunningError,
   DaemonAlreadyRunningError,
@@ -315,6 +316,65 @@ const runDaemonServer = (
               message: "Daemon shutting down...",
             });
           }
+
+          case "cleanup": {
+            // Get all active OpenCode sessions
+            const activeSessions = yield* openCodeService.listSessions().pipe(
+              Effect.map((sessions) => new Set(sessions.map((s) => s.id as string))),
+              Effect.catchAll(() => Effect.succeed(new Set<string>())),
+            );
+
+            // Find and remove subscriptions for sessions that no longer exist
+            const registry = yield* Ref.get(registryRef);
+            const allSessionIds = new Set<string>();
+            
+            // Collect all session IDs from the registry
+            for (const [_pr, sessions] of HashMap.entries(registry)) {
+              for (const sessionId of HashSet.values(sessions)) {
+                allSessionIds.add(sessionId);
+              }
+            }
+
+            // Find stale sessions (subscribed but not in active sessions)
+            const staleSessions: string[] = [];
+            for (const sessionId of allSessionIds) {
+              if (!activeSessions.has(sessionId)) {
+                staleSessions.push(sessionId);
+              }
+            }
+
+            // Remove stale sessions from registry
+            if (staleSessions.length > 0) {
+              yield* Ref.update(registryRef, (reg) => {
+                let updated = reg;
+                for (const [pr, sessions] of HashMap.entries(reg)) {
+                  let newSessions = sessions;
+                  for (const staleId of staleSessions) {
+                    newSessions = HashSet.remove(newSessions, staleId);
+                  }
+                  if (HashSet.size(newSessions) === 0) {
+                    updated = HashMap.remove(updated, pr);
+                  } else {
+                    updated = HashMap.set(updated, pr, newSessions);
+                  }
+                }
+                return updated;
+              });
+
+              yield* Effect.logInfo("Cleaned up stale subscriptions").pipe(
+                Effect.annotateLogs({
+                  removedSessions: staleSessions.join(","),
+                  count: String(staleSessions.length),
+                }),
+              );
+            }
+
+            return new CleanupResponse({
+              type: "cleanup_response",
+              removedSessions: staleSessions,
+              remainingSessions: allSessionIds.size - staleSessions.length,
+            });
+          }
         }
       }).pipe(
         Effect.catchAll((e) =>
@@ -554,7 +614,7 @@ const runDaemonServer = (
           }),
         );
 
-        // Forward to all sessions concurrently
+        // Forward to all sessions concurrently, removing stale sessions on failure
         yield* Effect.forEach(
           HashSet.toValues(sessions.value),
           (sessionId) =>
@@ -565,11 +625,40 @@ const runDaemonServer = (
                   Effect.annotateLogs({ event: eventDesc, prNumber: String(prNumber), sessionId }),
                 ),
               ),
-              Effect.catchAll((e) =>
-                Effect.logWarning("Failed to forward to session").pipe(
-                  Effect.annotateLogs({ sessionId, error: String(e) }),
-                ),
-              ),
+              Effect.catchAll((e) => {
+                const errorStr = String(e);
+                // Check if this is a "session not found" type error
+                const isSessionGone =
+                  errorStr.includes("Not found") ||
+                  errorStr.includes("session") ||
+                  errorStr.includes("404");
+
+                if (isSessionGone) {
+                  // Remove the stale subscription
+                  return Ref.update(registryRef, (reg) => {
+                    const existing = HashMap.get(reg, prNumber);
+                    if (existing._tag === "Some") {
+                      const newSessions = HashSet.remove(existing.value, sessionId);
+                      if (HashSet.size(newSessions) === 0) {
+                        return HashMap.remove(reg, prNumber);
+                      }
+                      return HashMap.set(reg, prNumber, newSessions);
+                    }
+                    return reg;
+                  }).pipe(
+                    Effect.tap(() =>
+                      Effect.logInfo("Removed stale subscription (session no longer exists)").pipe(
+                        Effect.annotateLogs({ sessionId, prNumber: String(prNumber) }),
+                      ),
+                    ),
+                  );
+                }
+
+                // For other errors, just log a warning
+                return Effect.logWarning("Failed to forward to session").pipe(
+                  Effect.annotateLogs({ sessionId, error: errorStr }),
+                );
+              }),
             ),
           { concurrency: "unbounded" },
         );
@@ -691,6 +780,19 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  const cleanup = (): Effect.Effect<ReadonlyArray<string>, DaemonErrors> =>
+    sendCommand({ type: "cleanup" }).pipe(
+      Effect.flatMap((response) => {
+        if (response.type === "cleanup_response") {
+          return Effect.succeed(response.removedSessions);
+        }
+        if (response.type === "error") {
+          return Effect.fail(new DaemonError({ message: response.error }));
+        }
+        return Effect.fail(new DaemonError({ message: "Unexpected response type" }));
+      }),
+    );
+
   const startDaemon = (
     repo: string,
     events: ReadonlyArray<string>,
@@ -725,6 +827,7 @@ const make = Effect.gen(function* () {
     subscribe,
     unsubscribe,
     shutdown,
+    cleanup,
     startDaemon,
   };
 });

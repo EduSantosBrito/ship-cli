@@ -65,6 +65,13 @@ export class ShutdownCommand extends Schema.Class<ShutdownCommand>("ShutdownComm
 }) {}
 
 /**
+ * Request cleanup of stale subscriptions (sessions that no longer exist)
+ */
+export class CleanupCommand extends Schema.Class<CleanupCommand>("CleanupCommand")({
+  type: Schema.Literal("cleanup"),
+}) {}
+
+/**
  * Union of all IPC commands
  */
 export const IpcCommand = Schema.Union(
@@ -72,6 +79,7 @@ export const IpcCommand = Schema.Union(
   UnsubscribeCommand,
   StatusCommand,
   ShutdownCommand,
+  CleanupCommand,
 );
 export type IpcCommand = typeof IpcCommand.Type;
 
@@ -81,6 +89,15 @@ export type IpcCommand = typeof IpcCommand.Type;
 export class SuccessResponse extends Schema.Class<SuccessResponse>("SuccessResponse")({
   type: Schema.Literal("success"),
   message: Schema.optional(Schema.String),
+}) {}
+
+/**
+ * Cleanup response from daemon
+ */
+export class CleanupResponse extends Schema.Class<CleanupResponse>("CleanupResponse")({
+  type: Schema.Literal("cleanup_response"),
+  removedSessions: Schema.Array(Schema.String),
+  remainingSessions: Schema.Number,
 }) {}
 
 /**
@@ -102,7 +119,7 @@ export class StatusResponse extends Schema.Class<StatusResponse>("StatusResponse
 /**
  * Union of all IPC responses
  */
-export const IpcResponse = Schema.Union(SuccessResponse, ErrorResponse, StatusResponse);
+export const IpcResponse = Schema.Union(SuccessResponse, ErrorResponse, StatusResponse, CleanupResponse);
 export type IpcResponse = typeof IpcResponse.Type;
 
 // === Daemon Errors ===
@@ -175,6 +192,12 @@ export interface DaemonService {
    * Request daemon shutdown
    */
   readonly shutdown: () => Effect.Effect<void, DaemonErrors>;
+
+  /**
+   * Cleanup stale subscriptions (sessions that no longer exist in OpenCode)
+   * Returns the list of removed session IDs
+   */
+  readonly cleanup: () => Effect.Effect<ReadonlyArray<string>, DaemonErrors>;
 
   /**
    * Start the daemon (in current process - for CLI use)

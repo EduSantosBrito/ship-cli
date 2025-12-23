@@ -283,6 +283,13 @@ interface WebhookDaemonStatus {
   uptime?: number;
 }
 
+interface WebhookCleanupResult {
+  success: boolean;
+  removedSessions: string[];
+  remainingSessions?: number;
+  error?: string;
+}
+
 // =============================================================================
 // Shell Service
 // =============================================================================
@@ -430,6 +437,7 @@ interface ShipService {
   readonly getDaemonStatus: () => Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError>;
   readonly subscribeToPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
   readonly unsubscribeFromPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
+  readonly cleanupStaleSubscriptions: () => Effect.Effect<WebhookCleanupResult, ShipCommandError | JsonParseError>;
   // Workspace operations - accept optional workdir
   readonly listWorkspaces: (workdir?: string) => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
   readonly removeWorkspace: (name: string, deleteFiles?: boolean, workdir?: string) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
@@ -802,6 +810,13 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<WebhookUnsubscribeResult>(output);
     });
 
+  // Cleanup stale subscriptions
+  const cleanupStaleSubscriptions = (): Effect.Effect<WebhookCleanupResult, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["webhook", "cleanup", "--json"]);
+      return yield* parseJson<WebhookCleanupResult>(output);
+    });
+
   // Workspace operations - accept optional workdir
   const listWorkspaces = (workdir?: string): Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
@@ -854,6 +869,7 @@ const makeShipService = Effect.gen(function* () {
     getDaemonStatus,
     subscribeToPRs,
     unsubscribeFromPRs,
+    cleanupStaleSubscriptions,
     listWorkspaces,
     removeWorkspace,
   } satisfies ShipService;
@@ -1411,6 +1427,17 @@ Subscriptions:`;
         return output;
       }
 
+      case "webhook-cleanup": {
+        const result = yield* ship.cleanupStaleSubscriptions();
+        if (!result.success) {
+          return `Error: ${result.error || "Failed to cleanup"}`;
+        }
+        if (result.removedSessions.length === 0) {
+          return "No stale subscriptions found. All subscribed sessions are still active.";
+        }
+        return `Cleaned up ${result.removedSessions.length} stale subscription(s):\n${result.removedSessions.map((s: string) => `  - ${s}`).join("\n")}\n\nThese sessions no longer exist in OpenCode.`;
+      }
+
       default:
         return `Unknown action: ${args.action}`;
     }
@@ -1491,9 +1518,10 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-daemon-status",
           "webhook-subscribe",
           "webhook-unsubscribe",
+          "webhook-cleanup",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist)"
         ),
       taskId: createTool.schema
         .string()
