@@ -116,6 +116,15 @@ export class JjImmutableError extends Data.TaggedError("JjImmutableError")<{
   readonly commitId?: string;
 }> {}
 
+/** Working copy is stale and needs to be updated */
+export class JjStaleWorkingCopyError extends Data.TaggedError("JjStaleWorkingCopyError")<{
+  readonly message: string;
+}> {
+  static readonly default = new JjStaleWorkingCopyError({
+    message: "The working copy is stale. Run 'jj workspace update-stale' to recover.",
+  });
+}
+
 // === PR Errors ===
 
 export class PrError extends Data.TaggedError("PrError")<{

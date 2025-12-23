@@ -13,6 +13,7 @@ import {
   TrunkInfo,
   SyncResult,
   WorkspaceInfo,
+  UpdateStaleResult,
   type VcsErrors,
 } from "../../../ports/VcsService.js";
 import {
@@ -518,6 +519,20 @@ const make = Effect.gen(function* () {
       };
     });
 
+  const updateStaleWorkspace = (): Effect.Effect<UpdateStaleResult, VcsErrors> =>
+    Effect.gen(function* () {
+      // Run jj workspace update-stale
+      yield* runJj("workspace", "update-stale");
+
+      // Get the current change after update
+      const current = yield* getCurrentChange();
+
+      return new UpdateStaleResult({
+        updated: true,
+        changeId: current.changeId,
+      });
+    });
+
   return {
     isAvailable,
     isRepo,
@@ -548,6 +563,7 @@ const make = Effect.gen(function* () {
     editChange,
     // Recovery operations
     undo,
+    updateStaleWorkspace,
   };
 });
 

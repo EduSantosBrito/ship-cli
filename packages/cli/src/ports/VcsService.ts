@@ -12,6 +12,7 @@ import type {
   JjRevisionError,
   JjSquashError,
   JjImmutableError,
+  JjStaleWorkingCopyError,
   WorkspaceError,
   WorkspaceExistsError,
   WorkspaceNotFoundError,
@@ -28,6 +29,7 @@ export type VcsErrors =
   | JjRevisionError
   | JjSquashError
   | JjImmutableError
+  | JjStaleWorkingCopyError
   | WorkspaceError
   | WorkspaceExistsError
   | WorkspaceNotFoundError;
@@ -252,6 +254,15 @@ export interface VcsService {
    * @returns Information about the undone operation
    */
   readonly undo: () => Effect.Effect<UndoResult, VcsErrors>;
+
+  /**
+   * Update a stale working copy
+   * This is equivalent to `jj workspace update-stale`
+   * Use this when the working copy becomes stale after operations in another workspace
+   * or after remote changes (e.g., PR merge via CI)
+   * @returns Information about the update
+   */
+  readonly updateStaleWorkspace: () => Effect.Effect<UpdateStaleResult, VcsErrors>;
 }
 
 /** Result of an undo operation */
@@ -260,6 +271,14 @@ export class UndoResult extends Schema.Class<UndoResult>("UndoResult")({
   undone: Schema.Boolean,
   /** Description of the operation that was undone (if available) */
   operation: Schema.optional(Schema.String),
+}) {}
+
+/** Result of updating a stale workspace */
+export class UpdateStaleResult extends Schema.Class<UpdateStaleResult>("UpdateStaleResult")({
+  /** Whether the update was performed */
+  updated: Schema.Boolean,
+  /** The new working copy change ID after update */
+  changeId: Schema.optional(Schema.String),
 }) {}
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");

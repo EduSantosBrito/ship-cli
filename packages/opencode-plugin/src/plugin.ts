@@ -229,6 +229,12 @@ interface StackUndoResult {
   error?: string;
 }
 
+interface StackUpdateStaleResult {
+  updated: boolean;
+  changeId?: string;
+  error?: string;
+}
+
 interface WebhookStartResult {
   started: boolean;
   pid?: number;
@@ -404,6 +410,7 @@ interface ShipService {
   readonly stackDown: (workdir?: string) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
   // Stack recovery
   readonly stackUndo: (workdir?: string) => Effect.Effect<StackUndoResult, ShipCommandError | JsonParseError>;
+  readonly stackUpdateStale: (workdir?: string) => Effect.Effect<StackUpdateStaleResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
@@ -607,6 +614,12 @@ const makeShipService = Effect.gen(function* () {
     Effect.gen(function* () {
       const output = yield* shell.run(["stack", "undo", "--json"], workdir);
       return yield* parseJson<StackUndoResult>(output);
+    });
+
+  const stackUpdateStale = (workdir?: string) =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "update-stale", "--json"], workdir);
+      return yield* parseJson<StackUpdateStaleResult>(output);
     });
 
   // Webhook operations - uses module-level processToCleanup for persistence across tool calls
@@ -823,6 +836,7 @@ const makeShipService = Effect.gen(function* () {
     stackUp,
     stackDown,
     stackUndo,
+    stackUpdateStale,
     startWebhook,
     stopWebhook,
     getWebhookStatus,
@@ -1235,6 +1249,16 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         return result.operation ? `Undone: ${result.operation}` : "Undone last operation";
       }
 
+      case "stack-update-stale": {
+        const result = yield* ship.stackUpdateStale(args.workdir);
+        if (!result.updated) {
+          return `Error: ${result.error || "Failed to update stale workspace"}`;
+        }
+        return result.changeId
+          ? `Working copy updated. Now at: ${result.changeId}`
+          : "Working copy updated.";
+      }
+
       // Workspace operations - pass workdir for workspace support
       case "stack-workspaces": {
         const workspaces = yield* ship.listWorkspaces(args.workdir);
@@ -1297,17 +1321,19 @@ Use action 'webhook-stop' to stop forwarding.`;
 
       // Daemon-based webhook operations
       case "webhook-subscribe": {
-        if (!args.sessionId) {
-          return "Error: sessionId is required for webhook-subscribe action";
+        // Auto-detect session ID from context (like stack-submit does)
+        const sessionId = args.sessionId || contextSessionId;
+        if (!sessionId) {
+          return "Error: sessionId is required for webhook-subscribe action (not provided and could not auto-detect from context)";
         }
         if (!args.prNumbers || args.prNumbers.length === 0) {
           return "Error: prNumbers is required for webhook-subscribe action";
         }
-        const result = yield* ship.subscribeToPRs(args.sessionId, args.prNumbers);
+        const result = yield* ship.subscribeToPRs(sessionId, args.prNumbers);
         if (!result.subscribed) {
           return `Error: ${result.error || "Failed to subscribe"}`;
         }
-        return `Subscribed session ${args.sessionId} to PRs: ${args.prNumbers.join(", ")}
+        return `Subscribed session ${sessionId} to PRs: ${args.prNumbers.join(", ")}
 
 The daemon will forward GitHub events for these PRs to your session.
 Use 'webhook-unsubscribe' to stop receiving events.`;
@@ -1419,6 +1445,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-up",
           "stack-down",
           "stack-undo",
+          "stack-update-stale",
           "stack-workspaces",
           "stack-remove-workspace",
           "webhook-daemon-status",
@@ -1426,7 +1453,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-unsubscribe",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
         ),
       taskId: createTool.schema
         .string()

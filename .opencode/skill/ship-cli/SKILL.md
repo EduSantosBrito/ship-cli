@@ -77,6 +77,8 @@ All stack actions support an optional `workdir` parameter for operating in jj wo
 | `stack-abandon` | Abandon current change | changeId (optional), workdir (optional) |
 | `stack-up` | Move to child change (toward tip of stack) | workdir (optional) |
 | `stack-down` | Move to parent change (toward trunk) | workdir (optional) |
+| `stack-undo` | Undo the last jj operation | workdir (optional) |
+| `stack-update-stale` | Update a stale working copy | workdir (optional) |
 | `stack-workspaces` | List all jj workspaces | workdir (optional) |
 | `stack-remove-workspace` | Remove a jj workspace | name, deleteFiles (optional), workdir (optional) |
 
@@ -442,3 +444,29 @@ Without `workdir`, VCS commands run in the main project directory (where OpenCod
 - Confusing state between the main repo and workspace
 
 **Rule**: If you're working in a workspace (created by `stack-create`), always use `workdir` for all stack-* actions.
+
+---
+
+## Troubleshooting
+
+### "The working copy is stale" Error
+
+This happens when the workspace is modified from another location (e.g., another workspace, remote CI, or after a PR merge).
+
+**To recover:**
+
+```
+ship tool: action=`stack-update-stale`, workdir=`<workspace-path>`
+```
+
+After updating, you can continue with normal operations like `stack-sync` or `stack-submit`.
+
+### Undo Last Operation
+
+If you made a mistake (e.g., wrong squash, accidental abandon), you can undo:
+
+```
+ship tool: action=`stack-undo`, workdir=`<workspace-path>`
+```
+
+This undoes the last jj operation. Use sparingly - it's better to be careful than to rely on undo.

@@ -15,6 +15,7 @@ import {
   JjRevisionError,
   JjSquashError,
   JjImmutableError,
+  JjStaleWorkingCopyError,
   WorkspaceError,
   WorkspaceExistsError,
   WorkspaceNotFoundError,
@@ -31,6 +32,7 @@ export type JjError =
   | JjRevisionError
   | JjSquashError
   | JjImmutableError
+  | JjStaleWorkingCopyError
   | WorkspaceError
   | WorkspaceExistsError
   | WorkspaceNotFoundError;
@@ -223,6 +225,16 @@ const ERROR_PATTERNS: ReadonlyArray<ErrorPattern> = [
       new JjRevisionError({
         message: output.trim() || "Revision not found.",
       }),
+  },
+
+  // Stale working copy errors
+  {
+    pattern: /The working copy is stale/i,
+    createError: () => JjStaleWorkingCopyError.default,
+  },
+  {
+    pattern: /working copy is stale/i,
+    createError: () => JjStaleWorkingCopyError.default,
   },
 
   // Workspace errors (jj workspace)
