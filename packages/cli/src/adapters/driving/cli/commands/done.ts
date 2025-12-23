@@ -59,6 +59,9 @@ export const doneCommand = Command.make(
 
       const updatedTask = yield* issueRepo.updateTask(task.id, updateInput);
 
+      // Clear session label from the task and delete if no longer used
+      yield* issueRepo.clearSessionLabel(task.id);
+
       if (json) {
         yield* Console.log(
           JSON.stringify({
