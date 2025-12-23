@@ -51,6 +51,18 @@ The \`ship\` tool replaces built-in todo management. Use it for all task trackin
 | \`stack-describe\` | Update change description | message |
 | \`stack-sync\` | Fetch, rebase, auto-abandon merged changes | - |
 
+### Milestone Actions
+
+| Action | Description | Required params |
+|--------|-------------|-----------------|
+| \`milestone-list\` | List project milestones | - |
+| \`milestone-show\` | Get milestone details | milestoneId |
+| \`milestone-create\` | Create new milestone | milestoneName |
+| \`milestone-update\` | Update milestone | milestoneId |
+| \`milestone-delete\` | Delete milestone | milestoneId |
+| \`task-set-milestone\` | Assign task to milestone | taskId, milestoneId |
+| \`task-unset-milestone\` | Remove task from milestone | taskId |
+
 ---
 
 ## Workflow
