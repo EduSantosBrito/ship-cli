@@ -356,7 +356,7 @@ const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
   const extractJson = (output: string): string => {
     // Find all potential JSON start positions (lines starting with { or [)
     // The regex captures leading whitespace to distinguish top-level vs nested JSON
-    const matches = [...output.matchAll(/^(\s*)([\[{])/gm)];
+    const matches = [...output.matchAll(/^(\s*)([[{])/gm)];
     if (matches.length === 0) {
       return output;
     }
@@ -1296,7 +1296,7 @@ type ActionHandler = (
 ) => Effect.Effect<string, ShipCommandError | JsonParseError, never>;
 
 const actionHandlers: Record<string, ActionHandler> = {
-  status: (ship, _args, ctx) =>
+  status: (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const status = yield* ship.checkConfigured();
       if (status.configured) {
@@ -1306,7 +1306,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return "Ship is not configured. Run 'ship init' first.";
     }),
 
-  ready: (ship, _args, ctx) =>
+  ready: (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const tasks = yield* ship.getReadyTasks();
       if (tasks.length === 0) {
@@ -1320,7 +1320,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}${guidance}`;
     }),
 
-  blocked: (ship, _args, ctx) =>
+  blocked: (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const tasks = yield* ship.getBlockedTasks();
       if (tasks.length === 0) {
@@ -1333,7 +1333,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Blocked tasks:\n\n${formatTaskList(tasks)}${guidance}`;
     }),
 
-  list: (ship, args, ctx) =>
+  list: (ship, args, _ctx) =>
     Effect.gen(function* () {
       const tasks = yield* ship.listTasks(args.filter);
       if (tasks.length === 0) {
@@ -1346,7 +1346,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Tasks:\n\n${formatTaskList(tasks)}${guidance}`;
     }),
 
-  show: (ship, args, ctx) =>
+  show: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.taskId) {
         return "Error: taskId is required for show action";
@@ -1369,7 +1369,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Started working on ${args.taskId}${sessionInfo}${guidance}`;
     }),
 
-  done: (ship, args, ctx) =>
+  done: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.taskId) {
         return "Error: taskId is required for done action";
@@ -1381,7 +1381,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Completed ${args.taskId}${guidance}`;
     }),
 
-  create: (ship, args, ctx) =>
+  create: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.title) {
         return "Error: title is required for create action";
@@ -1399,7 +1399,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Created task ${task.identifier}: ${task.title}\nURL: ${task.url}${guidance}`;
     }),
 
-  update: (ship, args, ctx) =>
+  update: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.taskId) {
         return "Error: taskId is required for update action";
@@ -1429,7 +1429,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return output + guidance;
     }),
 
-  block: (ship, args, ctx) =>
+  block: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.blocker || !args.blocked) {
         return "Error: both blocker and blocked task IDs are required";
@@ -1441,7 +1441,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `${args.blocker} now blocks ${args.blocked}${guidance}`;
     }),
 
-  unblock: (ship, args, ctx) =>
+  unblock: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.blocker || !args.blocked) {
         return "Error: both blocker and blocked task IDs are required";
@@ -1451,7 +1451,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Removed ${args.blocker} as blocker of ${args.blocked}${guidance}`;
     }),
 
-  relate: (ship, args, ctx) =>
+  relate: (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.taskId || !args.relatedTaskId) {
         return "Error: both taskId and relatedTaskId are required for relate action";
@@ -1461,7 +1461,7 @@ const actionHandlers: Record<string, ActionHandler> = {
       return `Linked ${args.taskId} ↔ ${args.relatedTaskId} as related${guidance}`;
     }),
 
-  "stack-log": (ship, args, ctx) =>
+  "stack-log": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const changes = yield* ship.getStackLog(args.workdir);
       if (changes.length === 0) {
@@ -1478,7 +1478,7 @@ const actionHandlers: Record<string, ActionHandler> = {
         .join("\n")}`;
     }),
 
-  "stack-status": (ship, args, ctx) =>
+  "stack-status": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const status = yield* ship.getStackStatus(args.workdir);
       if (!status.isRepo) {
@@ -1501,7 +1501,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
       return output + guidance;
     }),
 
-  "stack-create": (ship, args, ctx) =>
+  "stack-create": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.createStackChange({
         message: args.message,
@@ -1536,7 +1536,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
       return output;
     }),
 
-  "stack-describe": (ship, args, ctx) =>
+  "stack-describe": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.message) {
         return "Error: message is required for stack-describe action";
@@ -1616,7 +1616,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
       return parts.join("\n");
     }),
 
-  "stack-restack": (ship, args, ctx) =>
+  "stack-restack": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.restackStack(args.workdir);
       if (result.error) {
@@ -1683,7 +1683,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return output;
     }),
 
-  "stack-squash": (ship, args, ctx) =>
+  "stack-squash": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.message) {
         return "Error: message is required for stack-squash action";
@@ -1695,7 +1695,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return `Squashed into ${result.intoChangeId?.slice(0, 8) || "parent"}\nDescription: ${result.description?.split("\n")[0] || "(no description)"}`;
     }),
 
-  "stack-abandon": (ship, args, ctx) =>
+  "stack-abandon": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.abandonStack(args.changeId, args.workdir);
       if (!result.abandoned) {
@@ -1708,7 +1708,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return output + guidance;
     }),
 
-  "stack-up": (ship, args, ctx) =>
+  "stack-up": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.stackUp(args.workdir);
       if (!result.moved) {
@@ -1717,7 +1717,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return `Moved up in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
     }),
 
-  "stack-down": (ship, args, ctx) =>
+  "stack-down": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.stackDown(args.workdir);
       if (!result.moved) {
@@ -1726,7 +1726,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return `Moved down in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
     }),
 
-  "stack-undo": (ship, args, ctx) =>
+  "stack-undo": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.stackUndo(args.workdir);
       if (!result.undone) {
@@ -1735,7 +1735,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return result.operation ? `Undone: ${result.operation}` : "Undone last operation";
     }),
 
-  "stack-update-stale": (ship, args, ctx) =>
+  "stack-update-stale": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.stackUpdateStale(args.workdir);
       if (!result.updated) {
@@ -1746,7 +1746,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         : "Working copy updated.";
     }),
 
-  "stack-bookmark": (ship, args, ctx) =>
+  "stack-bookmark": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.name) {
         return "Error: name is required for stack-bookmark action";
@@ -1759,7 +1759,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return `${action} bookmark '${result.bookmark}' at ${result.changeId?.slice(0, 8) || "current change"}`;
     }),
 
-  "stack-workspaces": (ship, args, ctx) =>
+  "stack-workspaces": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const workspaces = yield* ship.listWorkspaces(args.workdir);
       if (workspaces.length === 0) {
@@ -1798,7 +1798,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       return output + guidance;
     }),
 
-  "webhook-start": (ship, args, ctx) =>
+  "webhook-start": (ship, args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.startWebhook(args.events);
       if (!result.started) {
@@ -1811,7 +1811,7 @@ GitHub events will be forwarded to the current OpenCode session.
 Use action 'webhook-stop' to stop forwarding.`;
     }),
 
-  "webhook-stop": (ship, _args, ctx) =>
+  "webhook-stop": (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.stopWebhook();
       if (!result.stopped) {
@@ -1820,7 +1820,7 @@ Use action 'webhook-stop' to stop forwarding.`;
       return "Webhook forwarding stopped.";
     }),
 
-  "webhook-status": (ship, _args, ctx) =>
+  "webhook-status": (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const status = yield* ship.getWebhookStatus();
       if (status.running) {
@@ -1829,7 +1829,7 @@ Use action 'webhook-stop' to stop forwarding.`;
       return "Webhook forwarding is not running.";
     }),
 
-  "webhook-daemon-status": (ship, _args, ctx) =>
+  "webhook-daemon-status": (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const status = yield* ship.getDaemonStatus();
       if (!status.running) {
@@ -1873,7 +1873,7 @@ The daemon will forward GitHub events for these PRs to your session.
 Use 'webhook-unsubscribe' to stop receiving events.`;
     }),
 
-  "webhook-unsubscribe": (ship, args, ctx) =>
+  "webhook-unsubscribe": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.sessionId) {
         return "Error: sessionId is required for webhook-unsubscribe action";
@@ -1888,7 +1888,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return `Unsubscribed session ${args.sessionId} from PRs: ${args.prNumbers.join(", ")}`;
     }),
 
-  "webhook-cleanup": (ship, _args, ctx) =>
+  "webhook-cleanup": (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const result = yield* ship.cleanupStaleSubscriptions();
       if (!result.success) {
@@ -1901,7 +1901,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
     }),
 
   // Milestone actions
-  "milestone-list": (ship, _args, ctx) =>
+  "milestone-list": (ship, _args, _ctx) =>
     Effect.gen(function* () {
       const milestones = yield* ship.listMilestones();
       if (milestones.length === 0) {
@@ -1915,7 +1915,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
         .join("\n")}`;
     }),
 
-  "milestone-show": (ship, args, ctx) =>
+  "milestone-show": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.milestoneId) {
         return "Error: milestoneId is required for milestone-show action";
@@ -1933,7 +1933,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return output;
     }),
 
-  "milestone-create": (ship, args, ctx) =>
+  "milestone-create": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.milestoneName) {
         return "Error: milestoneName is required for milestone-create action";
@@ -1950,7 +1950,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return output;
     }),
 
-  "milestone-update": (ship, args, ctx) =>
+  "milestone-update": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.milestoneId) {
         return "Error: milestoneId is required for milestone-update action";
@@ -1970,7 +1970,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return output;
     }),
 
-  "milestone-delete": (ship, args, ctx) =>
+  "milestone-delete": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.milestoneId) {
         return "Error: milestoneId is required for milestone-delete action";
@@ -1979,7 +1979,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return `Deleted milestone: ${args.milestoneId}`;
     }),
 
-  "task-set-milestone": (ship, args, ctx) =>
+  "task-set-milestone": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.taskId) {
         return "Error: taskId is required for task-set-milestone action";
@@ -1991,7 +1991,7 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return `Assigned ${task.identifier} to milestone: ${task.milestoneName || args.milestoneId}\nURL: ${task.url}`;
     }),
 
-  "task-unset-milestone": (ship, args, ctx) =>
+  "task-unset-milestone": (ship, args, _ctx) =>
     Effect.gen(function* () {
       if (!args.taskId) {
         return "Error: taskId is required for task-unset-milestone action";

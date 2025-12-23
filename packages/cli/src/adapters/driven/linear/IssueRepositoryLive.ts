@@ -524,8 +524,11 @@ const make = Effect.gen(function* () {
             Effect.tryPromise({
               try: async (signal) => {
                 const task = await withAbortSignal(mapIssueToTask(issue), signal);
-                const relations = await withAbortSignal(issue.relations(), signal);
-                const blockedByRelations = relations?.nodes?.filter(
+                // Use inverseRelations to find issues that BLOCK this issue
+                // When another issue has a "blocks" relation pointing to this issue,
+                // it appears in inverseRelations with type "blocks"
+                const inverseRelations = await withAbortSignal(issue.inverseRelations(), signal);
+                const blockedByRelations = inverseRelations?.nodes?.filter(
                   (r: IssueRelation) => r.type === "blocks",
                 );
                 if (blockedByRelations && blockedByRelations.length > 0) {
@@ -569,8 +572,11 @@ const make = Effect.gen(function* () {
           issues.nodes.map((issue: Issue) =>
             Effect.tryPromise({
               try: async (signal) => {
-                const relations = await withAbortSignal(issue.relations(), signal);
-                const blockedByRelations = relations?.nodes?.filter(
+                // Use inverseRelations to find issues that BLOCK this issue
+                // When another issue has a "blocks" relation pointing to this issue,
+                // it appears in inverseRelations with type "blocks"
+                const inverseRelations = await withAbortSignal(issue.inverseRelations(), signal);
+                const blockedByRelations = inverseRelations?.nodes?.filter(
                   (r: IssueRelation) => r.type === "blocks",
                 );
                 if (!blockedByRelations || blockedByRelations.length === 0) {
