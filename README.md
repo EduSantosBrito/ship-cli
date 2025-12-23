@@ -236,7 +236,7 @@ packages/
 
 ```sh
 # Clone and install
-git clone https://github.com/tripdee/ship-cli
+git clone https://github.com/EduSantosBrito/ship-cli
 cd ship-cli
 pnpm install
 
