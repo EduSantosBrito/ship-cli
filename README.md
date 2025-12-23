@@ -11,10 +11,12 @@ Ship bridges [Linear](https://linear.app) task management with [jj](https://mart
 ## Table of Contents
 
 - [Why Ship?](#why-ship)
+- [Way of Working](#way-of-working)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
 - [Commands](#commands)
 - [OpenCode Integration](#opencode-integration)
+  - [Webhook Integration](#webhook-integration)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -28,6 +30,50 @@ AI coding agents need structured workflows. Ship provides:
 - **Dependency tracking** - Understand what blocks what with `ship blocked`
 - **Stacked changes** - Manage jj-based stacked diffs tied to Linear tasks
 - **AI-first design** - Built as an [OpenCode](https://opencode.ai) plugin for seamless integration
+
+## Way of Working
+
+Ship enforces a structured workflow that keeps AI agents (and humans) productive:
+
+### The Core Loop
+
+```
+1. ship ready          → Find a task with no blockers
+2. ship start <id>     → Mark it "In Progress" in Linear
+3. ship stack create   → Create an isolated workspace + jj change
+4. [make changes]      → Code in the workspace
+5. ship stack sync     → Rebase onto latest trunk
+6. ship stack submit   → Push and create/update PR
+7. ship done <id>      → Mark task complete
+```
+
+### Why Workspaces?
+
+Every `stack create` spins up an **isolated jj workspace**. This means:
+
+- **Parallel work** - Multiple agents can work on different tasks simultaneously without conflicts
+- **Clean context** - Each task gets its own working directory
+- **Safe experimentation** - Abandon a workspace without affecting other work
+
+### Stacked Changes
+
+Ship uses [jj](https://martinvonz.github.io/jj) for stacked diffs:
+
+```
+trunk ← PR #1 (merged) ← PR #2 (in review) ← PR #3 (draft)
+```
+
+When PR #1 merges, `ship stack sync` automatically rebases your stack onto the new trunk. The webhook daemon notifies you when this happens.
+
+### Task Dependencies
+
+Use `ship block` to model dependencies between tasks:
+
+```sh
+ship block BRI-100 BRI-101  # BRI-100 must complete before BRI-101
+```
+
+`ship ready` only shows tasks with **no blockers**, so agents always know what they can work on.
 
 ## Quick Start
 
@@ -120,6 +166,54 @@ ready, list, blocked, show, start, done, create, update,
 block, unblock, relate, status, stack-log, stack-status,
 stack-create, stack-describe, stack-sync, stack-submit, ...
 ```
+
+### Webhook Integration
+
+Ship's webhook daemon enables **real-time GitHub event notifications** to AI agents. This closes the feedback loop between code review and agent response.
+
+#### How It Works
+
+```
+GitHub PR Event → smee.io → ship webhook daemon → OpenCode session
+```
+
+1. **Start the daemon** (once per machine):
+   ```sh
+   ship webhook start
+   ```
+
+2. **Auto-subscription on submit**: When you run `ship stack submit`, the agent is automatically subscribed to receive events for all PRs in the stack.
+
+3. **Events routed to agents**: The daemon routes GitHub events (merges, CI status, review comments) to the correct OpenCode session.
+
+#### Supported Events
+
+| Event | What Happens |
+|-------|--------------|
+| **PR Merged** | Agent receives notification, can run `stack-sync` to rebase |
+| **CI Failed** | Agent receives notification with failure details |
+| **Review Comment** | Agent receives the comment, can address feedback |
+| **Changes Requested** | Agent receives the review, can make fixes |
+| **PR Approved** | Agent receives notification, can proceed with merge |
+
+#### Example Flow
+
+```
+1. Agent submits PR #42 with `stack-submit`
+   → Automatically subscribed to PR #42 events
+
+2. Reviewer requests changes on PR #42
+   → Agent receives: "[GitHub] Changes requested on PR #42"
+
+3. Agent addresses feedback, runs `stack-submit` again
+   → PR updated with new commits
+
+4. PR #42 merged
+   → Agent receives: "[GitHub] PR #42 merged"
+   → Agent runs `stack-sync` to rebase remaining stack
+```
+
+This enables a tight feedback loop where agents can respond to code review without manual intervention.
 
 ## Architecture
 
