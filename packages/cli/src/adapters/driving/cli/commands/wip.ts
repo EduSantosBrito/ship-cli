@@ -113,9 +113,9 @@ export const wipCommand = Command.make("wip", { json: jsonOption }, ({ json }) =
     let changes: ReadonlyArray<Change> = [];
     if (jjAvailable) {
       // Get all changes with bookmarks (use a revset that includes all bookmarks)
-      changes = yield* vcs.getLog("bookmarks()").pipe(
-        Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<Change>)),
-      );
+      changes = yield* vcs
+        .getLog("bookmarks()")
+        .pipe(Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<Change>)));
     }
 
     // Build a map of task identifier -> change
@@ -142,9 +142,9 @@ export const wipCommand = Command.make("wip", { json: jsonOption }, ({ json }) =
           // Try to get PR status if we have a bookmark and gh is available
           let pr: PrInfo | null = null;
           if (bookmark && ghAvailable) {
-            const prResult = yield* prService.getPrByBranch(bookmark).pipe(
-              Effect.catchAll(() => Effect.succeed(null)),
-            );
+            const prResult = yield* prService
+              .getPrByBranch(bookmark)
+              .pipe(Effect.catchAll(() => Effect.succeed(null)));
             if (prResult) {
               pr = {
                 number: prResult.number,
@@ -215,7 +215,9 @@ export const wipCommand = Command.make("wip", { json: jsonOption }, ({ json }) =
         yield* Console.log("No in-progress tasks found.");
       } else {
         yield* Console.log(`Found ${tasks.length} in-progress task(s):\n`);
-        yield* Console.log("TASK        CHANGE      PR       BOOKMARK                       STATUS");
+        yield* Console.log(
+          "TASK        CHANGE      PR       BOOKMARK                       STATUS",
+        );
         yield* Console.log("─".repeat(85));
 
         for (const mapping of mappings) {
@@ -230,7 +232,9 @@ export const wipCommand = Command.make("wip", { json: jsonOption }, ({ json }) =
 
       if (orphanedChanges.length > 0) {
         yield* Console.log("\n");
-        yield* Console.log("Warning: Found orphaned changes (bookmarks without matching in-progress tasks):\n");
+        yield* Console.log(
+          "Warning: Found orphaned changes (bookmarks without matching in-progress tasks):\n",
+        );
         yield* Console.log("CHANGE      BOOKMARK                       TASK ID     DESCRIPTION");
         yield* Console.log("─".repeat(75));
 

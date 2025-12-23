@@ -324,7 +324,7 @@ const ShellService = Context.GenericTag<ShellService>("ShellService");
 
 /**
  * Create a shell service for running ship commands.
- * 
+ *
  * @param defaultCwd - Default working directory for commands (from opencode's Instance.directory)
  */
 const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
@@ -469,14 +469,24 @@ interface ShipService {
       priority?: string;
       status?: string;
       parentId?: string;
-    }
+    },
   ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
   readonly addBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
-  readonly removeBlocker: (blocker: string, blocked: string) => Effect.Effect<void, ShipCommandError>;
-  readonly relateTask: (taskId: string, relatedTaskId: string) => Effect.Effect<void, ShipCommandError>;
+  readonly removeBlocker: (
+    blocker: string,
+    blocked: string,
+  ) => Effect.Effect<void, ShipCommandError>;
+  readonly relateTask: (
+    taskId: string,
+    relatedTaskId: string,
+  ) => Effect.Effect<void, ShipCommandError>;
   // Stack operations - all accept optional workdir for workspace support
-  readonly getStackLog: (workdir?: string) => Effect.Effect<StackChange[], ShipCommandError | JsonParseError>;
-  readonly getStackStatus: (workdir?: string) => Effect.Effect<StackStatus, ShipCommandError | JsonParseError>;
+  readonly getStackLog: (
+    workdir?: string,
+  ) => Effect.Effect<StackChange[], ShipCommandError | JsonParseError>;
+  readonly getStackStatus: (
+    workdir?: string,
+  ) => Effect.Effect<StackStatus, ShipCommandError | JsonParseError>;
   readonly createStackChange: (input: {
     message?: string;
     bookmark?: string;
@@ -484,9 +494,16 @@ interface ShipService {
     taskId?: string;
     workdir?: string;
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
-  readonly describeStackChange: (message: string, workdir?: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
-  readonly syncStack: (workdir?: string) => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
-  readonly restackStack: (workdir?: string) => Effect.Effect<StackRestackResult, ShipCommandError | JsonParseError>;
+  readonly describeStackChange: (
+    message: string,
+    workdir?: string,
+  ) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
+  readonly syncStack: (
+    workdir?: string,
+  ) => Effect.Effect<StackSyncResult, ShipCommandError | JsonParseError>;
+  readonly restackStack: (
+    workdir?: string,
+  ) => Effect.Effect<StackRestackResult, ShipCommandError | JsonParseError>;
   readonly submitStack: (input: {
     draft?: boolean;
     title?: string;
@@ -494,36 +511,86 @@ interface ShipService {
     subscribe?: string; // OpenCode session ID to subscribe to all stack PRs
     workdir?: string;
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
-  readonly squashStack: (message: string, workdir?: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
-  readonly abandonStack: (changeId?: string, workdir?: string) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
+  readonly squashStack: (
+    message: string,
+    workdir?: string,
+  ) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
+  readonly abandonStack: (
+    changeId?: string,
+    workdir?: string,
+  ) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
   // Stack navigation
-  readonly stackUp: (workdir?: string) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
-  readonly stackDown: (workdir?: string) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
+  readonly stackUp: (
+    workdir?: string,
+  ) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
+  readonly stackDown: (
+    workdir?: string,
+  ) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
   // Stack recovery
-  readonly stackUndo: (workdir?: string) => Effect.Effect<StackUndoResult, ShipCommandError | JsonParseError>;
-  readonly stackUpdateStale: (workdir?: string) => Effect.Effect<StackUpdateStaleResult, ShipCommandError | JsonParseError>;
+  readonly stackUndo: (
+    workdir?: string,
+  ) => Effect.Effect<StackUndoResult, ShipCommandError | JsonParseError>;
+  readonly stackUpdateStale: (
+    workdir?: string,
+  ) => Effect.Effect<StackUpdateStaleResult, ShipCommandError | JsonParseError>;
   // Stack bookmark
-  readonly bookmarkStack: (name: string, move?: boolean, workdir?: string) => Effect.Effect<StackBookmarkResult, ShipCommandError | JsonParseError>;
+  readonly bookmarkStack: (
+    name: string,
+    move?: boolean,
+    workdir?: string,
+  ) => Effect.Effect<StackBookmarkResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
   readonly getWebhookStatus: () => Effect.Effect<{ running: boolean; pid?: number }, never>;
   // Daemon-based webhook operations
-  readonly getDaemonStatus: () => Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError>;
-  readonly subscribeToPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
-  readonly unsubscribeFromPRs: (sessionId: string, prNumbers: number[]) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
-  readonly cleanupStaleSubscriptions: () => Effect.Effect<WebhookCleanupResult, ShipCommandError | JsonParseError>;
+  readonly getDaemonStatus: () => Effect.Effect<
+    WebhookDaemonStatus,
+    ShipCommandError | JsonParseError
+  >;
+  readonly subscribeToPRs: (
+    sessionId: string,
+    prNumbers: number[],
+  ) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
+  readonly unsubscribeFromPRs: (
+    sessionId: string,
+    prNumbers: number[],
+  ) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
+  readonly cleanupStaleSubscriptions: () => Effect.Effect<
+    WebhookCleanupResult,
+    ShipCommandError | JsonParseError
+  >;
   // Workspace operations - accept optional workdir
-  readonly listWorkspaces: (workdir?: string) => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
-  readonly removeWorkspace: (name: string, deleteFiles?: boolean, workdir?: string) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
+  readonly listWorkspaces: (
+    workdir?: string,
+  ) => Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError>;
+  readonly removeWorkspace: (
+    name: string,
+    deleteFiles?: boolean,
+    workdir?: string,
+  ) => Effect.Effect<RemoveWorkspaceResult, ShipCommandError | JsonParseError>;
   // Milestone operations
   readonly listMilestones: () => Effect.Effect<ShipMilestone[], ShipCommandError | JsonParseError>;
-  readonly getMilestone: (milestoneId: string) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
-  readonly createMilestone: (input: { name: string; description?: string; targetDate?: string }) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
-  readonly updateMilestone: (milestoneId: string, input: { name?: string; description?: string; targetDate?: string }) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
+  readonly getMilestone: (
+    milestoneId: string,
+  ) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
+  readonly createMilestone: (input: {
+    name: string;
+    description?: string;
+    targetDate?: string;
+  }) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
+  readonly updateMilestone: (
+    milestoneId: string,
+    input: { name?: string; description?: string; targetDate?: string },
+  ) => Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError>;
   readonly deleteMilestone: (milestoneId: string) => Effect.Effect<void, ShipCommandError>;
-  readonly setTaskMilestone: (taskId: string, milestoneId: string) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
-  readonly unsetTaskMilestone: (taskId: string) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
+  readonly setTaskMilestone: (
+    taskId: string,
+    milestoneId: string,
+  ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
+  readonly unsetTaskMilestone: (
+    taskId: string,
+  ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -600,7 +667,12 @@ const makeShipService = Effect.gen(function* () {
 
   const completeTask = (taskId: string) => shell.run(["done", taskId]).pipe(Effect.asVoid);
 
-  const createTask = (input: { title: string; description?: string; priority?: string; parentId?: string }) =>
+  const createTask = (input: {
+    title: string;
+    description?: string;
+    priority?: string;
+    parentId?: string;
+  }) =>
     Effect.gen(function* () {
       const args = ["create", "--json"];
       if (input.description) args.push("--description", input.description);
@@ -615,7 +687,13 @@ const makeShipService = Effect.gen(function* () {
 
   const updateTask = (
     taskId: string,
-    input: { title?: string; description?: string; priority?: string; status?: string; parentId?: string }
+    input: {
+      title?: string;
+      description?: string;
+      priority?: string;
+      status?: string;
+      parentId?: string;
+    },
   ) =>
     Effect.gen(function* () {
       const args = ["update", "--json"];
@@ -653,7 +731,13 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackStatus>(output);
     });
 
-  const createStackChange = (input: { message?: string; bookmark?: string; noWorkspace?: boolean; taskId?: string; workdir?: string }) =>
+  const createStackChange = (input: {
+    message?: string;
+    bookmark?: string;
+    noWorkspace?: boolean;
+    taskId?: string;
+    workdir?: string;
+  }) =>
     Effect.gen(function* () {
       const args = ["stack", "create", "--json"];
       if (input.message) args.push("--message", input.message);
@@ -666,7 +750,10 @@ const makeShipService = Effect.gen(function* () {
 
   const describeStackChange = (message: string, workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "describe", "--json", "--message", message], workdir);
+      const output = yield* shell.run(
+        ["stack", "describe", "--json", "--message", message],
+        workdir,
+      );
       return yield* parseJson<StackDescribeResult>(output);
     });
 
@@ -682,7 +769,13 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackRestackResult>(output);
     });
 
-  const submitStack = (input: { draft?: boolean; title?: string; body?: string; subscribe?: string; workdir?: string }) =>
+  const submitStack = (input: {
+    draft?: boolean;
+    title?: string;
+    body?: string;
+    subscribe?: string;
+    workdir?: string;
+  }) =>
     Effect.gen(function* () {
       const args = ["stack", "submit", "--json"];
       if (input.draft) args.push("--draft");
@@ -808,7 +901,7 @@ const makeShipService = Effect.gen(function* () {
         "not authenticated",
         "Permission denied",
       ];
-      
+
       const hasError = errorPatterns.some((pattern) => stderrOutput.includes(pattern));
       if (hasError) {
         // Kill the process since it's in a bad state
@@ -869,12 +962,15 @@ const makeShipService = Effect.gen(function* () {
 
   // Daemon-based webhook operations - communicate with the webhook daemon via CLI
 
-  const getDaemonStatus = (): Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError> =>
+  const getDaemonStatus = (): Effect.Effect<
+    WebhookDaemonStatus,
+    ShipCommandError | JsonParseError
+  > =>
     Effect.gen(function* () {
       // First check if daemon is running by trying to get status
-      const output = yield* shell.run(["webhook", "status", "--json"]).pipe(
-        Effect.catchAll(() => Effect.succeed('{"running":false}')),
-      );
+      const output = yield* shell
+        .run(["webhook", "status", "--json"])
+        .pipe(Effect.catchAll(() => Effect.succeed('{"running":false}')));
       return yield* parseJson<WebhookDaemonStatus>(output);
     });
 
@@ -913,14 +1009,19 @@ const makeShipService = Effect.gen(function* () {
     });
 
   // Cleanup stale subscriptions
-  const cleanupStaleSubscriptions = (): Effect.Effect<WebhookCleanupResult, ShipCommandError | JsonParseError> =>
+  const cleanupStaleSubscriptions = (): Effect.Effect<
+    WebhookCleanupResult,
+    ShipCommandError | JsonParseError
+  > =>
     Effect.gen(function* () {
       const output = yield* shell.run(["webhook", "cleanup", "--json"]);
       return yield* parseJson<WebhookCleanupResult>(output);
     });
 
   // Workspace operations - accept optional workdir
-  const listWorkspaces = (workdir?: string): Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError> =>
+  const listWorkspaces = (
+    workdir?: string,
+  ): Effect.Effect<WorkspaceOutput[], ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       const output = yield* shell.run(["stack", "workspaces", "--json"], workdir);
       return yield* parseJson<WorkspaceOutput[]>(output);
@@ -946,7 +1047,9 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<ShipMilestone[]>(output);
     });
 
-  const getMilestone = (milestoneId: string): Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError> =>
+  const getMilestone = (
+    milestoneId: string,
+  ): Effect.Effect<ShipMilestone, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       const output = yield* shell.run(["milestone", "show", "--json", milestoneId]);
       return yield* parseJson<ShipMilestone>(output);
@@ -998,7 +1101,9 @@ const makeShipService = Effect.gen(function* () {
       return response.task;
     });
 
-  const unsetTaskMilestone = (taskId: string): Effect.Effect<ShipTask, ShipCommandError | JsonParseError> =>
+  const unsetTaskMilestone = (
+    taskId: string,
+  ): Effect.Effect<ShipTask, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       // Empty string removes milestone
       const args = ["update", "--json", "--milestone", "", taskId];
@@ -1205,7 +1310,10 @@ const actionHandlers: Record<string, ActionHandler> = {
     Effect.gen(function* () {
       const tasks = yield* ship.getReadyTasks();
       if (tasks.length === 0) {
-        const guidance = addGuidance("action=blocked (check blocked tasks) | action=create (create a new task)", { skill: true });
+        const guidance = addGuidance(
+          "action=blocked (check blocked tasks) | action=create (create a new task)",
+          { skill: true },
+        );
         return `No tasks ready to work on (all tasks are either blocked or completed).${guidance}`;
       }
       const guidance = addGuidance("action=start (begin working on a task)", { skill: true });
@@ -1219,7 +1327,9 @@ const actionHandlers: Record<string, ActionHandler> = {
         const guidance = addGuidance("action=ready (check ready tasks)");
         return `No blocked tasks.${guidance}`;
       }
-      const guidance = addGuidance("action=show (view task details) | action=unblock (remove blocker)");
+      const guidance = addGuidance(
+        "action=show (view task details) | action=unblock (remove blocker)",
+      );
       return `Blocked tasks:\n\n${formatTaskList(tasks)}${guidance}`;
     }),
 
@@ -1230,7 +1340,9 @@ const actionHandlers: Record<string, ActionHandler> = {
         const guidance = addGuidance("action=create (create a new task)");
         return `No tasks found matching the filter.${guidance}`;
       }
-      const guidance = addGuidance("action=show (view task details) | action=start (begin working)");
+      const guidance = addGuidance(
+        "action=show (view task details) | action=start (begin working)",
+      );
       return `Tasks:\n\n${formatTaskList(tasks)}${guidance}`;
     }),
 
@@ -1251,7 +1363,9 @@ const actionHandlers: Record<string, ActionHandler> = {
       }
       yield* ship.startTask(args.taskId, ctx.sessionId);
       const sessionInfo = ctx.sessionId ? ` (labeled with session:${ctx.sessionId})` : "";
-      const guidance = addGuidance(`action=stack-create with taskId="${args.taskId}" (create workspace and begin work)`);
+      const guidance = addGuidance(
+        `action=stack-create with taskId="${args.taskId}" (create workspace and begin work)`,
+      );
       return `Started working on ${args.taskId}${sessionInfo}${guidance}`;
     }),
 
@@ -1261,7 +1375,9 @@ const actionHandlers: Record<string, ActionHandler> = {
         return "Error: taskId is required for done action";
       }
       yield* ship.completeTask(args.taskId);
-      const guidance = addGuidance("action=ready (find next task) | action=stack-sync (cleanup if in workspace)");
+      const guidance = addGuidance(
+        "action=ready (find next task) | action=stack-sync (cleanup if in workspace)",
+      );
       return `Completed ${args.taskId}${guidance}`;
     }),
 
@@ -1288,7 +1404,13 @@ const actionHandlers: Record<string, ActionHandler> = {
       if (!args.taskId) {
         return "Error: taskId is required for update action";
       }
-      if (!args.title && !args.description && !args.priority && !args.status && args.parentId === undefined) {
+      if (
+        !args.title &&
+        !args.description &&
+        !args.priority &&
+        !args.status &&
+        args.parentId === undefined
+      ) {
         return "Error: at least one of title, description, priority, status, or parentId is required for update";
       }
       const task = yield* ship.updateTask(args.taskId, {
@@ -1313,7 +1435,9 @@ const actionHandlers: Record<string, ActionHandler> = {
         return "Error: both blocker and blocked task IDs are required";
       }
       yield* ship.addBlocker(args.blocker, args.blocked);
-      const guidance = addGuidance("action=ready (find unblocked tasks) | action=blocked (view blocked tasks)");
+      const guidance = addGuidance(
+        "action=ready (find unblocked tasks) | action=blocked (view blocked tasks)",
+      );
       return `${args.blocker} now blocks ${args.blocked}${guidance}`;
     }),
 
@@ -1371,7 +1495,9 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
         output += `\nBookmarks:   ${c.bookmarks.join(", ")}`;
       }
       output += `\nStatus:      ${c.isEmpty ? "empty (no changes)" : "has changes"}`;
-      const guidance = addGuidance("action=stack-submit (push changes) | action=stack-sync (fetch latest)");
+      const guidance = addGuidance(
+        "action=stack-submit (push changes) | action=stack-sync (fetch latest)",
+      );
       return output + guidance;
     }),
 
@@ -1393,13 +1519,18 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
       }
       if (result.workspace?.created) {
         output += `\nCreated workspace: ${result.workspace.name} at ${result.workspace.path}`;
-        const guidance = addGuidance("Implement the task (edit files) | action=stack-status (check change state)", {
-          workdir: result.workspace.path,
-          note: "Workspace created. Use the workdir above for all subsequent commands.",
-        });
+        const guidance = addGuidance(
+          "Implement the task (edit files) | action=stack-status (check change state)",
+          {
+            workdir: result.workspace.path,
+            note: "Workspace created. Use the workdir above for all subsequent commands.",
+          },
+        );
         output += guidance;
       } else {
-        const guidance = addGuidance("Implement the task (edit files) | action=stack-status (check change state)");
+        const guidance = addGuidance(
+          "Implement the task (edit files) | action=stack-status (check change state)",
+        );
         output += guidance;
       }
       return output;
@@ -1441,11 +1572,14 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
           parts.push(`Cleaned up workspace: ${result.cleanedUpWorkspace}`);
         }
         parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
-        const guidance = addGuidance("action=done (mark task complete) | action=ready (find next task)", {
-          workdir: ctx.mainRepoPath,
-          skill: true,
-          note: `Workspace '${result.cleanedUpWorkspace}' was deleted. Use the workdir above for subsequent commands.`,
-        });
+        const guidance = addGuidance(
+          "action=done (mark task complete) | action=ready (find next task)",
+          {
+            workdir: ctx.mainRepoPath,
+            skill: true,
+            note: `Workspace '${result.cleanedUpWorkspace}' was deleted. Use the workdir above for subsequent commands.`,
+          },
+        );
         parts.push(guidance);
       } else if (result.conflicted) {
         parts.push("Sync completed with conflicts!");
@@ -1455,10 +1589,13 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
         parts.push(`  Stack:   ${result.stackSize} change(s)`);
         parts.push("");
         parts.push("Resolve conflicts with 'jj status' and edit the conflicted files.");
-        const guidance = addGuidance("resolve conflicts manually | action=stack-status (check conflict state)", {
-          skill: true,
-          note: "Conflicts detected during rebase. Resolve them before continuing.",
-        });
+        const guidance = addGuidance(
+          "resolve conflicts manually | action=stack-status (check conflict state)",
+          {
+            skill: true,
+            note: "Conflicts detected during rebase. Resolve them before continuing.",
+          },
+        );
         parts.push(guidance);
       } else if (!result.rebased) {
         parts.push("Already up to date.");
@@ -1540,7 +1677,7 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       const guidance = addGuidance(
         prCreated
           ? "Wait for review | action=stack-create (start next change in stack) | action=done (if single-change task)"
-          : "action=stack-status (check change state)"
+          : "action=stack-status (check change state)",
       );
       output += guidance;
       return output;
@@ -1604,7 +1741,9 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       if (!result.updated) {
         return `Error: ${result.error || "Failed to update stale workspace"}`;
       }
-      return result.changeId ? `Working copy updated. Now at: ${result.changeId}` : "Working copy updated.";
+      return result.changeId
+        ? `Working copy updated. Now at: ${result.changeId}`
+        : "Working copy updated.";
     }),
 
   "stack-bookmark": (ship, args, ctx) =>
@@ -1649,10 +1788,13 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
       if (result.filesDeleted !== undefined) {
         output += result.filesDeleted ? "\nFiles deleted." : "\nFiles remain on disk.";
       }
-      const guidance = addGuidance("action=ready (find next task) | action=stack-workspaces (list remaining)", {
-        workdir: ctx.mainRepoPath,
-        note: "Workspace removed. Use the workdir above for subsequent commands.",
-      });
+      const guidance = addGuidance(
+        "action=ready (find next task) | action=stack-workspaces (list remaining)",
+        {
+          workdir: ctx.mainRepoPath,
+          note: "Workspace removed. Use the workdir above for subsequent commands.",
+        },
+      );
       return output + guidance;
     }),
 
@@ -1868,7 +2010,9 @@ const executeAction = (
 
     // Check configuration for all actions except status
     if (args.action !== "status") {
-      const status = yield* ship.checkConfigured().pipe(Effect.catchAll(() => Effect.succeed({ configured: false })));
+      const status = yield* ship
+        .checkConfigured()
+        .pipe(Effect.catchAll(() => Effect.succeed({ configured: false })));
       if (!status.configured) {
         return yield* new ShipNotConfiguredError({});
       }
@@ -1889,7 +2033,7 @@ const executeAction = (
 
 /**
  * Create the ship tool with the opencode context.
- * 
+ *
  * @param $ - Bun shell from opencode
  * @param directory - Current working directory from opencode (Instance.directory)
  * @returns ToolDefinition for the ship tool
@@ -1897,7 +2041,9 @@ const executeAction = (
 const createShipTool = ($: BunShell, directory: string): ToolDefinition => {
   const shellService = makeShellService($, directory);
   const ShellServiceLive = Layer.succeed(ShellService, shellService);
-  const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(Layer.provide(ShellServiceLive));
+  const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(
+    Layer.provide(ShellServiceLive),
+  );
 
   const runEffect = <A, E>(effect: Effect.Effect<A, E, ShipService>): Promise<A> =>
     Effect.runPromise(Effect.provide(effect, ShipServiceLive));
@@ -1969,14 +2115,22 @@ Run 'ship init' in the terminal first if not configured.`,
           "task-unset-milestone",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist), milestone-list (list project milestones), milestone-show (view milestone details), milestone-create (create new milestone), milestone-update (modify milestone), milestone-delete (delete milestone), task-set-milestone (assign task to milestone), task-unset-milestone (remove task from milestone)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist), milestone-list (list project milestones), milestone-show (view milestone details), milestone-create (create new milestone), milestone-update (modify milestone), milestone-delete (delete milestone), task-set-milestone (assign task to milestone), task-unset-milestone (remove task from milestone)",
         ),
       taskId: createTool.schema
         .string()
         .optional()
-        .describe("Task identifier (e.g., BRI-123) - required for show, start, done, update; optional for stack-create to associate workspace with task"),
-      title: createTool.schema.string().optional().describe("Task title - required for create, optional for update"),
-      description: createTool.schema.string().optional().describe("Task description - optional for create/update"),
+        .describe(
+          "Task identifier (e.g., BRI-123) - required for show, start, done, update; optional for stack-create to associate workspace with task",
+        ),
+      title: createTool.schema
+        .string()
+        .optional()
+        .describe("Task title - required for create, optional for update"),
+      description: createTool.schema
+        .string()
+        .optional()
+        .describe("Task description - optional for create/update"),
       priority: createTool.schema
         .enum(["urgent", "high", "medium", "low", "none"])
         .optional()
@@ -1985,8 +2139,14 @@ Run 'ship init' in the terminal first if not configured.`,
         .enum(["backlog", "todo", "in_progress", "in_review", "done", "cancelled"])
         .optional()
         .describe("Task status - optional for update"),
-      blocker: createTool.schema.string().optional().describe("Blocker task ID - required for block/unblock"),
-      blocked: createTool.schema.string().optional().describe("Blocked task ID - required for block/unblock"),
+      blocker: createTool.schema
+        .string()
+        .optional()
+        .describe("Blocker task ID - required for block/unblock"),
+      blocked: createTool.schema
+        .string()
+        .optional()
+        .describe("Blocked task ID - required for block/unblock"),
       relatedTaskId: createTool.schema
         .string()
         .optional()
@@ -2016,23 +2176,33 @@ Run 'ship init' in the terminal first if not configured.`,
       noWorkspace: createTool.schema
         .boolean()
         .optional()
-        .describe("Skip workspace creation - for stack-create action (by default, workspace is created for isolated development)"),
+        .describe(
+          "Skip workspace creation - for stack-create action (by default, workspace is created for isolated development)",
+        ),
       name: createTool.schema
         .string()
         .optional()
-        .describe("Bookmark or workspace name - required for stack-bookmark and stack-remove-workspace actions"),
+        .describe(
+          "Bookmark or workspace name - required for stack-bookmark and stack-remove-workspace actions",
+        ),
       move: createTool.schema
         .boolean()
         .optional()
-        .describe("Move an existing bookmark instead of creating a new one - for stack-bookmark action"),
+        .describe(
+          "Move an existing bookmark instead of creating a new one - for stack-bookmark action",
+        ),
       deleteFiles: createTool.schema
         .boolean()
         .optional()
-        .describe("Also delete the workspace directory from disk - for stack-remove-workspace action"),
+        .describe(
+          "Also delete the workspace directory from disk - for stack-remove-workspace action",
+        ),
       workdir: createTool.schema
         .string()
         .optional()
-        .describe("Working directory for VCS operations - use this when operating in a jj workspace (e.g., the path returned by stack-create)"),
+        .describe(
+          "Working directory for VCS operations - use this when operating in a jj workspace (e.g., the path returned by stack-create)",
+        ),
       draft: createTool.schema
         .boolean()
         .optional()
@@ -2048,7 +2218,9 @@ Run 'ship init' in the terminal first if not configured.`,
       events: createTool.schema
         .string()
         .optional()
-        .describe("Comma-separated GitHub events to forward (e.g., 'pull_request,check_run') - for webhook-start action"),
+        .describe(
+          "Comma-separated GitHub events to forward (e.g., 'pull_request,check_run') - for webhook-start action",
+        ),
       sessionId: createTool.schema
         .string()
         .optional()
@@ -2056,11 +2228,15 @@ Run 'ship init' in the terminal first if not configured.`,
       prNumbers: createTool.schema
         .array(createTool.schema.number())
         .optional()
-        .describe("PR numbers to subscribe/unsubscribe - for webhook-subscribe/unsubscribe actions"),
+        .describe(
+          "PR numbers to subscribe/unsubscribe - for webhook-subscribe/unsubscribe actions",
+        ),
       milestoneId: createTool.schema
         .string()
         .optional()
-        .describe("Milestone identifier (slug like 'q1-release' or UUID) - required for milestone-show, milestone-update, task-set-milestone"),
+        .describe(
+          "Milestone identifier (slug like 'q1-release' or UUID) - required for milestone-show, milestone-update, task-set-milestone",
+        ),
       milestoneName: createTool.schema
         .string()
         .optional()
@@ -2072,7 +2248,9 @@ Run 'ship init' in the terminal first if not configured.`,
       milestoneTargetDate: createTool.schema
         .string()
         .optional()
-        .describe("Milestone target date (ISO format like '2024-03-31') - optional for milestone-create/update"),
+        .describe(
+          "Milestone target date (ISO format like '2024-03-31') - optional for milestone-create/update",
+        ),
     },
 
     async execute(args, context) {
@@ -2101,8 +2279,8 @@ After that, you can use this tool to manage tasks.`);
               return Effect.succeed(`Failed to parse response: ${error.raw}`);
             }
             return Effect.succeed(`Unknown error: ${JSON.stringify(error)}`);
-          })
-        )
+          }),
+        ),
       );
       return result;
     },
