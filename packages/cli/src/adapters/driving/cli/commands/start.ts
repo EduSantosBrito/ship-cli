@@ -18,6 +18,8 @@ import * as Option from "effect/Option";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { IssueRepository } from "../../../../ports/IssueRepository.js";
 import { UpdateTaskInput, type TaskId } from "../../../../domain/Task.js";
+import { LinearApiError } from "../../../../domain/Errors.js";
+import { LinearClientService } from "../../../driven/linear/LinearClient.js";
 
 // === Command Definition ===
 
@@ -66,7 +68,15 @@ export const startCommand = Command.make(
         yield* Console.log("Consider working on the blocking tasks first.\n");
       }
 
-      // Update status to in_progress
+      // Get current user for auto-assignment
+      const linearClient = yield* LinearClientService;
+      const client = yield* linearClient.client();
+      const viewer = yield* Effect.tryPromise({
+        try: () => client.viewer,
+        catch: (e) => new LinearApiError({ message: `Failed to fetch viewer: ${e}`, cause: e }),
+      });
+
+      // Update status to in_progress and assign to current user
       const updatedTask = yield* issueRepo.updateTask(
         task.id,
         new UpdateTaskInput({
@@ -74,6 +84,7 @@ export const startCommand = Command.make(
           description: Option.none(),
           status: Option.some("in_progress"),
           priority: Option.none(),
+          assigneeId: Option.some(viewer.id),
         }),
       );
 

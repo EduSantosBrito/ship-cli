@@ -135,6 +135,7 @@ export class UpdateTaskInput extends Schema.Class<UpdateTaskInput>("UpdateTaskIn
   description: Schema.OptionFromNullOr(Schema.String),
   status: Schema.OptionFromNullOr(TaskStatus),
   priority: Schema.OptionFromNullOr(Priority),
+  assigneeId: Schema.OptionFromNullOr(Schema.String),
 }) {}
 
 export class TaskFilter extends Schema.Class<TaskFilter>("TaskFilter")({
