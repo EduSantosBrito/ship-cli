@@ -16,6 +16,9 @@ import {
   PrService,
   PullRequest,
   PrId,
+  PrReview,
+  PrReviewComment,
+  PrComment,
   CreatePrInput,
   UpdatePrInput,
 } from "../../src/ports/PrService.js";
@@ -46,6 +49,12 @@ export interface TestPrState {
   nextPrNumber: number;
   /** Track method calls for assertions */
   methodCalls: Array<{ method: string; args: unknown[] }>;
+  /** Map of PR number to reviews */
+  reviews: Map<number, PrReview[]>;
+  /** Map of PR number to inline code comments */
+  reviewComments: Map<number, PrReviewComment[]>;
+  /** Map of PR number to general conversation comments */
+  prComments: Map<number, PrComment[]>;
 }
 
 const createTestPr = (overrides: Partial<{
@@ -81,6 +90,9 @@ export const defaultTestPrState: TestPrState = {
   globalPrError: null,
   nextPrNumber: 2,
   methodCalls: [],
+  reviews: new Map(),
+  reviewComments: new Map(),
+  prComments: new Map(),
 };
 
 // === Test Layer Factory ===
@@ -286,6 +298,42 @@ export const TestPrServiceLayer = (
             });
 
             return updatedPr;
+          }),
+
+        getReviews: (prNumber: number) =>
+          Effect.gen(function* () {
+            yield* trackCall("getReviews", [prNumber]);
+            yield* checkGhInstalled;
+            yield* checkGhAuthenticated;
+            yield* checkGlobalPrError;
+            yield* checkPrError(prNumber);
+
+            const state = yield* Ref.get(stateRef);
+            return state.reviews.get(prNumber) ?? [];
+          }),
+
+        getReviewComments: (prNumber: number) =>
+          Effect.gen(function* () {
+            yield* trackCall("getReviewComments", [prNumber]);
+            yield* checkGhInstalled;
+            yield* checkGhAuthenticated;
+            yield* checkGlobalPrError;
+            yield* checkPrError(prNumber);
+
+            const state = yield* Ref.get(stateRef);
+            return state.reviewComments.get(prNumber) ?? [];
+          }),
+
+        getPrComments: (prNumber: number) =>
+          Effect.gen(function* () {
+            yield* trackCall("getPrComments", [prNumber]);
+            yield* checkGhInstalled;
+            yield* checkGhAuthenticated;
+            yield* checkGlobalPrError;
+            yield* checkPrError(prNumber);
+
+            const state = yield* Ref.get(stateRef);
+            return state.prComments.get(prNumber) ?? [];
           }),
       };
 

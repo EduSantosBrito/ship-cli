@@ -23,6 +23,9 @@ import {
   PrService,
   PullRequest,
   PrId,
+  PrReview,
+  PrReviewComment,
+  PrComment,
   type CreatePrInput,
   type UpdatePrInput,
   type PrErrors,
@@ -53,6 +56,55 @@ const GhPrJsonSchema = Schema.Struct({
 });
 
 type GhPrJson = typeof GhPrJsonSchema.Type;
+
+/**
+ * Schema for gh api /repos/{owner}/{repo}/pulls/{pr}/reviews response
+ */
+const GhReviewSchema = Schema.Struct({
+  id: Schema.Number,
+  user: Schema.Struct({
+    login: Schema.String,
+  }),
+  state: Schema.String, // APPROVED, CHANGES_REQUESTED, COMMENTED, PENDING, DISMISSED
+  body: Schema.NullOr(Schema.String),
+  submitted_at: Schema.NullOr(Schema.String),
+});
+
+const GhReviewsArraySchema = Schema.Array(GhReviewSchema);
+
+/**
+ * Schema for gh api /repos/{owner}/{repo}/pulls/{pr}/comments response
+ * These are inline code review comments
+ */
+const GhReviewCommentSchema = Schema.Struct({
+  id: Schema.Number,
+  path: Schema.String,
+  line: Schema.NullOr(Schema.Number), // null for file-level or outdated comments
+  body: Schema.String,
+  user: Schema.Struct({
+    login: Schema.String,
+  }),
+  created_at: Schema.String,
+  in_reply_to_id: Schema.optional(Schema.Number),
+  diff_hunk: Schema.optional(Schema.String),
+});
+
+const GhReviewCommentsArraySchema = Schema.Array(GhReviewCommentSchema);
+
+/**
+ * Schema for gh api /repos/{owner}/{repo}/issues/{pr}/comments response
+ * These are general conversation comments (issue-level comments)
+ */
+const GhIssueCommentSchema = Schema.Struct({
+  id: Schema.Number,
+  body: Schema.String,
+  user: Schema.Struct({
+    login: Schema.String,
+  }),
+  created_at: Schema.String,
+});
+
+const GhIssueCommentsArraySchema = Schema.Array(GhIssueCommentSchema);
 
 // === Service Implementation ===
 
@@ -155,6 +207,29 @@ const make = Effect.gen(function* () {
       case "CLOSED":
       default:
         return "closed";
+    }
+  };
+
+  /**
+   * Convert gh review state to our domain review state
+   */
+  const normalizeReviewState = (
+    ghState: string,
+  ): "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "PENDING" | "DISMISSED" => {
+    const upper = ghState.toUpperCase();
+    switch (upper) {
+      case "APPROVED":
+        return "APPROVED";
+      case "CHANGES_REQUESTED":
+        return "CHANGES_REQUESTED";
+      case "COMMENTED":
+        return "COMMENTED";
+      case "PENDING":
+        return "PENDING";
+      case "DISMISSED":
+        return "DISMISSED";
+      default:
+        return "COMMENTED";
     }
   };
 
@@ -377,6 +452,88 @@ const make = Effect.gen(function* () {
       "updatePrBase",
     );
 
+  const getReviews = (prNumber: number): Effect.Effect<ReadonlyArray<PrReview>, PrErrors> =>
+    withNetworkRetry(
+      Effect.gen(function* () {
+        // Use gh api to fetch reviews
+        const output = yield* runGh(
+          "api",
+          `repos/{owner}/{repo}/pulls/${prNumber}/reviews`,
+          "--paginate",
+        );
+
+        const ghReviews = yield* parseGhJson(output, GhReviewsArraySchema);
+
+        return ghReviews.map(
+          (review) =>
+            new PrReview({
+              id: review.id,
+              author: review.user.login,
+              state: normalizeReviewState(review.state),
+              body: review.body ?? "",
+              submittedAt: review.submitted_at ?? "",
+            }),
+        );
+      }),
+      "getReviews",
+    );
+
+  const getReviewComments = (
+    prNumber: number,
+  ): Effect.Effect<ReadonlyArray<PrReviewComment>, PrErrors> =>
+    withNetworkRetry(
+      Effect.gen(function* () {
+        // Use gh api to fetch inline code comments
+        const output = yield* runGh(
+          "api",
+          `repos/{owner}/{repo}/pulls/${prNumber}/comments`,
+          "--paginate",
+        );
+
+        const ghComments = yield* parseGhJson(output, GhReviewCommentsArraySchema);
+
+        return ghComments.map(
+          (comment) =>
+            new PrReviewComment({
+              id: comment.id,
+              path: comment.path,
+              line: comment.line,
+              body: comment.body,
+              author: comment.user.login,
+              createdAt: comment.created_at,
+              inReplyToId: comment.in_reply_to_id ?? null,
+              diffHunk: comment.diff_hunk,
+            }),
+        );
+      }),
+      "getReviewComments",
+    );
+
+  const getPrComments = (prNumber: number): Effect.Effect<ReadonlyArray<PrComment>, PrErrors> =>
+    withNetworkRetry(
+      Effect.gen(function* () {
+        // Use gh api to fetch issue-level comments (general conversation)
+        const output = yield* runGh(
+          "api",
+          `repos/{owner}/{repo}/issues/${prNumber}/comments`,
+          "--paginate",
+        );
+
+        const ghComments = yield* parseGhJson(output, GhIssueCommentsArraySchema);
+
+        return ghComments.map(
+          (comment) =>
+            new PrComment({
+              id: comment.id,
+              body: comment.body,
+              author: comment.user.login,
+              createdAt: comment.created_at,
+            }),
+        );
+      }),
+      "getPrComments",
+    );
+
   return {
     isAvailable,
     getCurrentRepo,
@@ -385,6 +542,9 @@ const make = Effect.gen(function* () {
     openInBrowser,
     getPrByBranch,
     updatePrBase,
+    getReviews,
+    getReviewComments,
+    getPrComments,
   };
 });
 

@@ -55,7 +55,7 @@ Commands:
   milestone         Manage project milestones
   stack             VCS operations (jj wrapper for AI agents)
   webhook           GitHub webhook operations
-  pr                PR workflow commands (create, stack)
+  pr                PR workflow commands (create, stack, review)
 
 Run 'ship <command> --help' for more information on a command.`),
 );
