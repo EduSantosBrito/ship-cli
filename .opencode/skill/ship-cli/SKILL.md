@@ -3,6 +3,24 @@ name: ship-cli
 description: Work management system replacing built-in todos with tracked tasks and stacked changes
 ---
 
+## CRITICAL RULES - READ FIRST
+
+**NEVER run these commands directly via bash/terminal:**
+- `jj` commands (jj new, jj describe, jj bookmark, jj git push, etc.)
+- `gh pr` commands (gh pr create, gh pr edit, etc.)
+- `git` commands for VCS operations
+- `ship` or `pnpm ship` CLI commands
+
+**ALWAYS use the `ship` tool for ALL version control and PR operations.**
+
+The ship tool wraps jj and gh commands with proper error handling, state management, and workflow integration. Using raw commands bypasses these safeguards and can cause:
+- Inconsistent state between ship's tracking and actual VCS state
+- Missing webhook subscriptions for PR events
+- Broken workspace management
+- Lost work due to improper change tracking
+
+---
+
 ## When to use
 
 **Always use ship instead of the built-in TodoWrite/TodoRead tools.**
@@ -35,7 +53,12 @@ ship: action="stack-status", workdir="/Users/x/project/.ship/workspaces/bri-123"
 
 ## Ship Tool Guidance
 
-**IMPORTANT: Always use the `ship` tool, NEVER run `ship` or `pnpm ship` via bash/terminal.**
+**IMPORTANT: Always use the `ship` tool, NEVER run VCS commands via bash/terminal.**
+
+Forbidden bash commands (use ship tool instead):
+- `jj new`, `jj describe`, `jj bookmark`, `jj git push` → use `stack-create`, `stack-describe`, `stack-submit`
+- `gh pr create`, `gh pr edit` → use `stack-submit`
+- `ship` or `pnpm ship` → use the `ship` tool directly
 
 The `ship` tool replaces built-in todo management. Use it for all task tracking and VCS operations.
 
@@ -470,3 +493,20 @@ ship tool: action=`stack-undo`, workdir=`<workspace-path>`
 ```
 
 This undoes the last jj operation. Use sparingly - it's better to be careful than to rely on undo.
+
+### If You Accidentally Used jj/gh Commands Directly
+
+If you ran jj or gh commands via bash instead of using the ship tool:
+
+1. **Stop immediately** - Don't continue with more direct commands
+2. **Check the state** - Use `ship tool: action=stack-status` to see current state
+3. **Undo if needed** - Use `ship tool: action=stack-undo` to revert the jj operation
+4. **Resume with ship tool** - Continue using the ship tool for all subsequent operations
+
+**Why this matters**: Direct jj/gh commands bypass ship's tracking, which can cause:
+- PRs without webhook subscriptions (you won't get merge notifications)
+- Workspace state inconsistencies
+- Missing bookmark associations
+- Broken stack tracking
+
+**Prevention**: Always use the ship tool for VCS operations. The ship tool wraps jj/gh with proper state management.
