@@ -20,6 +20,7 @@ import { IssueRepository } from "../../../../ports/IssueRepository.js";
 import { UpdateTaskInput, type TaskId } from "../../../../domain/Task.js";
 import { LinearApiError } from "../../../../domain/Errors.js";
 import { LinearClientService } from "../../../driven/linear/LinearClient.js";
+import { dryRunOption } from "./shared.js";
 
 // === Command Definition ===
 
@@ -41,8 +42,8 @@ const sessionOption = Options.text("session").pipe(
 
 export const startCommand = Command.make(
   "start",
-  { taskId: taskIdArg, json: jsonOption, session: sessionOption },
-  ({ taskId, json, session }) =>
+  { taskId: taskIdArg, json: jsonOption, session: sessionOption, dryRun: dryRunOption },
+  ({ taskId, json, session, dryRun }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
@@ -56,9 +57,59 @@ export const startCommand = Command.make(
 
       // Check if already in progress
       if (task.state.type === "started") {
-        yield* json
-          ? Console.log(JSON.stringify({ status: "already_in_progress", task: taskId }))
-          : Console.log(`Task ${task.identifier} is already in progress (${task.state.name}).`);
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              status: "already_in_progress",
+              task: taskId,
+              ...(dryRun ? { dryRun } : {}),
+            }),
+          );
+        } else {
+          const prefix = dryRun ? "[DRY RUN] " : "";
+          yield* Console.log(
+            `${prefix}Task ${task.identifier} is already in progress (${task.state.name}).`,
+          );
+        }
+        return;
+      }
+
+      // Get branch name for reference (useful for stack-create)
+      const branchName = yield* issueRepo.getBranchName(task.id);
+      const sessionId = Option.getOrUndefined(session);
+
+      // Dry run: output what would happen without making changes
+      if (dryRun) {
+        if (json) {
+          const output: Record<string, unknown> = {
+            dryRun: true,
+            wouldStart: {
+              id: task.id,
+              identifier: task.identifier,
+              title: task.title,
+              currentState: task.state.name,
+              branchName,
+            },
+          };
+          if (sessionId) {
+            output.sessionLabel = `session:${sessionId}`;
+          }
+          if (task.blockedBy.length > 0) {
+            output.warnings = [`Task is blocked by: ${task.blockedBy.join(", ")}`];
+          }
+          yield* Console.log(JSON.stringify(output));
+        } else {
+          yield* Console.log(`[DRY RUN] Would start task:`);
+          yield* Console.log(`  Task: ${task.identifier} - ${task.title}`);
+          yield* Console.log(`  Current state: ${task.state.name}`);
+          if (sessionId) {
+            yield* Console.log(`  Session: ${sessionId}`);
+          }
+          yield* Console.log(`  Branch name: ${branchName}`);
+          if (task.blockedBy.length > 0) {
+            yield* Console.log(`  Warning: Blocked by: ${task.blockedBy.join(", ")}`);
+          }
+        }
         return;
       }
 
@@ -93,13 +144,9 @@ export const startCommand = Command.make(
       );
 
       // Set session label if provided (for tracking which agent is working on the task)
-      const sessionId = Option.getOrUndefined(session);
       if (sessionId) {
         yield* issueRepo.setSessionLabel(task.id, sessionId);
       }
-
-      // Get branch name for reference (useful for stack-create)
-      const branchName = yield* issueRepo.getBranchName(task.id);
 
       // Output
       if (json) {

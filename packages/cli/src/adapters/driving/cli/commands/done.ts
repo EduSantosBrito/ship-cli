@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { IssueRepository } from "../../../../ports/IssueRepository.js";
 import { UpdateTaskInput, type TaskId } from "../../../../domain/Task.js";
+import { dryRunOption } from "./shared.js";
 
 const taskIdArg = Args.text({ name: "task-id" }).pipe(
   Args.withDescription("Task identifier (e.g., ENG-123)"),
@@ -25,8 +26,8 @@ const jsonOption = Options.boolean("json").pipe(
 
 export const doneCommand = Command.make(
   "done",
-  { taskId: taskIdArg, reason: reasonOption, json: jsonOption },
-  ({ taskId, reason, json }) =>
+  { taskId: taskIdArg, reason: reasonOption, json: jsonOption, dryRun: dryRunOption },
+  ({ taskId, reason, json, dryRun }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
@@ -41,9 +42,47 @@ export const doneCommand = Command.make(
       // Check if already done (Linear's "completed" or "canceled" state type)
       if (task.isDone) {
         if (json) {
-          yield* Console.log(JSON.stringify({ status: "already_done", task: taskId }));
+          yield* Console.log(
+            JSON.stringify({ status: "already_done", task: taskId, ...(dryRun ? { dryRun } : {}) }),
+          );
         } else {
-          yield* Console.log(`Task ${task.identifier} is already done (${task.state.name}).`);
+          const prefix = dryRun ? "[DRY RUN] " : "";
+          yield* Console.log(
+            `${prefix}Task ${task.identifier} is already done (${task.state.name}).`,
+          );
+        }
+        return;
+      }
+
+      // Get tasks that would be unblocked (for dry run output)
+      const blocking = task.blocks;
+
+      // Dry run: output what would happen without making changes
+      if (dryRun) {
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              wouldComplete: {
+                id: task.id,
+                identifier: task.identifier,
+                title: task.title,
+                currentState: task.state.name,
+              },
+              reason: Option.getOrNull(reason),
+              wouldUnblock: blocking,
+            }),
+          );
+        } else {
+          yield* Console.log(`[DRY RUN] Would complete task:`);
+          yield* Console.log(`  Task: ${task.identifier} - ${task.title}`);
+          yield* Console.log(`  Current state: ${task.state.name}`);
+          if (Option.isSome(reason)) {
+            yield* Console.log(`  Reason: ${reason.value}`);
+          }
+          if (blocking.length > 0) {
+            yield* Console.log(`  Would unblock: ${blocking.join(", ")}`);
+          }
         }
         return;
       }

@@ -9,6 +9,7 @@ import { IssueRepository } from "../../../../ports/IssueRepository.js";
 import { TemplateService } from "../../../../ports/TemplateService.js";
 import { CreateTaskInput, Priority, TaskType, TaskId } from "../../../../domain/Task.js";
 import { TaskError } from "../../../../domain/Errors.js";
+import { dryRunOption } from "./shared.js";
 
 const titleArg = Args.text({ name: "title" }).pipe(Args.withDescription("Task title"));
 
@@ -58,8 +59,9 @@ export const createCommand = Command.make(
     template: templateOption,
     parent: parentOption,
     json: jsonOption,
+    dryRun: dryRunOption,
   },
-  ({ title, description, priority, type, template, parent, json }) =>
+  ({ title, description, priority, type, template, parent, json, dryRun }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
@@ -131,6 +133,40 @@ export const createCommand = Command.make(
         parentId,
         milestoneId: Option.none(),
       });
+
+      // Dry run: output what would be created without actually creating
+      if (dryRun) {
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              wouldCreate: {
+                title: finalTitle,
+                description: Option.getOrNull(finalDescription),
+                priority: finalPriority,
+                type: finalType,
+                parentId: Option.isSome(parent) ? parent.value : null,
+                template: Option.isSome(template) ? template.value : null,
+              },
+            }),
+          );
+        } else {
+          yield* Console.log("[DRY RUN] Would create task:");
+          if (Option.isSome(template)) {
+            yield* Console.log(`  Template: ${template.value}`);
+          }
+          yield* Console.log(`  Title: ${finalTitle}`);
+          if (Option.isSome(finalDescription)) {
+            yield* Console.log(`  Description: ${finalDescription.value}`);
+          }
+          yield* Console.log(`  Priority: ${finalPriority}`);
+          yield* Console.log(`  Type: ${finalType}`);
+          if (Option.isSome(parent)) {
+            yield* Console.log(`  Parent: ${parent.value}`);
+          }
+        }
+        return;
+      }
 
       const task = yield* issueRepo.createTask(cfg.linear.teamId, input);
 
