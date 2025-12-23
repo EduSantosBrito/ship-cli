@@ -24,6 +24,7 @@ import { removeWorkspaceCommand } from "./remove-workspace.js";
 import { upCommand } from "./up.js";
 import { downCommand } from "./down.js";
 import { undoCommand } from "./undo.js";
+import { updateStaleCommand } from "./update-stale.js";
 
 // Stack parent command
 const stack = Command.make("stack", {}, () =>
@@ -44,6 +45,7 @@ Commands:
   up                Move to child change (toward tip)
   down              Move to parent change (toward trunk)
   undo              Undo the last operation
+  update-stale      Update a stale working copy
   workspaces        List jj workspaces
   remove-workspace  Remove a jj workspace
 
@@ -65,6 +67,7 @@ export const stackCommand = stack.pipe(
     upCommand,
     downCommand,
     undoCommand,
+    updateStaleCommand,
     workspacesCommand,
     removeWorkspaceCommand,
   ]),
