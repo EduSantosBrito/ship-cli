@@ -47,7 +47,7 @@ The \`ship\` tool replaces built-in todo management. Use it for all task trackin
 |--------|-------------|-----------------|
 | \`stack-log\` | View stack of changes from trunk to current | - |
 | \`stack-status\` | Show current change status | - |
-| \`stack-create\` | Create a new change | message (optional), bookmark (optional) |
+| \`stack-create\` | Create a new change | message (optional), bookmark (optional), taskId (optional) |
 | \`stack-describe\` | Update change description | message |
 | \`stack-sync\` | Fetch, rebase, auto-abandon merged changes | - |
 
@@ -144,7 +144,8 @@ main ← Change A ← Change B ← Change C
 
 **To create a stacked change:**
 1. Complete work on current change
-2. Use \`ship\` tool with action \`stack-create\`, message="Description", bookmark="branch-name"
+2. Use \`ship\` tool with action \`stack-create\`, message="Description", bookmark="branch-name", taskId="BRI-123"
+   - Pass the taskId from the current task to associate the workspace with it
 3. Push and create PR
 
 ### After a PR is Merged

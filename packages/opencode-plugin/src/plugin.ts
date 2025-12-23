@@ -409,6 +409,7 @@ interface ShipService {
     message?: string;
     bookmark?: string;
     noWorkspace?: boolean;
+    taskId?: string;
     workdir?: string;
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
   readonly describeStackChange: (message: string, workdir?: string) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
@@ -562,12 +563,13 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackStatus>(output);
     });
 
-  const createStackChange = (input: { message?: string; bookmark?: string; noWorkspace?: boolean; workdir?: string }) =>
+  const createStackChange = (input: { message?: string; bookmark?: string; noWorkspace?: boolean; taskId?: string; workdir?: string }) =>
     Effect.gen(function* () {
       const args = ["stack", "create", "--json"];
       if (input.message) args.push("--message", input.message);
       if (input.bookmark) args.push("--bookmark", input.bookmark);
       if (input.noWorkspace) args.push("--no-workspace");
+      if (input.taskId) args.push("--task-id", input.taskId);
       const output = yield* shell.run(args, input.workdir);
       return yield* parseJson<StackCreateResult>(output);
     });
@@ -1121,6 +1123,7 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
           message: args.message,
           bookmark: args.bookmark,
           noWorkspace: args.noWorkspace,
+          taskId: args.taskId,
           workdir: args.workdir,
         });
         if (!result.created) {
@@ -1526,7 +1529,7 @@ Run 'ship init' in the terminal first if not configured.`,
       taskId: createTool.schema
         .string()
         .optional()
-        .describe("Task identifier (e.g., BRI-123) - required for show, start, done, update"),
+        .describe("Task identifier (e.g., BRI-123) - required for show, start, done, update; optional for stack-create to associate workspace with task"),
       title: createTool.schema.string().optional().describe("Task title - required for create, optional for update"),
       description: createTool.schema.string().optional().describe("Task description - optional for create/update"),
       priority: createTool.schema
