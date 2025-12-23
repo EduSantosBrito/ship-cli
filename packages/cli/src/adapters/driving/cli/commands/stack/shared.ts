@@ -71,3 +71,46 @@ export const checkVcsAvailability = (): Effect.Effect<VcsCheckResult, never, Vcs
  */
 export const outputError = (message: string, json: boolean): Effect.Effect<void, never> =>
   json ? Console.log(JSON.stringify({ error: message })) : Console.log(`Error: ${message}`);
+
+/**
+ * Extract error information from an Effect error.
+ *
+ * Returns a structured object with tag and message for tagged errors,
+ * or a generic error for unknown errors.
+ *
+ * @example
+ * ```ts
+ * Effect.catchAll((e) => {
+ *   const { tag, message } = extractErrorInfo(e);
+ *   return Effect.succeed({ success: false, error: { tag, message } });
+ * })
+ * ```
+ */
+export const extractErrorInfo = (e: unknown): { tag: string; message: string } => {
+  if (e && typeof e === "object" && "_tag" in e) {
+    return {
+      tag: String(e._tag),
+      message: "message" in e ? String(e.message) : String(e),
+    };
+  }
+  return { tag: "UnknownError", message: String(e) };
+};
+
+/**
+ * Format an Effect error into a human-readable string.
+ *
+ * Handles tagged errors (with _tag property) by including the tag in the output,
+ * making it easier to identify the error type in logs and user-facing messages.
+ *
+ * @example
+ * ```ts
+ * Effect.catchAll((e) => {
+ *   const errMsg = formatEffectError(e);
+ *   return Effect.succeed({ success: false, error: errMsg });
+ * })
+ * ```
+ */
+export const formatEffectError = (e: unknown): string => {
+  const { tag, message } = extractErrorInfo(e);
+  return `[${tag}] ${message}`;
+};
