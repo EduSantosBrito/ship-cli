@@ -22,6 +22,7 @@ import {
   withWorkspaceLock,
   WorkspacesFile,
 } from "../../../../../domain/Config.js";
+import { dryRunOption } from "../shared.js";
 
 // === Options ===
 
@@ -50,8 +51,8 @@ interface AbandonOutput {
 
 export const abandonCommand = Command.make(
   "abandon",
-  { json: jsonOption, changeId: changeIdArg },
-  ({ json, changeId }) =>
+  { json: jsonOption, changeId: changeIdArg, dryRun: dryRunOption },
+  ({ json, changeId, dryRun }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -73,6 +74,33 @@ export const abandonCommand = Command.make(
       const abandonedChangeId =
         changeToAbandon || (currentBefore.success ? currentBefore.change.changeId : "unknown");
       const bookmarks = currentBefore.success ? currentBefore.change.bookmarks : [];
+      const changeDescription = currentBefore.success
+        ? currentBefore.change.description
+        : "(unknown)";
+
+      // Dry run: output what would be abandoned without making changes
+      if (dryRun) {
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              wouldAbandon: {
+                changeId: abandonedChangeId,
+                description: changeDescription,
+                bookmarks,
+              },
+            }),
+          );
+        } else {
+          yield* Console.log(`[DRY RUN] Would abandon change:`);
+          yield* Console.log(`  Change ID: ${abandonedChangeId.slice(0, 8)}`);
+          yield* Console.log(`  Description: ${changeDescription.split("\n")[0] || "(no description)"}`);
+          if (bookmarks.length > 0) {
+            yield* Console.log(`  Bookmarks: ${bookmarks.join(", ")}`);
+          }
+        }
+        return;
+      }
 
       // Perform the abandon - jj validates the change ID
       const abandonResult = yield* vcs.abandon(changeToAbandon).pipe(

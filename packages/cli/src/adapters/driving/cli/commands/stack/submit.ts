@@ -23,6 +23,7 @@ import { pipe } from "effect/Function";
 import { checkVcsAvailability, outputError, getDefaultBranch } from "./shared.js";
 import { PrService, CreatePrInput, UpdatePrInput } from "../../../../../ports/PrService.js";
 import { DaemonService } from "../../../../../ports/DaemonService.js";
+import { dryRunOption } from "../shared.js";
 
 // === Options ===
 
@@ -86,8 +87,9 @@ export const submitCommand = Command.make(
     title: titleOption,
     body: bodyOption,
     subscribe: subscribeOption,
+    dryRun: dryRunOption,
   },
-  ({ json, draft, title, body, subscribe }) =>
+  ({ json, draft, title, body, subscribe, dryRun }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -197,6 +199,104 @@ export const submitCommand = Command.make(
 
       const emptyChangesToAbandon = stackChanges.filter(isEmptyWithoutDescription);
 
+      // Get configured default branch (trunk) - needed for dry run output
+      const defaultBranch = yield* getDefaultBranch();
+
+      // Determine base branch for PR (needed for dry run)
+      const submitParentChange =
+        change === parentChange
+          ? yield* vcs.getLog("@--").pipe(
+              Effect.map((changes) => (changes.length > 0 ? changes[0] : null)),
+              Effect.catchAll(() => Effect.succeed(null)),
+            )
+          : parentChange;
+
+      const baseBranch = pipe(
+        Option.fromNullable(submitParentChange),
+        Option.flatMap((p) => Array.head(p.bookmarks)),
+        Option.getOrElse(() => defaultBranch),
+      );
+
+      // Resolve PR title and body
+      const prTitle = Option.getOrElse(title, () => change.description.split("\n")[0] || bookmark);
+      const prBody = Option.getOrElse(body, () => change.description);
+
+      // Check if PR already exists for this branch
+      const existingPr = yield* prService
+        .getPrByBranch(bookmark)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+      // Collect all bookmarks in the stack that need to be pushed
+      const stackBookmarksToPush = stackChanges
+        .filter((c) => c.bookmarks.length > 0 && !c.isEmpty)
+        .flatMap((c) => c.bookmarks);
+      const allBookmarksToPush = [...new Set([bookmark, ...stackBookmarksToPush])];
+
+      // Dry run: output what would happen without making changes
+      if (dryRun) {
+        interface DryRunOutput {
+          dryRun: true;
+          wouldPush: {
+            bookmark: string;
+            allBookmarks: string[];
+            baseBranch: string;
+          };
+          wouldAbandonEmptyChanges: string[];
+          pr: {
+            action: "create" | "update" | "none";
+            title: string;
+            draft: boolean;
+            existingPrNumber?: number;
+          };
+        }
+
+        const dryRunOutput: DryRunOutput = {
+          dryRun: true,
+          wouldPush: {
+            bookmark,
+            allBookmarks: allBookmarksToPush,
+            baseBranch,
+          },
+          wouldAbandonEmptyChanges: emptyChangesToAbandon.map((c) => c.changeId),
+          pr: {
+            action: existingPr
+              ? Option.isSome(title) || Option.isSome(body)
+                ? "update"
+                : "none"
+              : "create",
+            title: prTitle,
+            draft,
+            ...(existingPr ? { existingPrNumber: existingPr.number } : {}),
+          },
+        };
+
+        if (json) {
+          yield* Console.log(JSON.stringify(dryRunOutput, null, 2));
+        } else {
+          yield* Console.log(`[DRY RUN] Would submit change:`);
+          yield* Console.log(`  Bookmark: ${bookmark}`);
+          yield* Console.log(`  Base branch: ${baseBranch}`);
+          if (allBookmarksToPush.length > 1) {
+            yield* Console.log(`  All bookmarks to push: ${allBookmarksToPush.join(", ")}`);
+          }
+          if (emptyChangesToAbandon.length > 0) {
+            yield* Console.log(
+              `  Would abandon empty changes: ${emptyChangesToAbandon.map((c) => c.changeId.slice(0, 8)).join(", ")}`,
+            );
+          }
+          if (existingPr) {
+            if (Option.isSome(title) || Option.isSome(body)) {
+              yield* Console.log(`  Would update PR #${existingPr.number}`);
+            } else {
+              yield* Console.log(`  PR #${existingPr.number} already exists (no updates)`);
+            }
+          } else {
+            yield* Console.log(`  Would create PR: ${prTitle}${draft ? " (draft)" : ""}`);
+          }
+        }
+        return;
+      }
+
       // Abandon empty changes and collect successfully abandoned change IDs
       const abandonedChangeIds = yield* Effect.forEach(emptyChangesToAbandon, (emptyChange) =>
         vcs.abandon(emptyChange.id).pipe(
@@ -204,15 +304,6 @@ export const submitCommand = Command.make(
           Effect.catchAll(() => Effect.succeed(null)), // Continue on failure
         ),
       ).pipe(Effect.map((ids) => ids.filter((id): id is string => id !== null)));
-
-      // Collect all bookmarks in the stack that need to be pushed
-      // This ensures that after a rebase, all parent PRs are updated too
-      const stackBookmarksToPush = stackChanges
-        .filter((c) => c.bookmarks.length > 0 && !c.isEmpty)
-        .flatMap((c) => c.bookmarks);
-
-      // Ensure the current bookmark is included (and deduplicate)
-      const allBookmarksToPush = [...new Set([bookmark, ...stackBookmarksToPush])];
 
       // Push all bookmarks in the stack with controlled concurrency
       // Using concurrency of 3 balances performance with avoiding rate limits
@@ -261,36 +352,6 @@ export const submitCommand = Command.make(
 
       // Collect successfully pushed bookmarks for output
       const pushedBookmarks = pushResults.filter((r) => r.success).map((r) => r.bookmark);
-
-      // Get configured default branch (trunk)
-      const defaultBranch = yield* getDefaultBranch();
-
-      // Determine base branch for PR
-      // If we're submitting the parent (because current was empty), look at grandparent
-      // Otherwise, use the parent's bookmark for stacked PR workflow
-      // Fall back to configured default branch if no parent bookmark
-      const submitParentChange =
-        change === parentChange
-          ? yield* vcs.getLog("@--").pipe(
-              Effect.map((changes) => (changes.length > 0 ? changes[0] : null)),
-              Effect.catchAll(() => Effect.succeed(null)),
-            )
-          : parentChange;
-
-      const baseBranch = pipe(
-        Option.fromNullable(submitParentChange),
-        Option.flatMap((p) => Array.head(p.bookmarks)),
-        Option.getOrElse(() => defaultBranch),
-      );
-
-      // Resolve PR title and body using Option.getOrElse
-      const prTitle = Option.getOrElse(title, () => change.description.split("\n")[0] || bookmark);
-      const prBody = Option.getOrElse(body, () => change.description);
-
-      // Check if PR already exists for this branch
-      const existingPr = yield* prService
-        .getPrByBranch(bookmark)
-        .pipe(Effect.catchAll(() => Effect.succeed(null)));
 
       let output: SubmitOutput;
 

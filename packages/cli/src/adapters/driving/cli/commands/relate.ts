@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import { IssueRepository } from "../../../../ports/IssueRepository.js";
 import type { TaskId } from "../../../../domain/Task.js";
+import { dryRunOption } from "./shared.js";
 
 const taskAArg = Args.text({ name: "task-a" }).pipe(
   Args.withDescription("First task identifier (e.g., BRI-123)"),
@@ -21,8 +22,8 @@ const jsonOption = Options.boolean("json").pipe(
 
 export const relateCommand = Command.make(
   "relate",
-  { taskA: taskAArg, taskB: taskBArg, json: jsonOption },
-  ({ taskA, taskB, json }) =>
+  { taskA: taskAArg, taskB: taskBArg, json: jsonOption, dryRun: dryRunOption },
+  ({ taskA, taskB, json, dryRun }) =>
     Effect.gen(function* () {
       const issueRepo = yield* IssueRepository;
 
@@ -35,6 +36,26 @@ export const relateCommand = Command.make(
           .getTaskByIdentifier(taskB)
           .pipe(Effect.catchTag("TaskNotFoundError", () => issueRepo.getTask(taskB as TaskId))),
       ]);
+
+      // Dry run: output what would happen without making changes
+      if (dryRun) {
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              wouldRelate: {
+                taskA: resolvedA.identifier,
+                taskB: resolvedB.identifier,
+              },
+            }),
+          );
+        } else {
+          yield* Console.log(
+            `[DRY RUN] Would link ${resolvedA.identifier} ↔ ${resolvedB.identifier} as related`,
+          );
+        }
+        return;
+      }
 
       yield* issueRepo.addRelated(resolvedA.id, resolvedB.id);
 

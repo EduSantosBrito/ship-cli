@@ -6,6 +6,7 @@ import * as Console from "effect/Console";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { IssueRepository } from "../../../../ports/IssueRepository.js";
 import type { TaskId } from "../../../../domain/Task.js";
+import { dryRunOption } from "./shared.js";
 
 const blockerArg = Args.text({ name: "blocker" }).pipe(
   Args.withDescription("Task that was blocking (e.g., ENG-123)"),
@@ -22,8 +23,8 @@ const jsonOption = Options.boolean("json").pipe(
 
 export const unblockCommand = Command.make(
   "unblock",
-  { blocker: blockerArg, blocked: blockedArg, json: jsonOption },
-  ({ blocker, blocked, json }) =>
+  { blocker: blockerArg, blocked: blockedArg, json: jsonOption, dryRun: dryRunOption },
+  ({ blocker, blocked, json, dryRun }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
@@ -38,6 +39,32 @@ export const unblockCommand = Command.make(
       const blockedTask = yield* issueRepo
         .getTaskByIdentifier(blocked)
         .pipe(Effect.catchTag("TaskNotFoundError", () => issueRepo.getTask(blocked as TaskId)));
+
+      // Dry run: output what would happen without making changes
+      if (dryRun) {
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              wouldUnblock: {
+                blocker: {
+                  id: blockerTask.id,
+                  identifier: blockerTask.identifier,
+                },
+                blocked: {
+                  id: blockedTask.id,
+                  identifier: blockedTask.identifier,
+                },
+              },
+            }),
+          );
+        } else {
+          yield* Console.log(
+            `[DRY RUN] Would remove ${blockerTask.identifier} as blocker of ${blockedTask.identifier}`,
+          );
+        }
+        return;
+      }
 
       // Remove the blocking relationship
       yield* issueRepo.removeBlocker(blockedTask.id, blockerTask.id);

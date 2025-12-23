@@ -8,6 +8,7 @@ import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import { MilestoneRepository } from "../../../../../ports/MilestoneRepository.js";
 import { CreateMilestoneInput } from "../../../../../domain/Task.js";
 import { nameToSlug } from "./shared.js";
+import { dryRunOption } from "../shared.js";
 
 const nameArg = Args.text({ name: "name" }).pipe(Args.withDescription("Milestone name"));
 
@@ -35,8 +36,9 @@ export const createMilestoneCommand = Command.make(
     description: descriptionOption,
     targetDate: targetDateOption,
     json: jsonOption,
+    dryRun: dryRunOption,
   },
-  ({ name, description, targetDate, json }) =>
+  ({ name, description, targetDate, json, dryRun }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const milestoneRepo = yield* MilestoneRepository;
@@ -76,6 +78,39 @@ export const createMilestoneCommand = Command.make(
         targetDate: parsedDate,
         sortOrder: 0,
       });
+
+      // Dry run: output what would be created without making changes
+      if (dryRun) {
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              wouldCreate: {
+                name,
+                slug: nameToSlug(name),
+                description: Option.getOrNull(description),
+                targetDate: Option.match(parsedDate, {
+                  onNone: () => null,
+                  onSome: (d) => d.toISOString().split("T")[0],
+                }),
+              },
+            }),
+          );
+        } else {
+          yield* Console.log(`[DRY RUN] Would create milestone:`);
+          yield* Console.log(`  Name: ${name}`);
+          yield* Console.log(`  Slug: ${nameToSlug(name)}`);
+          if (Option.isSome(description)) {
+            yield* Console.log(`  Description: ${description.value}`);
+          }
+          if (Option.isSome(parsedDate)) {
+            yield* Console.log(
+              `  Target Date: ${parsedDate.value.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}`,
+            );
+          }
+        }
+        return;
+      }
 
       const milestone = yield* milestoneRepo.createMilestone(cfg.linear.projectId.value, input);
 

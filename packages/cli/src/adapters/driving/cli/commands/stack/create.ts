@@ -25,6 +25,7 @@ import {
   modifyWorkspacesFile,
   DEFAULT_WORKSPACE_PATH_PATTERN,
 } from "../../../../../domain/Config.js";
+import { dryRunOption } from "../shared.js";
 
 // === Options ===
 
@@ -155,8 +156,9 @@ export const createCommand = Command.make(
     noWorkspace: noWorkspaceOption,
     workspacePath: workspacePathOption,
     taskId: taskIdOption,
+    dryRun: dryRunOption,
   },
-  ({ json, message, bookmark, noWorkspace, workspacePath, taskId }) =>
+  ({ json, message, bookmark, noWorkspace, workspacePath, taskId, dryRun }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -169,6 +171,87 @@ export const createCommand = Command.make(
       // Derive stack name for workspace/bookmark naming
       const stackName = deriveStackName(bookmark, message);
       const description = message._tag === "Some" ? message.value : "(no description)";
+
+      // Resolve task ID: prefer explicit --task-id, fall back to extraction from bookmark/message
+      const resolvedTaskId =
+        taskId._tag === "Some" ? taskId.value.toUpperCase() : extractTaskId(bookmark, message);
+
+      // Dry run: output what would be created without making changes
+      if (dryRun) {
+        if (!noWorkspace) {
+          const configRepo = yield* ConfigRepository;
+          const config = yield* configRepo.load().pipe(
+            Effect.catchAll(() =>
+              Effect.succeed({
+                workspace: {
+                  basePath: DEFAULT_WORKSPACE_PATH_PATTERN,
+                  autoNavigate: true,
+                  autoCleanup: true,
+                },
+              }),
+            ),
+          );
+          const workspaceConfig = config.workspace;
+          const repoRoot = yield* vcs.getWorkspaceRoot();
+          const repoName = repoRoot.split("/").pop() ?? "repo";
+          const targetPath =
+            workspacePath._tag === "Some"
+              ? workspacePath.value
+              : resolveWorkspacePath(workspaceConfig.basePath, {
+                  repo: repoName,
+                  stack: stackName,
+                });
+
+          if (json) {
+            yield* Console.log(
+              JSON.stringify({
+                dryRun: true,
+                wouldCreate: {
+                  workspace: {
+                    name: stackName,
+                    path: targetPath,
+                  },
+                  bookmark: bookmark._tag === "Some" ? bookmark.value : null,
+                  description,
+                  taskId: resolvedTaskId,
+                },
+              }),
+            );
+          } else {
+            yield* Console.log(`[DRY RUN] Would create workspace:`);
+            yield* Console.log(`  Name: ${stackName}`);
+            yield* Console.log(`  Path: ${targetPath}`);
+            if (bookmark._tag === "Some") {
+              yield* Console.log(`  Bookmark: ${bookmark.value}`);
+            }
+            yield* Console.log(`  Description: ${description}`);
+            if (resolvedTaskId) {
+              yield* Console.log(`  Task ID: ${resolvedTaskId}`);
+            }
+          }
+        } else {
+          if (json) {
+            yield* Console.log(
+              JSON.stringify({
+                dryRun: true,
+                wouldCreate: {
+                  change: {
+                    description,
+                  },
+                  bookmark: bookmark._tag === "Some" ? bookmark.value : null,
+                },
+              }),
+            );
+          } else {
+            yield* Console.log(`[DRY RUN] Would create change:`);
+            yield* Console.log(`  Description: ${description}`);
+            if (bookmark._tag === "Some") {
+              yield* Console.log(`  Bookmark: ${bookmark.value}`);
+            }
+          }
+        }
+        return;
+      }
 
       // Default behavior: create workspace (unless --no-workspace)
       if (!noWorkspace) {
@@ -209,10 +292,6 @@ export const createCommand = Command.make(
           yield* outputError(`Failed to create workspace: ${workspaceResult.error}`, json);
           return;
         }
-
-        // Resolve task ID: prefer explicit --task-id, fall back to extraction from bookmark/message
-        const resolvedTaskId =
-          taskId._tag === "Some" ? taskId.value.toUpperCase() : extractTaskId(bookmark, message);
 
         // Save workspace metadata for task association tracking
         yield* saveWorkspaceMetadata(configRepo, {

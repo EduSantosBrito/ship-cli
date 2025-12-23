@@ -13,6 +13,7 @@ import {
   type Priority,
   type TaskStatus,
 } from "../../../../domain/Task.js";
+import { dryRunOption } from "./shared.js";
 
 /**
  * Generate a slug from a milestone name.
@@ -83,8 +84,9 @@ export const updateCommand = Command.make(
     parent: parentOption,
     milestone: milestoneOption,
     json: jsonOption,
+    dryRun: dryRunOption,
   },
-  ({ taskId, title, description, priority, status, parent, milestone, json }) =>
+  ({ taskId, title, description, priority, status, parent, milestone, json, dryRun }) =>
     Effect.gen(function* () {
       const issueRepo = yield* IssueRepository;
       const milestoneRepo = yield* MilestoneRepository;
@@ -175,6 +177,58 @@ export const updateCommand = Command.make(
         parentId,
         milestoneId,
       });
+
+      // Dry run: output what would be updated without making changes
+      if (dryRun) {
+        const changes: Record<string, unknown> = {};
+        if (Option.isSome(title)) changes.title = title.value;
+        if (Option.isSome(description)) changes.description = description.value;
+        if (Option.isSome(priority)) changes.priority = priority.value;
+        if (Option.isSome(status)) changes.status = status.value;
+        if (Option.isSome(parent)) {
+          changes.parent = parent.value === "" ? null : parent.value;
+        }
+        if (Option.isSome(milestone)) {
+          changes.milestone = milestone.value === "" ? null : milestone.value;
+        }
+
+        if (json) {
+          yield* Console.log(
+            JSON.stringify({
+              dryRun: true,
+              task: {
+                id: existingTask.id,
+                identifier: existingTask.identifier,
+                title: existingTask.title,
+              },
+              wouldUpdate: changes,
+            }),
+          );
+        } else {
+          yield* Console.log(`[DRY RUN] Would update task: ${existingTask.identifier}`);
+          if (Option.isSome(title)) {
+            yield* Console.log(`  Title: ${title.value}`);
+          }
+          if (Option.isSome(description)) {
+            yield* Console.log(`  Description: (updated)`);
+          }
+          if (Option.isSome(priority)) {
+            yield* Console.log(`  Priority: ${priority.value}`);
+          }
+          if (Option.isSome(status)) {
+            yield* Console.log(`  Status: ${status.value}`);
+          }
+          if (Option.isSome(parent)) {
+            yield* Console.log(`  Parent: ${parent.value === "" ? "(removed)" : parent.value}`);
+          }
+          if (Option.isSome(milestone)) {
+            yield* Console.log(
+              `  Milestone: ${milestone.value === "" ? "(removed)" : milestone.value}`,
+            );
+          }
+        }
+        return;
+      }
 
       const task = yield* issueRepo.updateTask(existingTask.id, input);
 
