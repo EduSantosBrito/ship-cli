@@ -24,6 +24,7 @@ const createJjCommitJson = (overrides: Partial<{
   bookmarks: Array<{ name: string; target: Array<string | null> }>
   is_working_copy: boolean
   is_empty: boolean
+  has_conflict: boolean
 }> = {}) => ({
   commit_id: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   change_id: "smukowrz",
@@ -36,6 +37,7 @@ const createJjCommitJson = (overrides: Partial<{
   bookmarks: [],
   is_working_copy: false,
   is_empty: false,
+  has_conflict: false,
   ...overrides,
 })
 
@@ -53,6 +55,7 @@ describe("JjParser", () => {
       expect(JJ_LOG_JSON_TEMPLATE).toContain("bookmarks")
       expect(JJ_LOG_JSON_TEMPLATE).toContain("is_working_copy")
       expect(JJ_LOG_JSON_TEMPLATE).toContain("is_empty")
+      expect(JJ_LOG_JSON_TEMPLATE).toContain("has_conflict")
     })
   })
 
@@ -113,6 +116,24 @@ describe("JjParser", () => {
         const change = yield* parseChange(json)
 
         expect(change.isEmpty).toBe(true)
+      }),
+    )
+
+    it.effect("should handle conflict flag when false", () =>
+      Effect.gen(function* () {
+        const json = createJjCommitJson({ has_conflict: false })
+        const change = yield* parseChange(json)
+
+        expect(change.hasConflict).toBe(false)
+      }),
+    )
+
+    it.effect("should handle conflict flag when true", () =>
+      Effect.gen(function* () {
+        const json = createJjCommitJson({ has_conflict: true })
+        const change = yield* parseChange(json)
+
+        expect(change.hasConflict).toBe(true)
       }),
     )
 

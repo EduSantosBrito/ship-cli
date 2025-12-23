@@ -29,6 +29,7 @@ export interface ChangeInput {
   bookmarks?: string[]
   isWorkingCopy?: boolean
   isEmpty?: boolean
+  hasConflict?: boolean
 }
 
 export const makeChange = (overrides: ChangeInput = {}): Change => {
@@ -42,6 +43,7 @@ export const makeChange = (overrides: ChangeInput = {}): Change => {
     bookmarks: overrides.bookmarks ?? [],
     isWorkingCopy: overrides.isWorkingCopy ?? true,
     isEmpty: overrides.isEmpty ?? false,
+    hasConflict: overrides.hasConflict ?? false,
   })
 }
 
