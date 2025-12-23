@@ -5,13 +5,15 @@
  * Instructions/guidance are handled by the ship-cli skill (.opencode/skill/ship-cli/SKILL.md)
  */
 
-import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
+import type { Hooks, Plugin, ToolDefinition } from "@opencode-ai/plugin";
 import { tool as createTool } from "@opencode-ai/plugin";
 import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import { sessionTaskMap, trackTask, getTrackedTask, decodeShipToolArgs } from "./compaction.js";
 
 // =============================================================================
 // Types & Errors
@@ -2305,16 +2307,175 @@ If there are no ready tasks, suggest checking blocked tasks (action \`blocked\`)
 };
 
 // =============================================================================
+// Compaction Context Hooks
+// =============================================================================
+
+/**
+ * Create the compaction context hook.
+ *
+ * This hook is called BEFORE compaction starts. It allows us to append
+ * additional context to the compaction prompt, which will be included
+ * in the generated summary.
+ *
+ * @param shellService - Shell service for running ship commands
+ */
+const createCompactionHook = (
+  shellService: ShellService,
+): Hooks["experimental.session.compacting"] => {
+  const ShellServiceLive = Layer.succeed(ShellService, shellService);
+  const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(
+    Layer.provide(ShellServiceLive),
+  );
+
+  return async (input, output) => {
+    const { sessionID } = input;
+
+    // Try to get the tracked task for this session
+    const trackedTask = getTrackedTask(sessionID);
+
+    if (Option.isNone(trackedTask)) {
+      // No task tracked for this session, nothing to preserve
+      return;
+    }
+
+    const { taskId, workdir } = trackedTask.value;
+
+    // Fetch task details and stack status in parallel
+    const [taskResult, stackResult] = await Effect.runPromise(
+      Effect.all(
+        [
+          Effect.gen(function* () {
+            const ship = yield* ShipService;
+            return yield* ship.getTask(taskId);
+          }).pipe(Effect.catchAll(() => Effect.succeed(null))),
+          Effect.gen(function* () {
+            const ship = yield* ShipService;
+            return yield* ship.getStackStatus(workdir);
+          }).pipe(Effect.catchAll(() => Effect.succeed(null))),
+        ],
+        { concurrency: 2 },
+      ).pipe(Effect.provide(ShipServiceLive)),
+    );
+
+    // Build the compaction context
+    const contextParts: string[] = [];
+
+    contextParts.push("## Ship Task Context (Preserve Across Compaction)");
+    contextParts.push("");
+
+    if (taskResult) {
+      contextParts.push(`**Current Task:** ${taskResult.identifier} - ${taskResult.title}`);
+      contextParts.push(`**Status:** ${taskResult.state || taskResult.status}`);
+      contextParts.push(`**Priority:** ${taskResult.priority}`);
+      contextParts.push(`**URL:** ${taskResult.url}`);
+    } else {
+      contextParts.push(`**Current Task:** ${taskId} (details unavailable)`);
+    }
+
+    if (workdir) {
+      contextParts.push(`**Workspace:** ${workdir}`);
+    }
+
+    if (stackResult?.change) {
+      const c = stackResult.change;
+      contextParts.push("");
+      contextParts.push("**VCS State:**");
+      contextParts.push(`- Change: ${c.changeId.slice(0, 8)}`);
+      contextParts.push(`- Description: ${c.description.split("\n")[0] || "(no description)"}`);
+      if (c.bookmarks.length > 0) {
+        contextParts.push(`- Bookmarks: ${c.bookmarks.join(", ")}`);
+      }
+    }
+
+    contextParts.push("");
+    contextParts.push("**IMPORTANT:** After compaction, immediately:");
+    contextParts.push('1. Load the ship-cli skill using: `skill(name="ship-cli")`');
+    contextParts.push(
+      `2. Continue working on task ${taskId}${workdir ? ` in workspace ${workdir}` : ""}`,
+    );
+
+    // Add to output context
+    output.context.push(contextParts.join("\n"));
+  };
+};
+
+// =============================================================================
+// Tool Execute Hook
+// =============================================================================
+
+/**
+ * Create the tool.execute.after hook to track task state.
+ *
+ * This hook monitors ship tool calls to track:
+ * - When tasks are started (action=start)
+ * - When workspaces are created (action=stack-create)
+ *
+ * This state is used during compaction to preserve context.
+ */
+const createToolExecuteAfterHook = (): Hooks["tool.execute.after"] => {
+  return async (input, output) => {
+    // Only track ship tool calls
+    if (input.tool !== "ship") {
+      return;
+    }
+
+    const { sessionID } = input;
+
+    // Parse the args from the output metadata using Schema validation
+    const argsOption = decodeShipToolArgs(output.metadata);
+    if (Option.isNone(argsOption)) {
+      return;
+    }
+    const args = argsOption.value;
+
+    // Track task starts
+    if (args.action === "start" && args.taskId) {
+      trackTask(sessionID, { taskId: args.taskId });
+    }
+
+    // Track workspace creation (updates workdir for existing task)
+    if (args.action === "stack-create") {
+      // Extract workspace path from output
+      const workspaceMatch = output.output.match(/Created workspace: \S+ at (.+?)(?:\n|$)/);
+      const workdir = workspaceMatch?.[1];
+
+      // Extract taskId from args or from existing tracked task
+      const taskId = args.taskId;
+      if (taskId) {
+        trackTask(sessionID, { taskId, workdir });
+      } else if (workdir) {
+        // Just update workdir for existing tracked task
+        trackTask(sessionID, { workdir });
+      }
+    }
+
+    // Track task completion - clear the tracked task
+    if (args.action === "done" && args.taskId) {
+      const existing = sessionTaskMap.get(sessionID);
+      if (existing?.taskId === args.taskId) {
+        sessionTaskMap.delete(sessionID);
+      }
+    }
+  };
+};
+
+// =============================================================================
 // Plugin Export
 // =============================================================================
 
-export const ShipPlugin: Plugin = async ({ $, directory }) => ({
-  config: async (config) => {
-    config.command = { ...config.command, ...SHIP_COMMANDS };
-  },
-  tool: {
-    ship: createShipTool($, directory),
-  },
-});
+export const ShipPlugin: Plugin = async ({ $, directory }) => {
+  const shellService = makeShellService($, directory);
+
+  return {
+    config: async (config) => {
+      config.command = { ...config.command, ...SHIP_COMMANDS };
+    },
+    tool: {
+      ship: createShipTool($, directory),
+    },
+    "tool.execute.after": createToolExecuteAfterHook(),
+    "experimental.session.compacting": createCompactionHook(shellService),
+  };
+};
 
 export default ShipPlugin;
