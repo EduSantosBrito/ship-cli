@@ -163,12 +163,23 @@ interface StackDescribeResult {
   error?: string;
 }
 
+interface AbandonedMergedChange {
+  changeId: string;
+  bookmark?: string;
+}
+
 interface StackSyncResult {
   fetched: boolean;
   rebased: boolean;
   trunkChangeId?: string;
   stackSize?: number;
   conflicted?: boolean;
+  /** Changes that were auto-abandoned because they were merged */
+  abandonedMergedChanges?: AbandonedMergedChange[];
+  /** Whether the entire stack was merged and workspace was cleaned up */
+  stackFullyMerged?: boolean;
+  /** Workspace that was cleaned up (only if stackFullyMerged) */
+  cleanedUpWorkspace?: string;
   error?: { tag: string; message: string };
 }
 
@@ -1125,25 +1136,48 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
         if (result.error) {
           return `Sync failed: [${result.error.tag}] ${result.error.message}`;
         }
-        if (result.conflicted) {
-          return `Sync completed with conflicts!
-  Fetched: yes
-  Rebased: yes (with conflicts)
-  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
-  Stack:   ${result.stackSize} change(s)
 
-Resolve conflicts with 'jj status' and edit the conflicted files.`;
+        // Build output parts
+        const parts: string[] = [];
+
+        // Report auto-abandoned merged changes
+        if (result.abandonedMergedChanges && result.abandonedMergedChanges.length > 0) {
+          parts.push("Auto-abandoned merged changes:");
+          for (const change of result.abandonedMergedChanges) {
+            const bookmarkInfo = change.bookmark ? ` (${change.bookmark})` : "";
+            parts.push(`  - ${change.changeId}${bookmarkInfo}`);
+          }
+          parts.push("");
         }
-        if (!result.rebased) {
-          return `Already up to date.
-  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}
-  Stack: ${result.stackSize} change(s)`;
+
+        // Handle different scenarios
+        if (result.stackFullyMerged) {
+          parts.push("Stack fully merged! All changes are now in trunk.");
+          if (result.cleanedUpWorkspace) {
+            parts.push(`Cleaned up workspace: ${result.cleanedUpWorkspace}`);
+          }
+          parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+        } else if (result.conflicted) {
+          parts.push("Sync completed with conflicts!");
+          parts.push(`  Fetched: yes`);
+          parts.push(`  Rebased: yes (with conflicts)`);
+          parts.push(`  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+          parts.push(`  Stack:   ${result.stackSize} change(s)`);
+          parts.push("");
+          parts.push("Resolve conflicts with 'jj status' and edit the conflicted files.");
+        } else if (!result.rebased) {
+          parts.push("Already up to date.");
+          parts.push(`  Trunk: ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+          parts.push(`  Stack: ${result.stackSize} change(s)`);
+        } else {
+          parts.push("Sync completed successfully.");
+          parts.push(`  Fetched: yes`);
+          parts.push(`  Rebased: yes`);
+          parts.push(`  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}`);
+          parts.push(`  Stack:   ${result.stackSize} change(s)`);
         }
-        return `Sync completed successfully.
-  Fetched: yes
-  Rebased: yes
-  Trunk:   ${result.trunkChangeId?.slice(0, 12) || "unknown"}
-  Stack:   ${result.stackSize} change(s)`;
+
+        return parts.join("\n");
       }
 
       case "stack-restack": {

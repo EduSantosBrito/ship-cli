@@ -64,6 +64,16 @@ export class TrunkInfo extends Schema.Class<TrunkInfo>("TrunkInfo")({
   description: Schema.String,
 }) {}
 
+/** Information about a change that was auto-abandoned during sync */
+export class AbandonedMergedChange extends Schema.Class<AbandonedMergedChange>(
+  "AbandonedMergedChange",
+)({
+  /** Short change ID that was abandoned */
+  changeId: Schema.String,
+  /** Bookmark associated with the abandoned change */
+  bookmark: Schema.optional(Schema.String),
+}) {}
+
 export class SyncResult extends Schema.Class<SyncResult>("SyncResult")({
   fetched: Schema.Boolean,
   rebased: Schema.Boolean,
@@ -71,6 +81,18 @@ export class SyncResult extends Schema.Class<SyncResult>("SyncResult")({
   trunkChangeId: Schema.String,
   stackSize: Schema.Number,
   conflicted: Schema.Boolean,
+  /**
+   * Changes that were auto-abandoned because they became empty after rebase
+   * (their content is now in trunk, indicating they were merged)
+   */
+  abandonedMergedChanges: Schema.optionalWith(Schema.Array(AbandonedMergedChange), {
+    default: () => [],
+  }),
+  /**
+   * Whether the entire stack was merged and workspace cleanup was triggered.
+   * Only true when all changes were abandoned and the stack is now empty.
+   */
+  stackFullyMerged: Schema.optionalWith(Schema.Boolean, { default: () => false }),
 }) {}
 
 /** Information about a jj workspace */
