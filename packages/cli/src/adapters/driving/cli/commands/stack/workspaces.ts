@@ -11,7 +11,11 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Console from "effect/Console";
 import { checkVcsAvailability, outputError } from "./shared.js";
-import { loadWorkspacesFile } from "../../../../../domain/Config.js";
+import {
+  loadWorkspacesFile,
+  saveWorkspacesFile,
+  WorkspacesFile,
+} from "../../../../../domain/Config.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import type { WorkspaceInfo } from "../../../../../ports/VcsService.js";
 
@@ -57,9 +61,17 @@ export const workspacesCommand = Command.make("workspaces", { json: jsonOption }
     const configRepo = yield* ConfigRepository;
     const metadata = yield* loadWorkspacesFile(configRepo);
 
+    // Sync metadata: remove entries for workspaces that no longer exist in jj
+    const jjWorkspaceNames = new Set(workspaces.map((ws) => ws.name));
+    const validMetadata = metadata.workspaces.filter((m) => jjWorkspaceNames.has(m.name));
+    if (validMetadata.length !== metadata.workspaces.length) {
+      // Some workspaces were removed, update the metadata file
+      yield* saveWorkspacesFile(configRepo, new WorkspacesFile({ workspaces: validMetadata }));
+    }
+
     // Merge jj workspace info with ship metadata
     const output: WorkspaceOutput[] = workspaces.map((ws) => {
-      const meta = metadata.workspaces.find((m) => m.name === ws.name);
+      const meta = validMetadata.find((m) => m.name === ws.name);
       return {
         name: ws.name,
         path: ws.path,

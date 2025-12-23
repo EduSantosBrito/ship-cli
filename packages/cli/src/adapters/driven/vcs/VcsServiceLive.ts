@@ -322,10 +322,14 @@ const make = Effect.gen(function* () {
 
   /**
    * Template for jj workspace list output.
-   * Returns JSON-like format: name|path|changeId|shortChangeId|description
+   * Returns format: name|changeId|shortChangeId|description
+   *
+   * WorkspaceRef type has:
+   * - .name() -> RefSymbol: workspace name
+   * - .target() -> Commit: working-copy commit of this workspace
    */
   const JJ_WORKSPACE_TEMPLATE =
-    'self.name() ++ "|" ++ self.working_copy_id() ++ "|" ++ self.working_copy_id().short(8) ++ "|" ++ self.working_copy_description().first_line() ++ "\\n"';
+    'self.name() ++ "|" ++ self.target().change_id() ++ "|" ++ self.target().change_id().short(8) ++ "|" ++ self.target().description().first_line() ++ "\\n"';
 
   /**
    * Parse jj workspace list output into WorkspaceInfo objects.
@@ -349,10 +353,9 @@ const make = Effect.gen(function* () {
         const shortChangeId = parts[2];
         const description = parts.slice(3).join("|"); // Description might contain |
 
-        // Determine path: default workspace is at mainRepoPath, others in .jj/working-copies/<name>
-        // Actually jj stores workspace paths internally, but we need to compute them
-        // For now, use a heuristic: workspace path is typically sibling of main repo
-        const path = name === "default" ? mainRepoPath : `${mainRepoPath}/../${name}`;
+        // Determine path: default workspace is at mainRepoPath
+        // Non-default workspaces are in .ship/workspaces/<name>
+        const path = name === "default" ? mainRepoPath : `${mainRepoPath}/.ship/workspaces/${name}`;
 
         workspaces.push(
           new WorkspaceInfo({

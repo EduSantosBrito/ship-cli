@@ -117,7 +117,20 @@ export const submitCommand = Command.make(
         return;
       }
 
-      const change = changeResult.change;
+      let change = changeResult.change;
+
+      // If current change is empty AND has no bookmark, check if parent has a bookmark
+      // This handles the case where working copy is an empty change on top of actual work
+      const parentChange = yield* vcs
+        .getParentChange()
+        .pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+      if (change.isEmpty && change.bookmarks.length === 0) {
+        if (parentChange && parentChange.bookmarks.length > 0 && !parentChange.isEmpty) {
+          // Parent has a bookmark with changes - use that instead
+          change = parentChange;
+        }
+      }
 
       // Check if change has a bookmark
       if (change.bookmarks.length === 0) {
@@ -152,14 +165,19 @@ export const submitCommand = Command.make(
       }
 
       // Determine base branch for PR
-      // If parent change has a bookmark, use that (stacked PR workflow)
-      // Otherwise, fall back to main/trunk
-      const parentChange = yield* vcs
-        .getParentChange()
-        .pipe(Effect.catchAll(() => Effect.succeed(null)));
+      // If we're submitting the parent (because current was empty), look at grandparent
+      // Otherwise, use the parent's bookmark for stacked PR workflow
+      // Fall back to main/trunk if no parent bookmark
+      const submitParentChange =
+        change === parentChange
+          ? yield* vcs.getLog("@--").pipe(
+              Effect.map((changes) => (changes.length > 0 ? changes[0] : null)),
+              Effect.catchAll(() => Effect.succeed(null)),
+            )
+          : parentChange;
 
       const baseBranch = pipe(
-        Option.fromNullable(parentChange),
+        Option.fromNullable(submitParentChange),
         Option.flatMap((p) => Array.head(p.bookmarks)),
         Option.getOrElse(() => "main"),
       );
