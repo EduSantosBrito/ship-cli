@@ -70,6 +70,12 @@ export interface IssueRepository {
 
   /** Get the suggested branch name for a task */
   readonly getBranchName: (id: TaskId) => Effect.Effect<string, TaskNotFoundError | LinearApiError>;
+
+  /** Set the session label on a task (creates label if it doesn't exist, removes old session labels) */
+  readonly setSessionLabel: (
+    id: TaskId,
+    sessionId: string,
+  ) => Effect.Effect<void, TaskNotFoundError | TaskError | LinearApiError>;
 }
 
 export const IssueRepository = Context.GenericTag<IssueRepository>("IssueRepository");
