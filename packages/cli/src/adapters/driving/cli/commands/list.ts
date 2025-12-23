@@ -33,6 +33,12 @@ const mineOption = Options.boolean("mine").pipe(
   Options.withDefault(false),
 );
 
+const allOption = Options.boolean("all").pipe(
+  Options.withAlias("a"),
+  Options.withDescription("Include completed and cancelled tasks"),
+  Options.withDefault(false),
+);
+
 const formatTask = (task: Task): string => {
   const priority = task.priority === "urgent" ? "[!]" : task.priority === "high" ? "[^]" : "   ";
   const stateName = task.state.name.padEnd(11);
@@ -53,8 +59,8 @@ const formatTask = (task: Task): string => {
 
 export const listCommand = Command.make(
   "list",
-  { json: jsonOption, status: statusOption, priority: priorityOption, mine: mineOption },
-  ({ json, status, priority, mine }) =>
+  { json: jsonOption, status: statusOption, priority: priorityOption, mine: mineOption, all: allOption },
+  ({ json, status, priority, mine, all }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;
       const issueRepo = yield* IssueRepository;
@@ -66,6 +72,7 @@ export const listCommand = Command.make(
         priority: Option.isSome(priority) ? Option.some(priority.value as Priority) : Option.none(),
         projectId: cfg.linear.projectId,
         assignedToMe: mine,
+        includeCompleted: all,
       });
 
       const taskList = yield* issueRepo.listTasks(cfg.linear.teamId, filter);
