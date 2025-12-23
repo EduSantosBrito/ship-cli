@@ -144,18 +144,15 @@ const make = Effect.gen(function* () {
       }
       const content = yield* fs.readFileString(configPath);
 
-      // Parse YAML
-      let parsed: unknown;
-      try {
-        parsed = YAML.parse(content);
-      } catch (e) {
-        return yield* Effect.fail(
+      // Parse YAML using Effect.try
+      const parsed = yield* Effect.try({
+        try: () => YAML.parse(content),
+        catch: (e) =>
           new ConfigError({
             message: `Invalid YAML in .ship/config.yaml: ${e instanceof Error ? e.message : e}`,
             cause: e,
           }),
-        );
-      }
+      });
 
       // Validate schema
       return yield* Schema.decodeUnknown(YamlConfig)(parsed).pipe(

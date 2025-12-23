@@ -2,6 +2,7 @@ import * as Command from "@effect/cli/Command";
 import * as Effect from "effect/Effect";
 import * as clack from "@clack/prompts";
 import { AuthService } from "../../../../ports/AuthService.js";
+import { PromptCancelledError } from "../../../../domain/Errors.js";
 
 export const loginCommand = Command.make("login", {}, () =>
   Effect.gen(function* () {
@@ -24,7 +25,7 @@ export const loginCommand = Command.make("login", {}, () =>
             if (!value.startsWith("lin_api_")) return "API key should start with lin_api_";
           },
         }),
-      catch: () => new Error("Prompt cancelled"),
+      catch: () => PromptCancelledError.default,
     });
 
     if (clack.isCancel(apiKey)) {
@@ -35,11 +36,10 @@ export const loginCommand = Command.make("login", {}, () =>
     const spinner = clack.spinner();
     spinner.start("Validating API key...");
 
-    yield* auth
-      .saveApiKey(apiKey as string)
-      .pipe(Effect.tapError(() => Effect.sync(() => spinner.stop("Invalid API key"))));
-
-    spinner.stop("API key validated");
+    yield* auth.saveApiKey(apiKey as string).pipe(
+      Effect.tap(() => Effect.sync(() => spinner.stop("API key validated"))),
+      Effect.tapError(() => Effect.sync(() => spinner.stop("Invalid API key"))),
+    );
 
     clack.outro("Run 'ship init' to select your team and project.");
   }),
