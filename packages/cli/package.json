@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@effect/cli": "^0.69.0",
-    "@effect/language-service": "latest",
+    "@effect/language-service": "^0.62.5",
     "@effect/platform": "^0.90.3",
     "@effect/platform-node": "^0.96.0",
     "@effect/vitest": "^0.25.1",
