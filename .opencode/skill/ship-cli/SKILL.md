@@ -11,6 +11,28 @@ Ship provides real task tracking that persists across sessions, supports depende
 
 ---
 
+## BEFORE YOU START CODING
+
+**You MUST complete these steps before writing any code:**
+
+1. `ship` tool with action `start`, taskId=`<id>` - Mark task as In Progress
+2. `ship` tool with action `stack-create`, message=`"<id>: <title>"`, bookmark=`<branch-name>` - Creates workspace
+3. **Store the workspace path** from the output (e.g., `/Users/x/project/.ship/workspaces/bri-123-feature`)
+4. `bash` with command=`"pnpm install"`, workdir=`<workspace-path>` - Install dependencies
+5. **Use `workdir` parameter for ALL subsequent commands** - both bash and ship tool actions
+
+**DO NOT ask the user to `cd` into the workspace.** The agent cannot change the user's shell directory. Instead, use the `workdir` parameter for all commands.
+
+Example:
+```
+# After stack-create returns workspace path "/Users/x/project/.ship/workspaces/bri-123"
+bash: command="pnpm install", workdir="/Users/x/project/.ship/workspaces/bri-123"
+bash: command="pnpm test", workdir="/Users/x/project/.ship/workspaces/bri-123"
+ship: action="stack-status", workdir="/Users/x/project/.ship/workspaces/bri-123"
+```
+
+---
+
 ## Ship Tool Guidance
 
 **IMPORTANT: Always use the `ship` tool, NEVER run `ship` or `pnpm ship` via bash/terminal.**
@@ -118,7 +140,7 @@ Task management and VCS operations are **separate**. You control when each happe
 4. **Create VCS change (workspace created automatically)**: `ship` tool with action `stack-create`, message=`"<id>: <title>"`, bookmark=`<branch-name>`
    - Get branch name from `start` output or `show` action
    - **Workspace is created by default** for isolated development
-   - The output includes the workspace path - inform the user to `cd` into it
+   - **Store the workspace path** from the output for use with `workdir` parameter
 
 ### Doing the Work
 
@@ -254,9 +276,9 @@ Always sync:
 ship tool: action=`stack-create`, message="BRI-123: Add feature", bookmark="user/bri-123-add-feature"
 ```
 
-Creates a new jj change with the given description and bookmark (branch name). **By default, a jj workspace is created** in a sibling directory (e.g., `../bri-123-add-feature`) for isolated development.
+Creates a new jj change with the given description and bookmark (branch name). **By default, a jj workspace is created** in `.ship/workspaces/<bookmark-name>` for isolated development.
 
-After creation, inform the user to `cd` into the workspace path shown in the output.
+**Store the workspace path** from the output and use it with the `workdir` parameter for all subsequent commands. Do NOT ask the user to `cd`.
 
 To skip workspace creation (e.g., when continuing work in an existing workspace), use `noWorkspace=true`.
 
@@ -355,9 +377,9 @@ This creates:
 1. A new jj workspace at `../bri-123-feature-x` (sibling directory)
 2. A bookmark for the stack
 
-Output will include: `Workspace: ../bri-123-feature-x`
+Output will include the workspace path (e.g., `/Users/x/project/.ship/workspaces/bri-123-feature-x`).
 
-**IMPORTANT**: After creating a workspace, inform the user they need to run the `cd` command to switch to the workspace directory. The agent cannot change the user's shell directory.
+**IMPORTANT**: Store this path and use it with the `workdir` parameter for all subsequent commands. Do NOT ask the user to `cd` - the agent should use `workdir` instead.
 
 ### Skip Workspace Creation
 

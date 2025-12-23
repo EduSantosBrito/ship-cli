@@ -501,6 +501,23 @@ const make = Effect.gen(function* () {
   const editChange = (changeId: ChangeId): Effect.Effect<void, VcsErrors> =>
     runJj("edit", changeId).pipe(Effect.asVoid);
 
+  // === Recovery Operations ===
+
+  const undo = () =>
+    Effect.gen(function* () {
+      // Get the current operation description before undo
+      const opLogOutput = yield* runJj("op", "log", "-n", "1", "-T", 'description ++ "\\n"');
+      const currentOperation = opLogOutput.trim();
+
+      // Perform the undo
+      yield* runJj("undo");
+
+      return {
+        undone: true,
+        operation: currentOperation || undefined,
+      };
+    });
+
   return {
     isAvailable,
     isRepo,
@@ -529,6 +546,8 @@ const make = Effect.gen(function* () {
     // Stack navigation
     getChildChange,
     editChange,
+    // Recovery operations
+    undo,
   };
 });
 

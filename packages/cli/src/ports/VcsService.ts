@@ -243,6 +243,23 @@ export interface VcsService {
    * @param changeId - The change ID to edit
    */
   readonly editChange: (changeId: ChangeId) => Effect.Effect<void, VcsErrors>;
+
+  // === Recovery Operations ===
+
+  /**
+   * Undo the last jj operation
+   * This is equivalent to `jj undo`
+   * @returns Information about the undone operation
+   */
+  readonly undo: () => Effect.Effect<UndoResult, VcsErrors>;
 }
+
+/** Result of an undo operation */
+export class UndoResult extends Schema.Class<UndoResult>("UndoResult")({
+  /** Whether the undo was successful */
+  undone: Schema.Boolean,
+  /** Description of the operation that was undone (if available) */
+  operation: Schema.optional(Schema.String),
+}) {}
 
 export const VcsService = Context.GenericTag<VcsService>("VcsService");
