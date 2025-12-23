@@ -15,6 +15,9 @@ import {
   PrService,
   CreatePrInput,
   UpdatePrInput,
+  PrReview,
+  PrReviewComment,
+  PrComment,
 } from "../../../../src/ports/PrService.js";
 import {
   GhNotInstalledError,
@@ -321,6 +324,159 @@ describe("PrService Error Paths", () => {
         yield* pr.openInBrowser("https://github.com/test/repo/pull/1");
         // No error = success
       }).pipe(Effect.provide(TestPrServiceLayer())),
+    );
+
+    it.effect("getReviews returns empty array when no reviews", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const reviews = yield* pr.getReviews(1);
+        expect(reviews).toEqual([]);
+      }).pipe(Effect.provide(TestPrServiceLayer())),
+    );
+
+    it.effect("getReviews returns configured reviews", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const reviews = yield* pr.getReviews(1);
+        expect(reviews).toHaveLength(1);
+        expect(reviews[0].author).toBe("reviewer1");
+        expect(reviews[0].state).toBe("CHANGES_REQUESTED");
+      }).pipe(
+        Effect.provide(
+          TestPrServiceLayer({
+            reviews: new Map([
+              [
+                1,
+                [
+                  new PrReview({
+                    id: 1,
+                    author: "reviewer1",
+                    state: "CHANGES_REQUESTED",
+                    body: "Please fix the type error",
+                    submittedAt: "2024-01-01T00:00:00Z",
+                  }),
+                ],
+              ],
+            ]),
+          }),
+        ),
+      ),
+    );
+
+    it.effect("getReviewComments returns empty array when no comments", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const comments = yield* pr.getReviewComments(1);
+        expect(comments).toEqual([]);
+      }).pipe(Effect.provide(TestPrServiceLayer())),
+    );
+
+    it.effect("getReviewComments returns configured comments", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const comments = yield* pr.getReviewComments(1);
+        expect(comments).toHaveLength(1);
+        expect(comments[0].path).toBe("src/index.ts");
+        expect(comments[0].line).toBe(42);
+      }).pipe(
+        Effect.provide(
+          TestPrServiceLayer({
+            reviewComments: new Map([
+              [
+                1,
+                [
+                  new PrReviewComment({
+                    id: 1,
+                    path: "src/index.ts",
+                    line: 42,
+                    body: "Consider renaming this variable",
+                    author: "reviewer1",
+                    createdAt: "2024-01-01T00:00:00Z",
+                    inReplyToId: null,
+                  }),
+                ],
+              ],
+            ]),
+          }),
+        ),
+      ),
+    );
+
+    it.effect("getPrComments returns empty array when no comments", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const comments = yield* pr.getPrComments(1);
+        expect(comments).toEqual([]);
+      }).pipe(Effect.provide(TestPrServiceLayer())),
+    );
+
+    it.effect("getPrComments returns configured comments", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const comments = yield* pr.getPrComments(1);
+        expect(comments).toHaveLength(1);
+        expect(comments[0].body).toBe("Overall looks good!");
+      }).pipe(
+        Effect.provide(
+          TestPrServiceLayer({
+            prComments: new Map([
+              [
+                1,
+                [
+                  new PrComment({
+                    id: 1,
+                    body: "Overall looks good!",
+                    author: "reviewer1",
+                    createdAt: "2024-01-01T00:00:00Z",
+                  }),
+                ],
+              ],
+            ]),
+          }),
+        ),
+      ),
+    );
+  });
+
+  describe("Review methods error paths", () => {
+    it.effect("getReviews fails with GhNotInstalledError when gh not installed", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const exit = yield* pr.getReviews(1).pipe(Effect.exit);
+
+        const error = getFailure(exit);
+        expect(error).not.toBeNull();
+        expect(error!._tag).toBe("GhNotInstalledError");
+      }).pipe(Effect.provide(TestPrServiceLayer({ ghInstalled: false }))),
+    );
+
+    it.effect("getReviewComments fails with GhNotAuthenticatedError when not authenticated", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const exit = yield* pr.getReviewComments(1).pipe(Effect.exit);
+
+        const error = getFailure(exit);
+        expect(error).not.toBeNull();
+        expect(error!._tag).toBe("GhNotAuthenticatedError");
+      }).pipe(Effect.provide(TestPrServiceLayer({ ghAuthenticated: false }))),
+    );
+
+    it.effect("getPrComments fails with globalPrError when configured", () =>
+      Effect.gen(function* () {
+        const pr = yield* PrService;
+        const exit = yield* pr.getPrComments(1).pipe(Effect.exit);
+
+        const error = getFailure(exit);
+        expect(error).not.toBeNull();
+        expect(error!._tag).toBe("PrError");
+        expect((error as PrError).message).toContain("GitHub API");
+      }).pipe(
+        Effect.provide(
+          TestPrServiceLayer({
+            globalPrError: new PrError({ message: "GitHub API unavailable" }),
+          }),
+        ),
+      ),
     );
   });
 });
