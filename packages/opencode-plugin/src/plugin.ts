@@ -1438,6 +1438,12 @@ const createShipTool = ($: BunShell, directory: string): ToolDefinition => {
   return createTool({
     description: `Linear task management and VCS operations for the current project.
 
+IMPORTANT: Always use this tool for VCS operations. NEVER run jj, gh, or git commands directly via bash.
+- Use stack-create instead of: jj new, jj describe, jj bookmark create
+- Use stack-describe instead of: jj describe
+- Use stack-submit instead of: jj git push, gh pr create
+- Use stack-sync instead of: jj git fetch, jj rebase
+
 Use this tool to:
 - List tasks ready to work on (no blockers)
 - View task details
