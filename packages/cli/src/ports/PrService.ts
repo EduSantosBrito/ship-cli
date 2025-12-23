@@ -68,6 +68,14 @@ export interface PrService {
    * Get PR by branch name. Returns null if no PR exists for the branch.
    */
   readonly getPrByBranch: (branch: string) => Effect.Effect<PullRequest | null, PrErrors>;
+
+  /**
+   * Update the base branch of an existing pull request.
+   * Used to retarget a PR after its parent PR is merged.
+   * @param prNumber - The PR number to update
+   * @param base - The new base branch name
+   */
+  readonly updatePrBase: (prNumber: number, base: string) => Effect.Effect<PullRequest, PrErrors>;
 }
 
 export const PrService = Context.GenericTag<PrService>("PrService");
