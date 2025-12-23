@@ -325,8 +325,22 @@ const make = Effect.gen(function* () {
       stackAfter = yield* getStack();
       const trunk = yield* getTrunkInfo();
 
-      // Check if the entire stack was merged (no changes left)
-      const stackFullyMerged = abandonedChanges.length > 0 && stackAfter.length === 0;
+      // Check if the entire stack was merged
+      // Case 1: We abandoned changes and stack is now empty
+      // Case 2: Stack only has an empty working copy placeholder with no bookmark
+      //         (this happens when the last/only change was merged - its content is in trunk,
+      //          leaving just an empty working copy)
+      const isEmptyPlaceholderOnly =
+        stackAfter.length === 1 &&
+        stackAfter[0].isWorkingCopy &&
+        stackAfter[0].isEmpty &&
+        stackAfter[0].bookmarks.length === 0 &&
+        (!stackAfter[0].description ||
+          stackAfter[0].description === "(no description)" ||
+          stackAfter[0].description.trim() === "");
+
+      const stackFullyMerged =
+        (abandonedChanges.length > 0 && stackAfter.length === 0) || isEmptyPlaceholderOnly;
 
       return new SyncResult({
         fetched: true,
