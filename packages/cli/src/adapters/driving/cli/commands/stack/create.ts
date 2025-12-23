@@ -16,6 +16,7 @@ import * as Console from "effect/Console";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { checkVcsAvailability, outputError } from "./shared.js";
+import { ChangeId } from "../../../../../ports/VcsService.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import {
   resolveWorkspacePath,
@@ -171,12 +172,23 @@ export const createCommand = Command.make(
           taskId: null,
         });
 
-        // Create bookmark if requested (in the new workspace's working copy)
+        // Create bookmark if requested on the new workspace's working copy
         let bookmarkName: string | undefined;
+        let bookmarkError: string | undefined;
         if (bookmark._tag === "Some") {
-          // Note: bookmark creation would need to be done in the new workspace
-          // For now, we just track the intended bookmark name
-          bookmarkName = bookmark.value;
+          // Create bookmark on the workspace's change using its change ID
+          const bookmarkResult = yield* vcs
+            .createBookmark(bookmark.value, workspaceResult.info.changeId as ChangeId)
+            .pipe(
+              Effect.map(() => ({ success: true as const })),
+              Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
+            );
+
+          if (bookmarkResult.success) {
+            bookmarkName = bookmark.value;
+          } else {
+            bookmarkError = bookmarkResult.error;
+          }
         }
 
         const output: CreateOutput = {
@@ -188,6 +200,7 @@ export const createCommand = Command.make(
             path: workspaceResult.info.path,
             created: true,
           },
+          ...(bookmarkError ? { error: bookmarkError } : {}),
         };
 
         if (json) {
@@ -196,7 +209,9 @@ export const createCommand = Command.make(
           yield* Console.log(`Created workspace: ${stackName}`);
           yield* Console.log(`Path: ${workspaceResult.info.path}`);
           if (bookmarkName) {
-            yield* Console.log(`Bookmark: ${bookmarkName}`);
+            yield* Console.log(`Created bookmark: ${bookmarkName}`);
+          } else if (bookmarkError) {
+            yield* Console.log(`Warning: Failed to create bookmark: ${bookmarkError}`);
           }
           if (workspaceConfig.autoNavigate) {
             yield* Console.log(`\nRun: cd ${workspaceResult.info.path}`);
