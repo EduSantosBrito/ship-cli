@@ -11,6 +11,9 @@ export type TeamId = typeof TeamId.Type;
 export const ProjectId = Schema.String.pipe(Schema.brand("ProjectId"));
 export type ProjectId = typeof ProjectId.Type;
 
+export const MilestoneId = Schema.String.pipe(Schema.brand("MilestoneId"));
+export type MilestoneId = typeof MilestoneId.Type;
+
 // === Enums ===
 
 // Linear's workflow state types (not custom state names)
@@ -119,6 +122,15 @@ export class Project extends Schema.Class<Project>("Project")({
   teamId: TeamId,
 }) {}
 
+export class Milestone extends Schema.Class<Milestone>("Milestone")({
+  id: MilestoneId,
+  name: Schema.String,
+  description: Schema.OptionFromNullOr(Schema.String),
+  projectId: ProjectId,
+  targetDate: Schema.OptionFromNullOr(Schema.Date),
+  sortOrder: Schema.Number,
+}) {}
+
 // === Input Types ===
 
 export class CreateTaskInput extends Schema.Class<CreateTaskInput>("CreateTaskInput")({
@@ -148,3 +160,21 @@ export class TaskFilter extends Schema.Class<TaskFilter>("TaskFilter")({
   /** When true, include completed and cancelled tasks. Default: false (excludes them) */
   includeCompleted: Schema.optionalWith(Schema.Boolean, { default: () => false }),
 }) {}
+
+export class CreateMilestoneInput extends Schema.Class<CreateMilestoneInput>("CreateMilestoneInput")(
+  {
+    name: Schema.String,
+    description: Schema.OptionFromNullOr(Schema.String),
+    targetDate: Schema.OptionFromNullOr(Schema.Date),
+    sortOrder: Schema.optionalWith(Schema.Number, { default: () => 0 }),
+  },
+) {}
+
+export class UpdateMilestoneInput extends Schema.Class<UpdateMilestoneInput>("UpdateMilestoneInput")(
+  {
+    name: Schema.OptionFromNullOr(Schema.String),
+    description: Schema.OptionFromNullOr(Schema.String),
+    targetDate: Schema.OptionFromNullOr(Schema.Date),
+    sortOrder: Schema.OptionFromNullOr(Schema.Number),
+  },
+) {}

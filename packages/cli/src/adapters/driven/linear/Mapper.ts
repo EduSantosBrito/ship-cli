@@ -3,6 +3,7 @@ import type {
   Issue,
   Team as LinearTeam,
   Project as LinearProject,
+  ProjectMilestone as LinearProjectMilestone,
   WorkflowState as LinearWorkflowState,
 } from "@linear/sdk";
 import {
@@ -13,6 +14,8 @@ import {
   TeamId,
   Project,
   ProjectId,
+  Milestone,
+  MilestoneId,
   WorkflowState,
   WorkflowStateType,
   Subtask,
@@ -172,4 +175,14 @@ export const mapProject = (project: LinearProject, teamId: string): Project =>
     id: project.id as ProjectId,
     name: project.name,
     teamId: teamId as TeamId,
+  });
+
+export const mapMilestone = (milestone: LinearProjectMilestone, projectId: string): Milestone =>
+  new Milestone({
+    id: milestone.id as MilestoneId,
+    name: milestone.name,
+    description: milestone.description ? Option.some(milestone.description) : Option.none(),
+    projectId: projectId as ProjectId,
+    targetDate: milestone.targetDate ? Option.some(new Date(milestone.targetDate)) : Option.none(),
+    sortOrder: milestone.sortOrder,
   });

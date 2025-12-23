@@ -1,6 +1,7 @@
 export * from "./TeamRepository.js";
 export * from "./ProjectRepository.js";
 export * from "./IssueRepository.js";
+export * from "./MilestoneRepository.js";
 export * from "./AuthService.js";
 export * from "./ConfigRepository.js";
 export * from "./VcsService.js";

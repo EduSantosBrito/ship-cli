@@ -6,6 +6,7 @@ import { LinearClientLive } from "../adapters/driven/linear/LinearClient.js";
 import { TeamRepositoryLive } from "../adapters/driven/linear/TeamRepositoryLive.js";
 import { ProjectRepositoryLive } from "../adapters/driven/linear/ProjectRepositoryLive.js";
 import { IssueRepositoryLive } from "../adapters/driven/linear/IssueRepositoryLive.js";
+import { MilestoneRepositoryLive } from "../adapters/driven/linear/MilestoneRepositoryLive.js";
 import { VcsServiceLive } from "../adapters/driven/vcs/VcsServiceLive.js";
 import { PrServiceLive } from "../adapters/driven/github/PrServiceLive.js";
 import { WebhookServiceLive } from "../adapters/driven/github/WebhookServiceLive.js";
@@ -37,6 +38,7 @@ const RepositoryLayers = Layer.mergeAll(
   TeamRepositoryLive,
   ProjectRepositoryLive,
   IssueRepositoryLive,
+  MilestoneRepositoryLive,
 );
 
 // VcsService, PrService, WebhookService depend on CommandExecutor (from NodeContext)
