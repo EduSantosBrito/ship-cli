@@ -176,7 +176,10 @@ export const submitCommand = Command.make(
       const conflictedChanges = stackChanges.filter((c) => c.hasConflict);
       if (conflictedChanges.length > 0) {
         const conflictList = conflictedChanges
-          .map((c) => `  - ${c.changeId.slice(0, 8)}: ${c.description.split("\n")[0] || "(no description)"}`)
+          .map(
+            (c) =>
+              `  - ${c.changeId.slice(0, 8)}: ${c.description.split("\n")[0] || "(no description)"}`,
+          )
           .join("\n");
         yield* outputError(
           `Cannot submit: ${conflictedChanges.length} change(s) have unresolved conflicts:\n${conflictList}\n\nResolve conflicts before submitting. Use 'ship stack status' to check conflict state.`,

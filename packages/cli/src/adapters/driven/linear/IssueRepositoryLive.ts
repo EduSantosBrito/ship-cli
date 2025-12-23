@@ -76,18 +76,16 @@ const withRetryAndTimeout = <A, E>(
  * Checks if an issue has any incomplete (non-completed, non-canceled) blockers.
  * Returns true if the issue is blocked by at least one incomplete task.
  */
-const hasIncompleteBlockers = (
-  issue: Issue,
-): Effect.Effect<boolean, LinearApiError> =>
+const hasIncompleteBlockers = (issue: Issue): Effect.Effect<boolean, LinearApiError> =>
   Effect.gen(function* () {
     const inverseRelations = yield* Effect.tryPromise({
       try: (signal) => withAbortSignal(issue.inverseRelations(), signal),
-      catch: (e) => new LinearApiError({ message: `Failed to fetch inverse relations: ${e}`, cause: e }),
+      catch: (e) =>
+        new LinearApiError({ message: `Failed to fetch inverse relations: ${e}`, cause: e }),
     });
 
-    const blockedByRelations = inverseRelations?.nodes?.filter(
-      (r: IssueRelation) => r.type === "blocks",
-    ) ?? [];
+    const blockedByRelations =
+      inverseRelations?.nodes?.filter((r: IssueRelation) => r.type === "blocks") ?? [];
 
     if (blockedByRelations.length === 0) {
       return false;
@@ -103,7 +101,8 @@ const hasIncompleteBlockers = (
 
           const blockerIssue = yield* Effect.tryPromise({
             try: (signal) => withAbortSignal(relatedIssueFetch, signal),
-            catch: (e) => new LinearApiError({ message: `Failed to fetch blocker issue: ${e}`, cause: e }),
+            catch: (e) =>
+              new LinearApiError({ message: `Failed to fetch blocker issue: ${e}`, cause: e }),
           });
 
           if (!blockerIssue) return null;
@@ -113,7 +112,8 @@ const hasIncompleteBlockers = (
 
           const state = yield* Effect.tryPromise({
             try: (signal) => withAbortSignal(stateFetch, signal),
-            catch: (e) => new LinearApiError({ message: `Failed to fetch blocker state: ${e}`, cause: e }),
+            catch: (e) =>
+              new LinearApiError({ message: `Failed to fetch blocker state: ${e}`, cause: e }),
           });
 
           return state?.type ?? null;
@@ -584,7 +584,8 @@ const make = Effect.gen(function* () {
               }
               return yield* Effect.tryPromise({
                 try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
-                catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
+                catch: (e) =>
+                  new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
               });
             }),
           { concurrency: 5 },
@@ -627,7 +628,8 @@ const make = Effect.gen(function* () {
               }
               return yield* Effect.tryPromise({
                 try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
-                catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
+                catch: (e) =>
+                  new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
               });
             }),
           { concurrency: 5 },
