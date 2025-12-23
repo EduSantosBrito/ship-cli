@@ -153,6 +153,13 @@ const make = Effect.gen(function* () {
     return runJj("bookmark", "create", name).pipe(Effect.asVoid);
   };
 
+  const moveBookmark = (name: string, ref?: ChangeId): Effect.Effect<void, VcsErrors> => {
+    if (ref) {
+      return runJj("bookmark", "move", name, "--to", ref).pipe(Effect.asVoid);
+    }
+    return runJj("bookmark", "move", name, "--to", "@").pipe(Effect.asVoid);
+  };
+
   const getCurrentChange = (): Effect.Effect<Change, VcsErrors> =>
     Effect.gen(function* () {
       const output = yield* runJj("log", "-r", "@", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
@@ -601,6 +608,7 @@ const make = Effect.gen(function* () {
     describe,
     commit,
     createBookmark,
+    moveBookmark,
     push,
     getCurrentChange,
     getStack,

@@ -19,6 +19,7 @@ import { restackCommand } from "./restack.js";
 import { submitCommand } from "./submit.js";
 import { squashCommand } from "./squash.js";
 import { abandonCommand } from "./abandon.js";
+import { bookmarkCommand } from "./bookmark.js";
 import { workspacesCommand } from "./workspaces.js";
 import { removeWorkspaceCommand } from "./remove-workspace.js";
 import { upCommand } from "./up.js";
@@ -37,6 +38,7 @@ Commands:
   status            Show current change status
   create            Create a new change (workspace by default, --no-workspace to skip)
   describe          Update change description
+  bookmark          Create or move a bookmark on current change
   sync              Fetch and rebase onto trunk
   restack           Rebase entire stack onto trunk (no fetch)
   submit            Push and create/update PR
@@ -59,6 +61,7 @@ export const stackCommand = stack.pipe(
     statusCommand,
     createCommand,
     describeCommand,
+    bookmarkCommand,
     syncCommand,
     restackCommand,
     submitCommand,

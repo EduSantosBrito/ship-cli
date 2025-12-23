@@ -246,6 +246,14 @@ interface StackUpdateStaleResult {
   error?: string;
 }
 
+interface StackBookmarkResult {
+  success: boolean;
+  action: "created" | "moved";
+  bookmark: string;
+  changeId?: string;
+  error?: string;
+}
+
 interface WebhookStartResult {
   started: boolean;
   pid?: number;
@@ -430,6 +438,8 @@ interface ShipService {
   // Stack recovery
   readonly stackUndo: (workdir?: string) => Effect.Effect<StackUndoResult, ShipCommandError | JsonParseError>;
   readonly stackUpdateStale: (workdir?: string) => Effect.Effect<StackUpdateStaleResult, ShipCommandError | JsonParseError>;
+  // Stack bookmark
+  readonly bookmarkStack: (name: string, move?: boolean, workdir?: string) => Effect.Effect<StackBookmarkResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
@@ -648,6 +658,16 @@ const makeShipService = Effect.gen(function* () {
     Effect.gen(function* () {
       const output = yield* shell.run(["stack", "update-stale", "--json"], workdir);
       return yield* parseJson<StackUpdateStaleResult>(output);
+    });
+
+  // Stack bookmark
+  const bookmarkStack = (name: string, move?: boolean, workdir?: string) =>
+    Effect.gen(function* () {
+      const args = ["stack", "bookmark", "--json"];
+      if (move) args.push("--move");
+      args.push(name);
+      const output = yield* shell.run(args, workdir);
+      return yield* parseJson<StackBookmarkResult>(output);
     });
 
   // Webhook operations - uses module-level processToCleanup for persistence across tool calls
@@ -872,6 +892,7 @@ const makeShipService = Effect.gen(function* () {
     stackDown,
     stackUndo,
     stackUpdateStale,
+    bookmarkStack,
     startWebhook,
     stopWebhook,
     getWebhookStatus,
@@ -949,6 +970,7 @@ type ToolArgs = {
   draft?: boolean;
   body?: string;
   changeId?: string;
+  move?: boolean; // For stack-bookmark to move instead of create
   // Workspace-specific args
   noWorkspace?: boolean; // For stack-create to skip workspace creation
   name?: string; // For remove-workspace (workspace name)
@@ -1323,6 +1345,19 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
           : "Working copy updated.";
       }
 
+      // Stack bookmark
+      case "stack-bookmark": {
+        if (!args.name) {
+          return "Error: name is required for stack-bookmark action";
+        }
+        const result = yield* ship.bookmarkStack(args.name, args.move, args.workdir);
+        if (!result.success) {
+          return `Error: ${result.error || "Failed to create/move bookmark"}`;
+        }
+        const action = result.action === "moved" ? "Moved" : "Created";
+        return `${action} bookmark '${result.bookmark}' at ${result.changeId?.slice(0, 8) || "current change"}`;
+      }
+
       // Workspace operations - pass workdir for workspace support
       case "stack-workspaces": {
         const workspaces = yield* ship.listWorkspaces(args.workdir);
@@ -1527,6 +1562,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-down",
           "stack-undo",
           "stack-update-stale",
+          "stack-bookmark",
           "stack-workspaces",
           "stack-remove-workspace",
           "webhook-daemon-status",
@@ -1535,7 +1571,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-cleanup",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist)"
         ),
       taskId: createTool.schema
         .string()
@@ -1586,7 +1622,11 @@ Run 'ship init' in the terminal first if not configured.`,
       name: createTool.schema
         .string()
         .optional()
-        .describe("Workspace name - required for stack-remove-workspace action"),
+        .describe("Bookmark or workspace name - required for stack-bookmark and stack-remove-workspace actions"),
+      move: createTool.schema
+        .boolean()
+        .optional()
+        .describe("Move an existing bookmark instead of creating a new one - for stack-bookmark action"),
       deleteFiles: createTool.schema
         .boolean()
         .optional()

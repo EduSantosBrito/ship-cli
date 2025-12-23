@@ -102,6 +102,7 @@ All stack actions support an optional `workdir` parameter for operating in jj wo
 | `stack-down` | Move to parent change (toward trunk) | workdir (optional) |
 | `stack-undo` | Undo the last jj operation | workdir (optional) |
 | `stack-update-stale` | Update a stale working copy | workdir (optional) |
+| `stack-bookmark` | Create or move a bookmark on current change | name, move (optional), workdir (optional) |
 | `stack-workspaces` | List all jj workspaces | workdir (optional) |
 | `stack-remove-workspace` | Remove a jj workspace | name, deleteFiles (optional), workdir (optional) |
 
@@ -493,6 +494,24 @@ ship tool: action=`stack-undo`, workdir=`<workspace-path>`
 ```
 
 This undoes the last jj operation. Use sparingly - it's better to be careful than to rely on undo.
+
+### Bookmark Lost After Stack Operations
+
+Bookmarks can get detached during squash, rebase, or undo operations. When `stack-submit` fails with "Current change has no bookmark", use `stack-bookmark` to recover:
+
+**Create a new bookmark:**
+
+```
+ship tool: action=`stack-bookmark`, name="user/bri-123-feature", workdir=`<workspace-path>`
+```
+
+**Move an existing bookmark to current change:**
+
+```
+ship tool: action=`stack-bookmark`, name="user/bri-123-feature", move=true, workdir=`<workspace-path>`
+```
+
+Use `move=true` when the bookmark exists but is on the wrong change. Without `move`, if the bookmark already exists, you'll get an error with a helpful suggestion to use `--move`.
 
 ### If You Accidentally Used jj/gh Commands Directly
 
