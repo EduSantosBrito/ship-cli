@@ -6,8 +6,9 @@
  * 2. Rebases the stack onto updated trunk
  * 3. Auto-abandons merged changes (empty changes with bookmarks)
  * 4. Prompts to delete local bookmarks for abandoned merged changes
- * 5. Cleans up workspace if entire stack was merged
- * 6. Reports any conflicts that need resolution
+ * 5. Updates PR base branches when parent PRs are merged
+ * 6. Cleans up workspace if entire stack was merged
+ * 7. Reports any conflicts that need resolution
  *
  * This is the critical command for syncing after PRs are merged.
  */
@@ -22,6 +23,8 @@ import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import { checkVcsAvailability, outputError, extractErrorInfo } from "./shared.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
+import { PrService, type PullRequest } from "../../../../../ports/PrService.js";
+import type { Change } from "../../../../../ports/VcsService.js";
 import {
   loadWorkspacesFile,
   saveWorkspacesFile,
@@ -49,6 +52,13 @@ interface AbandonedChangeOutput {
   bookmark: string | undefined;
 }
 
+interface UpdatedPrBaseOutput {
+  prNumber: number;
+  bookmark: string;
+  oldBase: string;
+  newBase: string;
+}
+
 interface SyncOutput {
   fetched: boolean;
   rebased: boolean;
@@ -59,6 +69,8 @@ interface SyncOutput {
   abandonedMergedChanges: AbandonedChangeOutput[] | undefined;
   /** Local bookmarks that were deleted */
   deletedBookmarks: string[] | undefined;
+  /** PRs whose base branch was updated after parent merge */
+  updatedPrBases: UpdatedPrBaseOutput[] | undefined;
   /** Whether the entire stack was merged and workspace was cleaned up */
   stackFullyMerged: boolean | undefined;
   /** Workspace that was cleaned up (only if stackFullyMerged) */
@@ -140,10 +152,20 @@ export const syncCommand = Command.make(
         conflicted: result.conflicted,
         abandonedMergedChanges: abandonedChanges.length > 0 ? abandonedChanges : undefined,
         deletedBookmarks: deletedBookmarks.length > 0 ? deletedBookmarks : undefined,
+        updatedPrBases: undefined,
         stackFullyMerged: result.stackFullyMerged,
         cleanedUpWorkspace: undefined,
         error: undefined,
       };
+
+      // If changes were abandoned (parent PRs merged), update child PR base branches
+      // This ensures GitHub PRs point to the correct base after parent merges
+      if (abandonedChanges.length > 0 && !result.stackFullyMerged) {
+        const updatedBases = yield* updatePrBasesAfterMerge(vcs, abandonedChanges);
+        if (updatedBases.length > 0) {
+          output.updatedPrBases = updatedBases;
+        }
+      }
 
       // If entire stack was merged, clean up workspace
       let cleanedUpWorkspace: string | undefined;
@@ -173,6 +195,17 @@ export const syncCommand = Command.make(
           yield* Console.log("Deleted local bookmarks:");
           for (const bookmark of deletedBookmarks) {
             yield* Console.log(`  - ${bookmark}`);
+          }
+          yield* Console.log("");
+        }
+
+        // Report updated PR bases
+        if (output.updatedPrBases && output.updatedPrBases.length > 0) {
+          yield* Console.log("Updated PR base branches:");
+          for (const update of output.updatedPrBases) {
+            yield* Console.log(
+              `  - PR #${update.prNumber} (${update.bookmark}): ${update.oldBase} -> ${update.newBase}`,
+            );
           }
           yield* Console.log("");
         }
@@ -330,3 +363,123 @@ const cleanupWorkspaceAfterMerge = (vcs: {
       }),
     );
   }).pipe(Effect.catchAll(() => Effect.succeed({ cleaned: false })));
+
+// === PR Base Update Helper ===
+
+/**
+ * Update PR base branches after parent PRs are merged.
+ *
+ * When a parent PR is merged AND GitHub's auto-delete branch feature is DISABLED:
+ * 1. Its bookmark is removed from the stack (change becomes empty and is abandoned)
+ * 2. Child PRs still point to the old parent branch on GitHub
+ * 3. This function detects this situation and updates child PR bases
+ *
+ * NOTE: If GitHub's "Automatically delete head branches" is enabled (the default for
+ * many repos), GitHub automatically retargets child PRs when the parent branch is deleted.
+ * In that case, the PR's base won't be in mergedBookmarks anymore (GitHub already updated it).
+ *
+ * Logic:
+ * - Get the current stack after sync (which already abandoned merged changes)
+ * - For each change with a bookmark, check if there's a PR
+ * - Determine the correct base: parent's bookmark, or "main" if no parent
+ * - If PR's current base is a merged bookmark, update it to the correct base
+ *
+ * @param vcs - VCS service for getting stack info
+ * @param abandonedChanges - Changes that were abandoned (merged PRs)
+ * @returns Array of PRs whose base was updated
+ */
+const updatePrBasesAfterMerge = (
+  vcs: {
+    getStack: () => Effect.Effect<ReadonlyArray<Change>, unknown>;
+  },
+  abandonedChanges: AbandonedChangeOutput[],
+): Effect.Effect<UpdatedPrBaseOutput[], never, PrService> =>
+  Effect.gen(function* () {
+    const prService = yield* PrService;
+
+    // Check if gh is available
+    const ghAvailable = yield* prService.isAvailable();
+    if (!ghAvailable) {
+      // gh not available, skip PR base updates
+      return [];
+    }
+
+    // Get the merged bookmarks (these are the branches whose PRs were merged)
+    const mergedBookmarks = new Set(
+      abandonedChanges.map((c) => c.bookmark).filter((b): b is string => b !== undefined),
+    );
+
+    // If no bookmarks were merged, nothing to update
+    if (mergedBookmarks.size === 0) {
+      return [];
+    }
+
+    // Get current stack after sync
+    const stack = yield* vcs.getStack().pipe(Effect.catchAll(() => Effect.succeed([] as Change[])));
+
+    // Stack is returned newest-first, so we reverse to go from trunk upward
+    // This ensures we process parents before children
+    const stackFromTrunk = [...stack].reverse();
+
+    const updatedPrBases: UpdatedPrBaseOutput[] = [];
+
+    // Build a map of bookmark -> parent bookmark (or "main" if at base of stack)
+    const bookmarkToParent = new Map<string, string>();
+    for (let i = 0; i < stackFromTrunk.length; i++) {
+      const change = stackFromTrunk[i];
+      if (change.bookmarks.length > 0) {
+        const bookmark = change.bookmarks[0];
+        // Find parent bookmark by looking at previous changes in stack
+        let parentBookmark = "main";
+        for (let j = i - 1; j >= 0; j--) {
+          const parentChange = stackFromTrunk[j];
+          if (parentChange.bookmarks.length > 0) {
+            parentBookmark = parentChange.bookmarks[0];
+            break;
+          }
+        }
+        bookmarkToParent.set(bookmark, parentBookmark);
+      }
+    }
+
+    // For each bookmark in the stack, check if its PR needs a base update
+    for (const [bookmark, expectedBase] of bookmarkToParent) {
+      // Get PR for this bookmark
+      const pr = yield* prService.getPrByBranch(bookmark).pipe(
+        Effect.catchAll(() => Effect.succeed(null as PullRequest | null)),
+      );
+
+      if (!pr || pr.state !== "open") {
+        // No PR or PR is not open, skip
+        continue;
+      }
+
+      // Check if current base was one of the merged bookmarks
+      // This means the PR still points to a branch that was merged and may no longer exist.
+      // Note: If GitHub's auto-delete is enabled, GitHub would have already retargeted the PR,
+      // so pr.base would NOT be in mergedBookmarks (it would already be the new target).
+      if (mergedBookmarks.has(pr.base)) {
+        // PR's base points to a merged branch, update to the new expected base
+        const updateResult = yield* prService.updatePrBase(pr.number, expectedBase).pipe(
+          Effect.map((updated) => ({ success: true as const, pr: updated })),
+          Effect.catchAll((e) => {
+            return Effect.logWarning(`Failed to update PR #${pr.number} base`).pipe(
+              Effect.annotateLogs({ error: String(e), bookmark, oldBase: pr.base }),
+              Effect.map(() => ({ success: false as const })),
+            );
+          }),
+        );
+
+        if (updateResult.success) {
+          updatedPrBases.push({
+            prNumber: pr.number,
+            bookmark,
+            oldBase: pr.base,
+            newBase: expectedBase,
+          });
+        }
+      }
+    }
+
+    return updatedPrBases;
+  }).pipe(Effect.catchAll(() => Effect.succeed([] as UpdatedPrBaseOutput[])));

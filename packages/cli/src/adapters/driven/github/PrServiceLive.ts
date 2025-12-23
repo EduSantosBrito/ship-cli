@@ -355,6 +355,28 @@ const make = Effect.gen(function* () {
       "getPrByBranch",
     );
 
+  const updatePrBase = (prNumber: number, base: string): Effect.Effect<PullRequest, PrErrors> =>
+    withNetworkRetry(
+      Effect.gen(function* () {
+        // Use gh pr edit to change the base branch
+        yield* runGh("pr", "edit", String(prNumber), "--base", base);
+
+        // Fetch the updated PR details
+        const viewArgs = [
+          "pr",
+          "view",
+          String(prNumber),
+          "--json",
+          "id,number,title,url,state,headRefName,baseRefName",
+        ];
+
+        const output = yield* runGh(...viewArgs);
+        const ghPr = yield* parseGhJson(output, GhPrJsonSchema);
+        return yield* toPullRequest(ghPr);
+      }),
+      "updatePrBase",
+    );
+
   return {
     isAvailable,
     getCurrentRepo,
@@ -362,6 +384,7 @@ const make = Effect.gen(function* () {
     updatePr,
     openInBrowser,
     getPrByBranch,
+    updatePrBase,
   };
 });
 
