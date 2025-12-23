@@ -8,6 +8,7 @@
     "check": "pnpm -r check",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format",
+    "format:check": "pnpm -r format:check",
     "test": "pnpm -r test",
     "ship": "tsx packages/cli/src/bin.ts",
     "publish:all": "pnpm build && pnpm -r publish --access public"

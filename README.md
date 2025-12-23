@@ -110,7 +110,7 @@ Add to your `opencode.json`:
 
 ### Requirements
 
-- Node.js 18+
+- Node.js 20, 22, or 24 (LTS versions)
 - [Linear](https://linear.app) account
 - [jj](https://martinvonz.github.io/jj) (for VCS features)
 
