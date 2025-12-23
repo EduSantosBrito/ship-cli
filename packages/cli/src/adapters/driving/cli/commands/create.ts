@@ -129,6 +129,7 @@ export const createCommand = Command.make(
         type: finalType,
         projectId: cfg.linear.projectId,
         parentId,
+        milestoneId: Option.none(),
       });
 
       const task = yield* issueRepo.createTask(cfg.linear.teamId, input);

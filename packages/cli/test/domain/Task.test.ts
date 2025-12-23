@@ -53,6 +53,8 @@ const makeTask = (
     type: Option.none(),
     teamId: "team-1" as TeamId,
     projectId: Option.none(),
+    milestoneId: Option.none(),
+    milestoneName: Option.none(),
     branchName: Option.none(),
     url: "https://example.com/task-1",
     labels: [],
@@ -480,6 +482,8 @@ describe("Task Domain", () => {
             type: null,
             teamId: "team-1",
             projectId: null,
+            milestoneId: null,
+            milestoneName: null,
             branchName: null,
             url: "https://example.com",
             labels: ["label1"],
@@ -508,6 +512,8 @@ describe("Task Domain", () => {
             type: null,
             teamId: "team-1",
             projectId: null,
+            milestoneId: null,
+            milestoneName: null,
             branchName: null,
             url: "https://example.com",
             labels: [],
@@ -534,6 +540,8 @@ describe("Task Domain", () => {
             type: null,
             teamId: "team-1",
             projectId: null,
+            milestoneId: null,
+            milestoneName: null,
             branchName: null,
             url: "https://example.com",
             labels: [],
@@ -563,6 +571,8 @@ describe("Task Domain", () => {
             type: null,
             teamId: "team-1",
             projectId: null,
+            milestoneId: null,
+            milestoneName: null,
             branchName: null,
             url: "https://example.com",
             labels: [],
@@ -722,6 +732,7 @@ describe("Task Domain", () => {
             description: null,
             projectId: null,
             parentId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(CreateTaskInput)(data)
           expect(result.title).toBe("New Task")
@@ -735,6 +746,7 @@ describe("Task Domain", () => {
             description: null,
             projectId: null,
             parentId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(CreateTaskInput)(data)
           expect(result.priority).toBe("medium")
@@ -748,6 +760,7 @@ describe("Task Domain", () => {
             description: null,
             projectId: null,
             parentId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(CreateTaskInput)(data)
           expect(result.type).toBe("task")
@@ -763,6 +776,7 @@ describe("Task Domain", () => {
             type: "bug" as const,
             projectId: "proj-1",
             parentId: "task-parent",
+            milestoneId: "mile-1",
           }
           const result = yield* Schema.decode(CreateTaskInput)(data)
           expect(result.title).toBe("New Task")
@@ -785,6 +799,7 @@ describe("Task Domain", () => {
             priority: null,
             assigneeId: null,
             parentId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(UpdateTaskInput)(data)
           expect(Option.isNone(result.title)).toBe(true)
@@ -803,6 +818,7 @@ describe("Task Domain", () => {
             priority: "urgent" as const,
             assigneeId: null,
             parentId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(UpdateTaskInput)(data)
           expect(Option.getOrElse(result.title, () => "")).toBe("Updated Title")
@@ -823,6 +839,7 @@ describe("Task Domain", () => {
             status: null,
             priority: null,
             projectId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(TaskFilter)(data)
           expect(result.assignedToMe).toBe(false)
@@ -835,6 +852,7 @@ describe("Task Domain", () => {
             status: null,
             priority: null,
             projectId: null,
+            milestoneId: null,
           }
           const result = yield* Schema.decode(TaskFilter)(data)
           expect(result.includeCompleted).toBe(false)
@@ -847,6 +865,7 @@ describe("Task Domain", () => {
             status: "in_progress" as const,
             priority: "high" as const,
             projectId: "proj-1",
+            milestoneId: null,
             assignedToMe: true,
             includeCompleted: true,
           }

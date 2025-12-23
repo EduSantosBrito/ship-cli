@@ -59,6 +59,8 @@ const subscribeOption = Options.text("subscribe").pipe(
 interface SubmitOutput {
   pushed: boolean;
   bookmark?: string;
+  /** All bookmarks that were pushed (includes parent bookmarks in the stack). Always present when pushed: true */
+  pushedBookmarks: string[];
   baseBranch?: string;
   pr?: {
     url: string;
@@ -176,16 +178,58 @@ export const submitCommand = Command.make(
         ),
       ).pipe(Effect.map((ids) => ids.filter((id): id is string => id !== null)));
 
-      // Push the bookmark to remote
-      const pushResult = yield* vcs.push(bookmark).pipe(
-        Effect.map((result) => ({ success: true as const, result })),
-        Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
+      // Collect all bookmarks in the stack that need to be pushed
+      // This ensures that after a rebase, all parent PRs are updated too
+      const stackBookmarksToPush = stackChanges
+        .filter((c) => c.bookmarks.length > 0 && !c.isEmpty)
+        .flatMap((c) => c.bookmarks);
+
+      // Ensure the current bookmark is included (and deduplicate)
+      const allBookmarksToPush = [...new Set([bookmark, ...stackBookmarksToPush])];
+
+      // Push all bookmarks in the stack with controlled concurrency
+      // Using concurrency of 3 balances performance with avoiding rate limits
+      const pushResults = yield* Effect.forEach(
+        allBookmarksToPush,
+        (bookmarkToPush) =>
+          vcs.push(bookmarkToPush).pipe(
+            Effect.map((result) => ({
+              success: true as const,
+              bookmark: bookmarkToPush,
+              result,
+            })),
+            Effect.catchAll((e) =>
+              Effect.succeed({ success: false as const, bookmark: bookmarkToPush, error: String(e) }),
+            ),
+          ),
+        { concurrency: 3 },
       );
 
-      if (!pushResult.success) {
-        yield* outputError(`Failed to push: ${pushResult.error}`, json);
+      // Check if the main bookmark push succeeded
+      const mainPushResult = pushResults.find((r) => r.bookmark === bookmark);
+      if (!mainPushResult?.success) {
+        yield* outputError(
+          `Failed to push: ${mainPushResult?.success === false ? mainPushResult.error : "unknown error"}`,
+          json,
+        );
         return;
       }
+
+      // Log warnings for any failed parent bookmark pushes
+      const failedPushes = pushResults.filter(
+        (r) => !r.success && r.bookmark !== bookmark,
+      ) as Array<{ success: false; bookmark: string; error: string }>;
+      if (failedPushes.length > 0) {
+        yield* Effect.logWarning("Some parent bookmarks failed to push").pipe(
+          Effect.annotateLogs({
+            failedBookmarks: failedPushes.map((f) => f.bookmark).join(", "),
+            errors: failedPushes.map((f) => `${f.bookmark}: ${f.error}`).join("; "),
+          }),
+        );
+      }
+
+      // Collect successfully pushed bookmarks for output
+      const pushedBookmarks = pushResults.filter((r) => r.success).map((r) => r.bookmark);
 
       // Get configured default branch (trunk)
       const defaultBranch = yield* getDefaultBranch();
@@ -239,6 +283,7 @@ export const submitCommand = Command.make(
             output = {
               pushed: true,
               bookmark,
+              pushedBookmarks,
               baseBranch,
               pr: {
                 url: existingPr.url,
@@ -251,6 +296,7 @@ export const submitCommand = Command.make(
             output = {
               pushed: true,
               bookmark,
+              pushedBookmarks,
               baseBranch,
               pr: {
                 url: updateResult.pr.url,
@@ -264,6 +310,7 @@ export const submitCommand = Command.make(
           output = {
             pushed: true,
             bookmark,
+            pushedBookmarks,
             baseBranch,
             pr: {
               url: existingPr.url,
@@ -292,6 +339,7 @@ export const submitCommand = Command.make(
           output = {
             pushed: true,
             bookmark,
+            pushedBookmarks,
             baseBranch,
             error: `Pushed but failed to create PR: ${createResult.error}`,
           };
@@ -299,6 +347,7 @@ export const submitCommand = Command.make(
           output = {
             pushed: true,
             bookmark,
+            pushedBookmarks,
             baseBranch,
             pr: {
               url: createResult.pr.url,
@@ -375,11 +424,19 @@ export const submitCommand = Command.make(
           );
         }
         if (output.error) {
-          yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
+          if (output.pushedBookmarks && output.pushedBookmarks.length > 1) {
+            yield* Console.log(`Pushed bookmarks: ${output.pushedBookmarks.join(", ")}`);
+          } else {
+            yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
+          }
           yield* Console.log(`Base branch: ${output.baseBranch}`);
           yield* Console.log(`Warning: ${output.error}`);
         } else if (output.pr) {
-          yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
+          if (output.pushedBookmarks && output.pushedBookmarks.length > 1) {
+            yield* Console.log(`Pushed bookmarks: ${output.pushedBookmarks.join(", ")}`);
+          } else {
+            yield* Console.log(`Pushed bookmark: ${output.bookmark}`);
+          }
           yield* Console.log(`Base branch: ${output.baseBranch}`);
           const statusMsg =
             output.pr.status === "created"
