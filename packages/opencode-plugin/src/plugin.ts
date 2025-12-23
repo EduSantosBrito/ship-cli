@@ -983,7 +983,9 @@ const executeAction = (
         if (tasks.length === 0) {
           return "No tasks ready to work on (all tasks are either blocked or completed).";
         }
-        return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}`;
+        const skillReminder =
+          "\n---\nBefore starting work, read the skill: skill(name=\"ship-cli\")";
+        return `Ready tasks (no blockers):\n\n${formatTaskList(tasks)}${skillReminder}`;
       }
 
       case "blocked": {
