@@ -58,6 +58,18 @@ import { formatWebhookEvent } from "../opencode/WebhookEventFormatter.js";
  */
 type Registry = HashMap.HashMap<number, HashSet.HashSet<string>>;
 
+// === Type Guards ===
+
+/**
+ * Type guard to check if an unknown error is a tagged Effect error with a specific tag.
+ * Useful for runtime error type checking in catchAll handlers.
+ */
+const isTaggedError = <T extends string>(
+  e: unknown,
+  tag: T,
+): e is { _tag: T; message: string } =>
+  typeof e === "object" && e !== null && "_tag" in e && e._tag === tag;
+
 // === IPC Command Request ===
 
 /**
@@ -626,12 +638,12 @@ const runDaemonServer = (
                 ),
               ),
               Effect.catchAll((e) => {
-                const errorStr = String(e);
-                // Check if this is a "session not found" type error
+                // Only remove subscription for specific "session not found" errors
+                // Check the error type explicitly to avoid false positives
                 const isSessionGone =
-                  errorStr.includes("Not found") ||
-                  errorStr.includes("session") ||
-                  errorStr.includes("404");
+                  isTaggedError(e, "OpenCodeSessionNotFoundError") ||
+                  // Also check OpenCodeError with 404 indicator (from HTTP response)
+                  (isTaggedError(e, "OpenCodeError") && e.message.includes("404"));
 
                 if (isSessionGone) {
                   // Remove the stale subscription
@@ -654,9 +666,9 @@ const runDaemonServer = (
                   );
                 }
 
-                // For other errors, just log a warning
-                return Effect.logWarning("Failed to forward to session").pipe(
-                  Effect.annotateLogs({ sessionId, error: errorStr }),
+                // For other errors, just log a warning (do NOT remove the subscription)
+                return Effect.logWarning("Failed to forward to session (will retry on next event)").pipe(
+                  Effect.annotateLogs({ sessionId, error: String(e), errorTag: (e as { _tag?: string })?._tag ?? "unknown" }),
                 );
               }),
             ),
