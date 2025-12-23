@@ -55,6 +55,7 @@
     "@linear/sdk": "^29.0.0",
     "@types/node": "^22.5.2",
     "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^3.2.4",
     "effect": "^3.17.7",
     "oxfmt": "^0.19.0",
     "oxlint": "^1.0.0",
