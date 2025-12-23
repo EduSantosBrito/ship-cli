@@ -152,6 +152,12 @@ export interface VcsService {
   readonly moveBookmark: (name: string, ref?: ChangeId) => Effect.Effect<void, VcsErrors>;
 
   /**
+   * Delete a local bookmark
+   * @param name - Bookmark name to delete
+   */
+  readonly deleteBookmark: (name: string) => Effect.Effect<void, VcsErrors>;
+
+  /**
    * Push bookmark to remote
    */
   readonly push: (bookmark: string) => Effect.Effect<PushResult, VcsErrors>;

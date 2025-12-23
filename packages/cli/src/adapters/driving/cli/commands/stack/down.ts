@@ -111,8 +111,12 @@ export const downCommand = Command.make("down", { json: jsonOption }, ({ json })
       yield* Console.log(JSON.stringify(output, null, 2));
     } else {
       yield* Console.log(`Moved down in stack:`);
-      yield* Console.log(`  From: ${current.changeId.slice(0, 8)} ${current.description.split("\n")[0] || "(no description)"}`);
-      yield* Console.log(`  To:   ${parent.changeId.slice(0, 8)} ${parent.description.split("\n")[0] || "(no description)"}`);
+      yield* Console.log(
+        `  From: ${current.changeId.slice(0, 8)} ${current.description.split("\n")[0] || "(no description)"}`,
+      );
+      yield* Console.log(
+        `  To:   ${parent.changeId.slice(0, 8)} ${parent.description.split("\n")[0] || "(no description)"}`,
+      );
     }
   }),
 );

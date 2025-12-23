@@ -59,7 +59,13 @@ const formatTask = (task: Task): string => {
 
 export const listCommand = Command.make(
   "list",
-  { json: jsonOption, status: statusOption, priority: priorityOption, mine: mineOption, all: allOption },
+  {
+    json: jsonOption,
+    status: statusOption,
+    priority: priorityOption,
+    mine: mineOption,
+    all: allOption,
+  },
   ({ json, status, priority, mine, all }) =>
     Effect.gen(function* () {
       const config = yield* ConfigRepository;

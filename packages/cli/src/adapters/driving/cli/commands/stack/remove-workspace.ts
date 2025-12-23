@@ -128,7 +128,9 @@ export const removeWorkspaceCommand = Command.make(
       } else {
         const wasOnlyMetadata = !jjWorkspace && metadataEntry;
         if (wasOnlyMetadata) {
-          yield* Console.log(`Removed workspace metadata: ${name} (jj workspace was already removed)`);
+          yield* Console.log(
+            `Removed workspace metadata: ${name} (jj workspace was already removed)`,
+          );
         } else {
           yield* Console.log(`Removed workspace: ${name}`);
         }
