@@ -244,12 +244,17 @@ interface WebhookDaemonStatus {
 // =============================================================================
 
 interface ShellService {
-  readonly run: (args: string[]) => Effect.Effect<string, ShipCommandError>;
+  readonly run: (args: string[], cwd?: string) => Effect.Effect<string, ShipCommandError>;
 }
 
 const ShellService = Context.GenericTag<ShellService>("ShellService");
 
-const makeShellService = (_$: BunShell): ShellService => {
+/**
+ * Create a shell service for running ship commands.
+ * 
+ * @param defaultCwd - Default working directory for commands (from opencode's Instance.directory)
+ */
+const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
   const getCommand = (): string[] => {
     if (process.env.NODE_ENV === "development") {
       return ["pnpm", "ship"];
@@ -266,10 +271,11 @@ const makeShellService = (_$: BunShell): ShellService => {
   };
 
   return {
-    run: (args: string[]) =>
+    run: (args: string[], cwd?: string) =>
       Effect.gen(function* () {
         const cmd = getCommand();
         const fullArgs = [...cmd, ...args];
+        const workingDir = cwd ?? defaultCwd;
 
         const result = yield* Effect.tryPromise({
           try: async (signal) => {
@@ -277,6 +283,7 @@ const makeShellService = (_$: BunShell): ShellService => {
               stdout: "pipe",
               stderr: "pipe",
               signal,
+              cwd: workingDir, // Use provided cwd or default from opencode
             });
 
             const [stdout, stderr, exitCode] = await Promise.all([
@@ -1235,8 +1242,14 @@ Subscriptions:`;
 // Tool Creation
 // =============================================================================
 
-const createShipTool = ($: BunShell) => {
-  const shellService = makeShellService($);
+/**
+ * Create the ship tool with the opencode context.
+ * 
+ * @param $ - Bun shell from opencode
+ * @param directory - Current working directory from opencode (Instance.directory)
+ */
+const createShipTool = ($: BunShell, directory: string) => {
+  const shellService = makeShellService($, directory);
   const ShellServiceLive = Layer.succeed(ShellService, shellService);
   const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(Layer.provide(ShellServiceLive));
 
@@ -1423,12 +1436,12 @@ If there are no ready tasks, suggest checking blocked tasks (action \`blocked\`)
 // Plugin Export
 // =============================================================================
 
-export const ShipPlugin: Plugin = async ({ $ }) => ({
+export const ShipPlugin: Plugin = async ({ $, directory }) => ({
   config: async (config) => {
     config.command = { ...config.command, ...SHIP_COMMANDS };
   },
   tool: {
-    ship: createShipTool($),
+    ship: createShipTool($, directory),
   },
 });
 

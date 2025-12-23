@@ -132,7 +132,7 @@ export const createCommand = Command.make(
         const config = yield* configRepo.load().pipe(
           Effect.catchAll(() =>
             Effect.succeed({
-              workspace: { basePath: "../{stack}", autoNavigate: true, autoCleanup: true },
+              workspace: { basePath: ".ship/workspaces/{stack}", autoNavigate: true, autoCleanup: true },
             }),
           ),
         );

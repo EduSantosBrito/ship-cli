@@ -28,10 +28,10 @@ export class WorkspaceConfig extends Schema.Class<WorkspaceConfig>("WorkspaceCon
   /**
    * Base path pattern for workspaces.
    * Supports variables: {repo}, {stack}, {user}
-   * @default "../{stack}"
-   * @example "../bri-123-auth-feature"
+   * @default ".ship/workspaces/{stack}"
+   * @example ".ship/workspaces/bri-123-auth-feature"
    */
-  basePath: Schema.optionalWith(Schema.String, { default: () => "../{stack}" }),
+  basePath: Schema.optionalWith(Schema.String, { default: () => ".ship/workspaces/{stack}" }),
 
   /**
    * Whether to automatically cd into workspace after creation.
