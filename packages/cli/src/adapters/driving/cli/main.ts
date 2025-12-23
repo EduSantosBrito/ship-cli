@@ -21,6 +21,7 @@ import { stackCommand } from "./commands/stack/index.js";
 import { webhookCommand } from "./commands/webhook/index.js";
 import { templateCommand } from "./commands/template/index.js";
 import { milestoneCommand } from "./commands/milestone/index.js";
+import { prCommand } from "./commands/pr/index.js";
 
 // Root command
 const ship = Command.make("ship", {}, () =>
@@ -54,6 +55,7 @@ Commands:
   milestone         Manage project milestones
   stack             VCS operations (jj wrapper for AI agents)
   webhook           GitHub webhook operations
+  pr                PR workflow commands (create, stack)
 
 Run 'ship <command> --help' for more information on a command.`),
 );
@@ -82,6 +84,7 @@ export const command = ship.pipe(
     milestoneCommand,
     stackCommand,
     webhookCommand,
+    prCommand,
   ]),
 );
 
