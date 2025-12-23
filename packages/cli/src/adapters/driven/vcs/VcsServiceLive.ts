@@ -479,6 +479,28 @@ const make = Effect.gen(function* () {
       return name !== "default";
     });
 
+  // === Stack Navigation ===
+
+  const getChildChange = (): Effect.Effect<Change | null, VcsErrors> =>
+    Effect.gen(function* () {
+      // Get direct children of current working copy using @+ revset
+      // @+ means "direct children of @" (immediate descendants)
+      const output = yield* runJj("log", "-r", "@+", "-T", JJ_LOG_JSON_TEMPLATE, "--no-graph");
+      const children = yield* parseChanges(output);
+
+      if (children.length === 0) {
+        // No children
+        return null;
+      }
+
+      // If multiple children, prefer the first one (most recent by jj ordering)
+      // In stacked changes workflow, there's usually only one child
+      return children[0];
+    });
+
+  const editChange = (changeId: ChangeId): Effect.Effect<void, VcsErrors> =>
+    runJj("edit", changeId).pipe(Effect.asVoid);
+
   return {
     isAvailable,
     isRepo,
@@ -504,6 +526,9 @@ const make = Effect.gen(function* () {
     getWorkspaceRoot,
     getCurrentWorkspaceName,
     isNonDefaultWorkspace,
+    // Stack navigation
+    getChildChange,
+    editChange,
   };
 });
 

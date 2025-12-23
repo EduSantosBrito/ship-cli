@@ -210,6 +210,19 @@ interface StackAbandonResult {
   error?: string;
 }
 
+interface StackNavigateResult {
+  moved: boolean;
+  from?: {
+    changeId: string;
+    description: string;
+  };
+  to?: {
+    changeId: string;
+    description: string;
+  };
+  error?: string;
+}
+
 interface WebhookStartResult {
   started: boolean;
   pid?: number;
@@ -380,6 +393,9 @@ interface ShipService {
   }) => Effect.Effect<StackSubmitResult, ShipCommandError | JsonParseError>;
   readonly squashStack: (message: string, workdir?: string) => Effect.Effect<StackSquashResult, ShipCommandError | JsonParseError>;
   readonly abandonStack: (changeId?: string, workdir?: string) => Effect.Effect<StackAbandonResult, ShipCommandError | JsonParseError>;
+  // Stack navigation
+  readonly stackUp: (workdir?: string) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
+  readonly stackDown: (workdir?: string) => Effect.Effect<StackNavigateResult, ShipCommandError | JsonParseError>;
   // Webhook operations - use Ref for thread-safe process tracking
   readonly startWebhook: (events?: string) => Effect.Effect<WebhookStartResult, never>;
   readonly stopWebhook: () => Effect.Effect<WebhookStopResult, never>;
@@ -563,6 +579,19 @@ const makeShipService = Effect.gen(function* () {
       if (changeId) args.push(changeId);
       const output = yield* shell.run(args, workdir);
       return yield* parseJson<StackAbandonResult>(output);
+    });
+
+  // Stack navigation
+  const stackUp = (workdir?: string) =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "up", "--json"], workdir);
+      return yield* parseJson<StackNavigateResult>(output);
+    });
+
+  const stackDown = (workdir?: string) =>
+    Effect.gen(function* () {
+      const output = yield* shell.run(["stack", "down", "--json"], workdir);
+      return yield* parseJson<StackNavigateResult>(output);
     });
 
   // Webhook operations - uses module-level processToCleanup for persistence across tool calls
@@ -776,6 +805,8 @@ const makeShipService = Effect.gen(function* () {
     submitStack,
     squashStack,
     abandonStack,
+    stackUp,
+    stackDown,
     startWebhook,
     stopWebhook,
     getWebhookStatus,
@@ -1162,6 +1193,23 @@ Resolve conflicts with 'jj status' and edit the conflicted files.`;
         return `Abandoned ${result.changeId?.slice(0, 8) || "change"}\nWorking copy now at: ${result.newWorkingCopy?.slice(0, 8) || "unknown"}`;
       }
 
+      // Stack navigation
+      case "stack-up": {
+        const result = yield* ship.stackUp(args.workdir);
+        if (!result.moved) {
+          return result.error || "Already at the tip of the stack (no child change)";
+        }
+        return `Moved up in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
+      }
+
+      case "stack-down": {
+        const result = yield* ship.stackDown(args.workdir);
+        if (!result.moved) {
+          return result.error || "Already at the base of the stack (on trunk)";
+        }
+        return `Moved down in stack:\n  From: ${result.from?.changeId.slice(0, 8) || "unknown"} ${result.from?.description || ""}\n  To:   ${result.to?.changeId.slice(0, 8) || "unknown"} ${result.to?.description || ""}`;
+      }
+
       // Workspace operations - pass workdir for workspace support
       case "stack-workspaces": {
         const workspaces = yield* ship.listWorkspaces(args.workdir);
@@ -1343,6 +1391,8 @@ Run 'ship init' in the terminal first if not configured.`,
           "stack-submit",
           "stack-squash",
           "stack-abandon",
+          "stack-up",
+          "stack-down",
           "stack-workspaces",
           "stack-remove-workspace",
           "webhook-daemon-status",
@@ -1350,7 +1400,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-unsubscribe",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events)"
         ),
       taskId: createTool.schema
         .string()
