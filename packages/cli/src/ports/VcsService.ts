@@ -190,15 +190,16 @@ export interface VcsService {
   /**
    * Rebase changes onto a destination
    * @param source - The first change to rebase (and its descendants)
-   * @param destination - The destination to rebase onto (default: "main")
+   * @param destination - The destination to rebase onto (required - use config.git.defaultBranch for default)
    */
-  readonly rebase: (source: ChangeId, destination?: string) => Effect.Effect<void, VcsErrors>;
+  readonly rebase: (source: ChangeId, destination: string) => Effect.Effect<void, VcsErrors>;
 
   /**
    * Sync with remote: fetch and rebase stack onto trunk
    * This is the high-level operation that agents should use after PRs merge
+   * @param defaultBranch - The trunk branch to rebase onto (use config.git.defaultBranch)
    */
-  readonly sync: () => Effect.Effect<SyncResult, VcsErrors>;
+  readonly sync: (defaultBranch: string) => Effect.Effect<SyncResult, VcsErrors>;
 
   /**
    * Get parent change of current working copy

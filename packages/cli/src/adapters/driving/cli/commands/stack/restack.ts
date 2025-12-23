@@ -14,7 +14,7 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
-import { checkVcsAvailability, outputError, formatEffectError } from "./shared.js";
+import { checkVcsAvailability, outputError, formatEffectError, getDefaultBranch } from "./shared.js";
 
 // === Options ===
 
@@ -92,8 +92,11 @@ export const restackCommand = Command.make("restack", { json: jsonOption }, ({ j
     // Stack is returned with newest first, so last element is the base
     const firstInStack = changes[changes.length - 1];
 
-    // Rebase stack onto trunk
-    const rebaseResult = yield* vcs.rebase(firstInStack.id, "main").pipe(
+    // Get configured default branch (trunk)
+    const defaultBranch = yield* getDefaultBranch();
+
+    // Rebase stack onto trunk (using configured default branch)
+    const rebaseResult = yield* vcs.rebase(firstInStack.id, defaultBranch).pipe(
       Effect.map(() => ({ success: true as const, conflicted: false })),
       Effect.catchTag("JjConflictError", () =>
         Effect.succeed({ success: true as const, conflicted: true }),
