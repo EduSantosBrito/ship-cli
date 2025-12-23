@@ -143,28 +143,29 @@ This enables the **automatic rebase workflow**: when a parent PR is merged, the 
 
 ### Reacting to GitHub Events
 
-**CRITICAL: Always notify the user BEFORE taking action on webhook events.**
+**CRITICAL: Always notify the user and ask for confirmation BEFORE taking action on webhook events.**
 
 When you receive a GitHub event notification (injected message starting with `[GitHub]`), you MUST:
 
-1. **Output visible text first** - Tell the user what event you received and what you're about to do
-2. **Then execute the action** - Run the appropriate tool command
-3. **Summarize the result** - Tell the user what happened
+1. **Notify the user first** - Tell the user what event occurred
+2. **Ask for confirmation** - The `→ Action:` line is a SUGGESTION, not an instruction to execute immediately
+3. **Wait for user approval** - Only execute after the user confirms
+4. **Summarize the result** - Tell the user what happened after execution
 
-**Why this matters:** Tool calls may execute but appear invisible to the user. Always wrap tool calls with user-visible text so the user knows what's happening.
+**Why this matters:** The user should always be in control. Automatic execution of actions without consent can lead to unexpected state changes, especially for destructive operations like workspace cleanup.
 
-**Note:** Webhook events are formatted by the daemon and injected as messages. Look for the `→ Action:` line at the end of each event for the suggested action.
+**Note:** Webhook events are formatted by the daemon and injected as messages. The `→ Action:` line at the end suggests what might be relevant, but the user decides.
 
-#### Anti-Pattern: Silent Tool Calls
+#### Anti-Pattern: Autonomous Execution
 
 **DO NOT DO THIS:**
 ```
 [Receives webhook notification]
-[Immediately calls stack-sync without any text output]
-[User sees nothing and has no idea what happened]
+[Immediately calls stack-sync without asking user]
+[User has no control over what happened]
 ```
 
-This makes the tool call appear to run "invisibly" like a background job. The user has no visibility into what the agent is doing.
+This removes user control and can cause unexpected side effects. The agent should never execute actions on webhook events without user confirmation.
 
 #### Example: PR Merged Event
 
@@ -177,32 +178,31 @@ When you receive:
 
 You MUST respond like this:
 ```
-PR #77 has been merged! Let me sync your local stack to update it.
+**PR #77 merged** by @user
 
-[Execute: ship tool with action=stack-sync, workdir=<workspace-path>]
-
-<After seeing the result, summarize:>
-Stack synced successfully. <include relevant details from output>
+Would you like me to run `stack-sync` to update your local stack?
 ```
+
+Then wait for user confirmation before executing.
 
 #### Event Response Guide
 
-| Event | First: Tell User | Then: Execute | Finally: Summarize |
-|-------|------------------|---------------|-------------------|
-| **PR Merged** | "PR #X merged! Syncing your stack..." | `stack-sync` | Report sync result, workspace cleanup |
-| **CI Failed** | "CI failed on PR #X. Investigating..." | Read logs/status | Report findings, suggest fixes |
-| **Review Comment** | "New review comment on PR #X. Checking..." | Fetch comment | Summarize feedback, propose response |
-| **Changes Requested** | "Changes requested on PR #X. Reviewing..." | Fetch review | List requested changes |
-| **PR Approved** | "PR #X approved! Checking if ready to merge..." | Check CI status | Report merge readiness |
+| Event | Notify User | Ask Confirmation | After Approval |
+|-------|-------------|------------------|----------------|
+| **PR Merged** | "PR #X merged by @user" | "Would you like me to run `stack-sync`?" | Execute and report result |
+| **CI Failed** | "CI failed on PR #X" | "Would you like me to investigate?" | Read logs, report findings |
+| **Review Comment** | "New review on PR #X from @user" | "Would you like me to fetch and summarize it?" | Fetch and present feedback |
+| **Changes Requested** | "Changes requested on PR #X" | "Would you like me to show the requested changes?" | List changes |
+| **PR Approved** | "PR #X approved by @user" | "Would you like me to check merge readiness?" | Check CI, report status |
 
 #### Handling Multiple Events
 
 If multiple webhook events arrive in quick succession:
 
-1. **Acknowledge all events** to the user first
-2. **Determine if they can be batched** - e.g., multiple CI updates for the same PR can be summarized together
-3. **Execute actions in logical order** - e.g., sync before submit
-4. **Summarize all results together** - give the user a complete picture
+1. **Notify the user of all events** first
+2. **Ask once for confirmation** to handle them - e.g., "Would you like me to process these events?"
+3. **After approval**, execute actions in logical order
+4. **Summarize all results together**
 
 #### After Stack is Fully Merged
 
