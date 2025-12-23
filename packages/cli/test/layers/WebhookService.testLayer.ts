@@ -195,8 +195,9 @@ export const TestWebhookServiceLayer = (
             const state = yield* Ref.get(stateRef);
 
             // Check for existing webhook
+            // URL pattern is: https://api.github.com/repos/owner/repo/hooks/ID
             const existingWebhook = Array.from(state.webhooks.values()).find(
-              (w) => w.url.includes(input.repo.replace("/", "/repos/")),
+              (w) => w.url.includes(`/repos/${input.repo}/`),
             );
             if (existingWebhook) {
               return yield* Effect.fail(WebhookAlreadyExistsError.forRepo(input.repo));
@@ -276,8 +277,9 @@ export const TestWebhookServiceLayer = (
             yield* checkGlobalError;
 
             const state = yield* Ref.get(stateRef);
+            // URL pattern is: https://api.github.com/repos/owner/repo/hooks/ID
             return Array.from(state.webhooks.values()).filter((w) =>
-              w.url.includes(repo.replace("/", "/repos/")),
+              w.url.includes(`/repos/${repo}/`),
             );
           }),
 
