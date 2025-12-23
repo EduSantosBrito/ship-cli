@@ -87,6 +87,7 @@ export const updateCommand = Command.make(
         description: Option.isSome(description) ? Option.some(description.value) : Option.none(),
         priority: Option.isSome(priority) ? Option.some(priority.value as Priority) : Option.none(),
         status: Option.isSome(status) ? Option.some(status.value as TaskStatus) : Option.none(),
+        assigneeId: Option.none(),
       });
 
       const task = yield* issueRepo.updateTask(existingTask.id, input);

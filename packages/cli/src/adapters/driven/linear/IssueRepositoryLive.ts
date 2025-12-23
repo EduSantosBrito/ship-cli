@@ -206,6 +206,10 @@ const make = Effect.gen(function* () {
           updatePayload.priority = priorityToLinear(input.priority.value);
         }
 
+        if (Option.isSome(input.assigneeId)) {
+          updatePayload.assigneeId = input.assigneeId.value;
+        }
+
         if (Option.isSome(input.status)) {
           const issue = yield* Effect.tryPromise({
             try: (signal) => withAbortSignal(client.issue(id), signal),
