@@ -28,6 +28,9 @@
   "bin": {
     "ship": "./dist/bin.js"
   },
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },
