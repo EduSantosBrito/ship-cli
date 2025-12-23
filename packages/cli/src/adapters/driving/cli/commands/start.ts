@@ -88,6 +88,7 @@ export const startCommand = Command.make(
           priority: Option.none(),
           assigneeId: Option.some(viewer.id),
           parentId: Option.none(),
+          milestoneId: Option.none(),
         }),
       );
 
