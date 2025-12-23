@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Data from "effect/Data";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 
 // =============================================================================
 // Types & Errors
@@ -322,37 +323,59 @@ const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
   };
 
   /**
-   * Extract JSON from CLI output by finding the last valid JSON object or array.
+   * Schema for validating that a string is valid JSON.
+   * Uses Effect's Schema.parseJson() for safe, Effect-native JSON parsing.
+   */
+  const JsonString = Schema.parseJson();
+  const validateJson = Schema.decodeUnknownOption(JsonString);
+
+  /**
+   * Extract JSON from CLI output by finding valid JSON object or array.
    *
    * The CLI may output non-JSON content before the actual JSON response (e.g., spinner
    * output, progress messages). Additionally, task descriptions may contain JSON code
    * blocks which could be incorrectly matched if we search from the start.
    *
-   * This function searches backwards from the end to find the last `{` or `[` that
-   * starts a complete JSON value, ensuring we capture the actual response.
+   * This function finds all potential JSON start positions and validates each candidate
+   * using Schema.parseJson(). We prioritize top-level JSON (no leading whitespace) to
+   * avoid matching nested objects inside arrays.
    */
   const extractJson = (output: string): string => {
     // Find all potential JSON start positions (lines starting with { or [)
-    const matches = [...output.matchAll(/^\s*([\[{])/gm)];
+    // The regex captures leading whitespace to distinguish top-level vs nested JSON
+    const matches = [...output.matchAll(/^(\s*)([\[{])/gm)];
     if (matches.length === 0) {
       return output;
     }
 
-    // Try each match from the end (last match is most likely the actual response)
-    for (let i = matches.length - 1; i >= 0; i--) {
-      const match = matches[i];
-      if (match.index === undefined) continue;
+    // Separate top-level matches (no leading whitespace) from nested ones
+    const topLevelMatches: Array<{ index: number }> = [];
+    const nestedMatches: Array<{ index: number }> = [];
 
+    for (const match of matches) {
+      if (match.index === undefined) continue;
+      const leadingWhitespace = match[1];
+      // Top-level JSON starts at column 0 (no leading whitespace)
+      if (leadingWhitespace === "") {
+        topLevelMatches.push({ index: match.index });
+      } else {
+        nestedMatches.push({ index: match.index });
+      }
+    }
+
+    // Try top-level matches first (most likely to be the actual response)
+    // Then fall back to nested matches if needed
+    const orderedMatches = [...topLevelMatches, ...nestedMatches];
+
+    for (const match of orderedMatches) {
       const candidate = output.slice(match.index).trim();
-      // Quick validation: check if it looks like complete JSON
-      // (ends with } or ] after trimming)
-      const lastChar = candidate[candidate.length - 1];
-      if (lastChar === "}" || lastChar === "]") {
+      // Validate using Schema.parseJson() - returns Option.some if valid
+      if (validateJson(candidate)._tag === "Some") {
         return candidate;
       }
     }
 
-    // Fallback to original behavior if no valid JSON found
+    // Fallback to original output if no valid JSON found
     return output;
   };
 
