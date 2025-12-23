@@ -118,8 +118,8 @@ export const createTempJjRepo = (): Effect.Effect<
   Effect.gen(function* () {
     const tmpDir = yield* createTempDir("ship-test-");
 
-    // Initialize jj repository
-    yield* runJj(tmpDir, "init");
+    // Initialize jj repository with git backend
+    yield* runJj(tmpDir, "git", "init");
 
     // Configure test user (repository-scoped)
     yield* runJj(tmpDir, "config", "set", "--repo", "user.email", "test@example.com");
