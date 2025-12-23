@@ -269,4 +269,3 @@ Note: Workspace 'bri-123-feature' was deleted. Use the workdir above for subsequ
 
 After seeing this output, use \`workdir=/Users/dev/project\` for the next ship command.
 `;
-
