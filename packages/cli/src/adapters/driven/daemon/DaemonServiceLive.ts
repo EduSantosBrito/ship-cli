@@ -189,9 +189,10 @@ const runDaemonServer = (
       }
 
       // Make a direct HTTP call to the custom server URL
+      // Use URL constructor to properly handle base URLs with/without trailing slashes
       return Effect.tryPromise({
         try: async () => {
-          const url = `${serverUrl}/session/${sessionId}/prompt_async`;
+          const url = new URL(`/session/${sessionId}/prompt_async`, serverUrl).toString();
           const response = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
