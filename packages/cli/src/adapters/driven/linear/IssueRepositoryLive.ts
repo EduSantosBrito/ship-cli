@@ -894,21 +894,25 @@ const make = Effect.gen(function* () {
 
         // For each session label, check if it's still in use and delete if not
         for (const sessionLabel of sessionLabels) {
-          // Find issues using this label
+          // Find issues using this label (fetch a few to account for the current issue)
           const issuesWithLabel = yield* Effect.tryPromise({
             try: () =>
               client.issues({
                 filter: {
                   labels: { some: { id: { eq: sessionLabel.id } } },
                 },
-                first: 1, // We only need to know if at least one issue uses it
+                first: 5, // Fetch a few to check if any OTHER issues use it
               }),
             catch: (e) =>
               new LinearApiError({ message: `Failed to check label usage: ${e}`, cause: e }),
           });
 
-          // If no issues use this label, delete it (non-fatal if this fails)
-          if (issuesWithLabel.nodes.length === 0) {
+          // Filter out the current issue - due to Linear's eventual consistency,
+          // the issue we just updated might still appear in results
+          const otherIssuesUsingLabel = issuesWithLabel.nodes.filter((i) => i.id !== id);
+
+          // If no OTHER issues use this label, delete it (non-fatal if this fails)
+          if (otherIssuesUsingLabel.length === 0) {
             yield* Effect.tryPromise({
               try: () => client.deleteIssueLabel(sessionLabel.id),
               catch: (e) =>
