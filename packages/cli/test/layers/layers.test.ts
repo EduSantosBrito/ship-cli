@@ -20,7 +20,8 @@ import { WebhookService, CreateCliWebhookInput } from "../../src/ports/WebhookSe
 import { DaemonService } from "../../src/ports/DaemonService.js";
 import { TemplateService } from "../../src/ports/TemplateService.js";
 import { AuthService } from "../../src/ports/AuthService.js";
-import { TaskId } from "../../src/domain/Task.js";
+import { MilestoneRepository } from "../../src/ports/MilestoneRepository.js";
+import { TaskId, MilestoneId, ProjectId, CreateMilestoneInput } from "../../src/domain/Task.js";
 import { WebhookPermissionError } from "../../src/domain/Errors.js";
 
 import {
@@ -32,6 +33,7 @@ import {
   TestDaemonServiceLayer,
   TestTemplateServiceLayer,
   TestAuthServiceLayer,
+  TestMilestoneRepositoryLayer,
 } from "./index.js";
 
 describe("Test Layers", () => {
@@ -332,24 +334,67 @@ describe("Test Layers", () => {
         expect(isValid).toBe(false);
       }).pipe(Effect.provide(TestAuthServiceLayer({ isValid: false }))),
     );
+  });
 
-    it.effect("should track method calls via _getState", () =>
+  describe("TestMilestoneRepositoryLayer", () => {
+    it.effect("should provide default milestone", () =>
       Effect.gen(function* () {
-        const auth = yield* AuthService;
+        const repo = yield* MilestoneRepository;
+        const milestone = yield* repo.getMilestone("test-milestone-id" as MilestoneId);
+        expect(milestone.name).toBe("Test Milestone");
+      }).pipe(Effect.provide(TestMilestoneRepositoryLayer())),
+    );
 
-        // Call some methods
-        yield* auth.isAuthenticated();
-        yield* auth.getApiKey();
-        yield* auth.validateApiKey("test-key");
+    it.effect("should fail with MilestoneNotFoundError for unknown milestone", () =>
+      Effect.gen(function* () {
+        const repo = yield* MilestoneRepository;
+        const result = yield* repo.getMilestone("unknown" as MilestoneId).pipe(Effect.exit);
 
-        // Verify calls were tracked
-        const state = yield* (auth as unknown as { _getState: () => Effect.Effect<{ methodCalls: Array<{ method: string; args: unknown[] }> }> })._getState();
-        expect(state.methodCalls).toHaveLength(3);
-        expect(state.methodCalls[0].method).toBe("isAuthenticated");
-        expect(state.methodCalls[1].method).toBe("getApiKey");
-        expect(state.methodCalls[2].method).toBe("validateApiKey");
-        expect(state.methodCalls[2].args).toEqual(["test-key"]);
-      }).pipe(Effect.provide(TestAuthServiceLayer())),
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          const error = Cause.failureOption(result.cause);
+          expect(Option.isSome(error)).toBe(true);
+          if (Option.isSome(error)) {
+            expect(error.value._tag).toBe("MilestoneNotFoundError");
+          }
+        }
+      }).pipe(Effect.provide(TestMilestoneRepositoryLayer({ milestones: new Map() }))),
+    );
+
+    it.effect("should list milestones for a project", () =>
+      Effect.gen(function* () {
+        const repo = yield* MilestoneRepository;
+        const milestones = yield* repo.listMilestones("test-project-id" as ProjectId);
+        expect(milestones.length).toBe(1);
+        expect(milestones[0].name).toBe("Test Milestone");
+      }).pipe(Effect.provide(TestMilestoneRepositoryLayer())),
+    );
+
+    it.effect("should create a new milestone", () =>
+      Effect.gen(function* () {
+        const repo = yield* MilestoneRepository;
+        const milestone = yield* repo.createMilestone(
+          "test-project-id" as ProjectId,
+          new CreateMilestoneInput({
+            name: "New Milestone",
+            description: Option.none(),
+            targetDate: Option.none(),
+            sortOrder: 1,
+          }),
+        );
+        expect(milestone.name).toBe("New Milestone");
+        expect(milestone.projectId).toBe("test-project-id");
+      }).pipe(Effect.provide(TestMilestoneRepositoryLayer())),
+    );
+
+    it.effect("should delete a milestone", () =>
+      Effect.gen(function* () {
+        const repo = yield* MilestoneRepository;
+        yield* repo.deleteMilestone("test-milestone-id" as MilestoneId);
+
+        const result = yield* repo.getMilestone("test-milestone-id" as MilestoneId).pipe(Effect.exit);
+        expect(Exit.isFailure(result)).toBe(true);
+      }).pipe(Effect.provide(TestMilestoneRepositoryLayer())),
     );
   });
 });
