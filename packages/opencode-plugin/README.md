@@ -31,35 +31,62 @@ This plugin exposes the `ship` tool to OpenCode, enabling AI agents to:
 |--------|-------------|
 | `ready` | Find tasks with no blockers |
 | `list` | List all tasks with optional filters |
+| `blocked` | List tasks waiting on dependencies |
 | `show` | View task details |
 | `start` | Mark task as in progress |
 | `done` | Mark task as complete |
 | `create` | Create new tasks |
+| `update` | Modify task properties |
 | `block` / `unblock` | Manage task dependencies |
+| `relate` | Link related tasks |
+| `status` | Check ship configuration status |
 
 ### Stacked Changes (jj)
 
 | Action | Description |
 |--------|-------------|
 | `stack-create` | Create isolated workspace for a task |
+| `stack-describe` | Update change description |
 | `stack-sync` | Fetch and rebase onto trunk |
+| `stack-restack` | Rebase stack onto trunk (no fetch) |
 | `stack-submit` | Push and create/update PR |
 | `stack-status` | View current change info |
 | `stack-log` | View stack of changes |
+| `stack-squash` | Squash change into parent |
+| `stack-abandon` | Abandon a change |
+| `stack-up` / `stack-down` | Navigate stack |
+| `stack-undo` | Undo last jj operation |
+| `stack-update-stale` | Fix stale working copy |
+| `stack-bookmark` | Create or move bookmark |
+| `stack-workspaces` | List all workspaces |
+| `stack-remove-workspace` | Remove a workspace |
 
-### PR Workflow
+### PR Reviews
 
 | Action | Description |
 |--------|-------------|
-| `pr-review` | Fetch PR reviews in AI-friendly format |
-| `stack-submit` | Auto-creates PRs with Linear context |
+| `pr-reviews` | Fetch PR reviews in AI-friendly format |
 
 ### Webhooks
 
 | Action | Description |
 |--------|-------------|
+| `webhook-daemon-status` | Check webhook daemon status |
 | `webhook-subscribe` | Subscribe to PR events |
 | `webhook-unsubscribe` | Unsubscribe from events |
+| `webhook-cleanup` | Remove stale subscriptions |
+
+### Milestones
+
+| Action | Description |
+|--------|-------------|
+| `milestone-list` | List project milestones |
+| `milestone-show` | View milestone details |
+| `milestone-create` | Create new milestone |
+| `milestone-update` | Modify milestone |
+| `milestone-delete` | Delete milestone |
+| `task-set-milestone` | Assign task to milestone |
+| `task-unset-milestone` | Remove task from milestone |
 
 ## Skill Integration
 
