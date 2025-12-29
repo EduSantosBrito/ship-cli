@@ -6,7 +6,7 @@ export class TaskNotFoundError extends Data.TaggedError("TaskNotFoundError")<{
   readonly taskId: string;
   readonly cause?: unknown;
 }> {
-  get message() {
+  override get message() {
     return `Task not found: ${this.taskId}`;
   }
 }
@@ -15,7 +15,7 @@ export class MilestoneNotFoundError extends Data.TaggedError("MilestoneNotFoundE
   readonly milestoneId: string;
   readonly cause?: unknown;
 }> {
-  get message() {
+  override get message() {
     return `Milestone not found: ${this.milestoneId}`;
   }
 }

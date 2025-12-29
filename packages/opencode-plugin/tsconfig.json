@@ -16,6 +16,7 @@
     "plugins": [{ "name": "@effect/language-service" }],
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true
   },
