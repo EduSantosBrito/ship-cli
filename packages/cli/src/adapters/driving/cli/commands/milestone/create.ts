@@ -8,7 +8,7 @@ import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 import { MilestoneRepository } from "../../../../../ports/MilestoneRepository.js";
 import { CreateMilestoneInput } from "../../../../../domain/Task.js";
 import { nameToSlug } from "./shared.js";
-import { dryRunOption } from "../shared.js";
+import { dryRunOption, parseOptionalDate } from "../shared.js";
 
 const nameArg = Args.text({ name: "name" }).pipe(Args.withDescription("Milestone name"));
 
@@ -50,24 +50,12 @@ export const createMilestoneCommand = Command.make(
         return;
       }
 
-      // Parse target date if provided
-      const parsedDate = Option.match(targetDate, {
-        onNone: () => Option.none<Date>(),
-        onSome: (dateStr) => {
-          const date = new Date(dateStr);
-          if (isNaN(date.getTime())) {
-            return Option.none<Date>();
-          }
-          return Option.some(date);
-        },
-      });
-
-      // Warn if date parsing failed
-      if (Option.isSome(targetDate) && Option.isNone(parsedDate)) {
-        yield* Console.error(
-          `Warning: Could not parse date "${targetDate.value}". Expected format: YYYY-MM-DD`,
-        );
-      }
+      // Parse target date if provided (fails with InvalidDateError if invalid)
+      const parsedDate = yield* parseOptionalDate(targetDate, "targetDate").pipe(
+        Effect.catchTag("InvalidDateError", (e) =>
+          Console.error(e.message).pipe(Effect.as(Option.none<Date>())),
+        ),
+      );
 
       const input = new CreateMilestoneInput({
         name,
