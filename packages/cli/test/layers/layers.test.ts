@@ -19,6 +19,7 @@ import { PrService, CreatePrInput } from "../../src/ports/PrService.js";
 import { WebhookService, CreateCliWebhookInput } from "../../src/ports/WebhookService.js";
 import { DaemonService } from "../../src/ports/DaemonService.js";
 import { TemplateService } from "../../src/ports/TemplateService.js";
+import { AuthService } from "../../src/ports/AuthService.js";
 import { TaskId } from "../../src/domain/Task.js";
 import { WebhookPermissionError } from "../../src/domain/Errors.js";
 
@@ -30,6 +31,7 @@ import {
   TestWebhookServiceLayer,
   TestDaemonServiceLayer,
   TestTemplateServiceLayer,
+  TestAuthServiceLayer,
 } from "./index.js";
 
 describe("Test Layers", () => {
@@ -258,6 +260,96 @@ describe("Test Layers", () => {
           }
         }
       }).pipe(Effect.provide(TestTemplateServiceLayer({ templates: new Map() }))),
+    );
+  });
+
+  describe("TestAuthServiceLayer", () => {
+    it.effect("should report authenticated when API key exists", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+        const isAuthenticated = yield* auth.isAuthenticated();
+        expect(isAuthenticated).toBe(true);
+      }).pipe(Effect.provide(TestAuthServiceLayer())),
+    );
+
+    it.effect("should get API key when authenticated", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+        const apiKey = yield* auth.getApiKey();
+        expect(apiKey).toBe("test-api-key");
+      }).pipe(Effect.provide(TestAuthServiceLayer())),
+    );
+
+    it.effect("should fail with NotAuthenticatedError when no API key", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+        const result = yield* auth.getApiKey().pipe(Effect.exit);
+
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          const error = Cause.failureOption(result.cause);
+          expect(Option.isSome(error)).toBe(true);
+          if (Option.isSome(error)) {
+            expect(error.value._tag).toBe("NotAuthenticatedError");
+          }
+        }
+      }).pipe(Effect.provide(TestAuthServiceLayer({ apiKey: Option.none() }))),
+    );
+
+    it.effect("should save API key", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+        const result = yield* auth.saveApiKey("new-api-key");
+        expect(result.apiKey).toBe("new-api-key");
+
+        // Verify it's now retrievable
+        const apiKey = yield* auth.getApiKey();
+        expect(apiKey).toBe("new-api-key");
+      }).pipe(Effect.provide(TestAuthServiceLayer({ apiKey: Option.none() }))),
+    );
+
+    it.effect("should logout successfully", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+
+        // First verify we're authenticated
+        const before = yield* auth.isAuthenticated();
+        expect(before).toBe(true);
+
+        // Logout
+        yield* auth.logout();
+
+        // Verify we're no longer authenticated
+        const after = yield* auth.isAuthenticated();
+        expect(after).toBe(false);
+      }).pipe(Effect.provide(TestAuthServiceLayer())),
+    );
+
+    it.effect("should validate API key based on isValid state", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+        const isValid = yield* auth.validateApiKey("any-key");
+        expect(isValid).toBe(false);
+      }).pipe(Effect.provide(TestAuthServiceLayer({ isValid: false }))),
+    );
+
+    it.effect("should track method calls via _getState", () =>
+      Effect.gen(function* () {
+        const auth = yield* AuthService;
+
+        // Call some methods
+        yield* auth.isAuthenticated();
+        yield* auth.getApiKey();
+        yield* auth.validateApiKey("test-key");
+
+        // Verify calls were tracked
+        const state = yield* (auth as unknown as { _getState: () => Effect.Effect<{ methodCalls: Array<{ method: string; args: unknown[] }> }> })._getState();
+        expect(state.methodCalls).toHaveLength(3);
+        expect(state.methodCalls[0].method).toBe("isAuthenticated");
+        expect(state.methodCalls[1].method).toBe("getApiKey");
+        expect(state.methodCalls[2].method).toBe("validateApiKey");
+        expect(state.methodCalls[2].args).toEqual(["test-key"]);
+      }).pipe(Effect.provide(TestAuthServiceLayer())),
     );
   });
 });
