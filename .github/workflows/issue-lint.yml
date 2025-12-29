@@ -1,0 +1,89 @@
+name: Issue Lint
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  validate-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate issue body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const labels = context.payload.issue.labels.map(l => l.name);
+            const warnings = [];
+            
+            const isBugReport = labels.includes('type:bug');
+            const isFeatureRequest = labels.includes('type:feature');
+            
+            if (isBugReport) {
+              // Validate bug report format
+              const requiredSections = [
+                'Description',
+                'Steps to Reproduce',
+                'Expected Behavior',
+                'Actual Behavior'
+              ];
+              
+              for (const section of requiredSections) {
+                if (!body.includes(`## ${section}`)) {
+                  warnings.push(`Missing "## ${section}" section for bug reports`);
+                }
+              }
+            }
+            
+            if (isFeatureRequest) {
+              // Validate feature request format
+              const requiredSections = [
+                'Problem',
+                'Proposed Solution'
+              ];
+              
+              for (const section of requiredSections) {
+                if (!body.includes(`## ${section}`)) {
+                  warnings.push(`Missing "## ${section}" section for feature requests`);
+                }
+              }
+            }
+            
+            if (warnings.length > 0) {
+              // Check if we already posted a format check comment to avoid spam
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+              
+              const botCommentMarker = '**Issue Format Check**';
+              const existingComment = comments.find(c => 
+                c.user?.login === 'github-actions[bot]' && 
+                c.body?.includes(botCommentMarker)
+              );
+              
+              const commentBody = `${botCommentMarker}\n\nThe following sections appear to be missing:\n${warnings.map(w => `- ${w}`).join('\n')}\n\nPlease consider updating your issue to include these sections for better clarity.`;
+              
+              if (existingComment) {
+                // Update existing comment instead of creating a new one
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body: commentBody
+                });
+                console.log('Updated existing issue format check comment');
+              } else {
+                // Create new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody
+                });
+                console.log('Created issue format check comment');
+              }
+            } else {
+              console.log('Issue validation passed');
+            }
