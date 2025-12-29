@@ -112,9 +112,7 @@ export const parseChangeIdFromOutput = (output: string): Effect.Effect<ChangeId,
   // The (@) and extra spaces are optional for compatibility
   const match = output.match(/Working copy\s+(?:\(@\)\s+)?now at:\s+(\w+)/);
   if (!match) {
-    return Effect.fail(
-      new VcsError({ message: `Could not extract change ID from: ${output}` }),
-    );
+    return Effect.fail(new VcsError({ message: `Could not extract change ID from: ${output}` }));
   }
   return Effect.succeed(match[1] as ChangeId);
 };
