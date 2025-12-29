@@ -74,12 +74,13 @@ const make = Effect.gen(function* () {
           return yield* Effect.fail(new TaskError({ message: "Failed to create project" }));
         }
 
+        if (!result.project) {
+          return yield* Effect.fail(
+            new TaskError({ message: "Project not returned after create" }),
+          );
+        }
         const project = yield* Effect.tryPromise({
-          try: async () => {
-            const p = await result.project;
-            if (!p) throw new Error("Project not returned");
-            return p;
-          },
+          try: () => result.project!,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get created project: ${e}`, cause: e }),
         });

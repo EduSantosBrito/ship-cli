@@ -140,17 +140,19 @@ const make = Effect.gen(function* () {
           return yield* new TaskError({ message: "Failed to create milestone" });
         }
 
+        type MilestoneType = typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
         const milestone = yield* Effect.tryPromise({
-          try: async () => {
-            const m = await (result.projectMilestone as Promise<unknown>);
-            if (!m) throw new Error("Milestone not returned");
-            return m as typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
-          },
+          try: () => result.projectMilestone as Promise<MilestoneType | undefined>,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get created milestone: ${e}`, cause: e }),
         });
+        if (!milestone) {
+          return yield* Effect.fail(
+            new TaskError({ message: "Milestone not returned after create" }),
+          );
+        }
 
-        return mapMilestone(milestone!, projectId);
+        return mapMilestone(milestone, projectId);
       }),
       "Creating milestone",
     );
@@ -197,20 +199,22 @@ const make = Effect.gen(function* () {
           return yield* new TaskError({ message: "Failed to update milestone" });
         }
 
+        type MilestoneType = typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
         const milestone = yield* Effect.tryPromise({
-          try: async () => {
-            const m = await (result.projectMilestone as Promise<unknown>);
-            if (!m) throw new Error("Milestone not returned");
-            return m as typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
-          },
+          try: () => result.projectMilestone as Promise<MilestoneType | undefined>,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get updated milestone: ${e}`, cause: e }),
         });
+        if (!milestone) {
+          return yield* Effect.fail(
+            new TaskError({ message: "Milestone not returned after update" }),
+          );
+        }
 
         // Get the project ID from the milestone
         const project = yield* Effect.tryPromise({
           try: async () => {
-            const p = await (milestone!.project as Promise<unknown>);
+            const p = await (milestone.project as Promise<unknown>);
             return p as { id?: string } | undefined;
           },
           catch: (e) =>
@@ -221,7 +225,7 @@ const make = Effect.gen(function* () {
           return yield* new LinearApiError({ message: "Milestone has no associated project" });
         }
 
-        return mapMilestone(milestone!, project.id);
+        return mapMilestone(milestone, project.id);
       }),
       "Updating milestone",
     );

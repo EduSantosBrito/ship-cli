@@ -76,12 +76,11 @@ const make = Effect.gen(function* () {
           return yield* Effect.fail(new TaskError({ message: "Failed to create team" }));
         }
 
+        if (!result.team) {
+          return yield* Effect.fail(new TaskError({ message: "Team not returned after create" }));
+        }
         const team = yield* Effect.tryPromise({
-          try: async () => {
-            const t = await result.team;
-            if (!t) throw new Error("Team not returned");
-            return t;
-          },
+          try: () => result.team!,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get created team: ${e}`, cause: e }),
         });
