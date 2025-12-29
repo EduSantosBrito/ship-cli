@@ -89,3 +89,11 @@ export {
   type TestTemplateState,
   type TestTemplateService,
 } from "./TemplateService.testLayer.js";
+
+// AuthService test layer
+export {
+  TestAuthServiceLayer,
+  defaultTestAuthState,
+  type TestAuthState,
+  type TestAuthService,
+} from "./AuthService.testLayer.js";
