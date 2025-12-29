@@ -21,7 +21,8 @@ import { DaemonService } from "../../src/ports/DaemonService.js";
 import { TemplateService } from "../../src/ports/TemplateService.js";
 import { AuthService } from "../../src/ports/AuthService.js";
 import { MilestoneRepository } from "../../src/ports/MilestoneRepository.js";
-import { TaskId, MilestoneId, ProjectId, CreateMilestoneInput } from "../../src/domain/Task.js";
+import { TeamRepository } from "../../src/ports/TeamRepository.js";
+import { TaskId, MilestoneId, ProjectId, TeamId, CreateMilestoneInput } from "../../src/domain/Task.js";
 import { WebhookPermissionError } from "../../src/domain/Errors.js";
 
 import {
@@ -34,6 +35,7 @@ import {
   TestTemplateServiceLayer,
   TestAuthServiceLayer,
   TestMilestoneRepositoryLayer,
+  TestTeamRepositoryLayer,
 } from "./index.js";
 
 describe("Test Layers", () => {
@@ -395,6 +397,55 @@ describe("Test Layers", () => {
         const result = yield* repo.getMilestone("test-milestone-id" as MilestoneId).pipe(Effect.exit);
         expect(Exit.isFailure(result)).toBe(true);
       }).pipe(Effect.provide(TestMilestoneRepositoryLayer())),
+    );
+  });
+
+  describe("TestTeamRepositoryLayer", () => {
+    it.effect("should provide default team", () =>
+      Effect.gen(function* () {
+        const repo = yield* TeamRepository;
+        const teams = yield* repo.getTeams();
+        expect(teams.length).toBe(1);
+        expect(teams[0].name).toBe("Test Team");
+        expect(teams[0].key).toBe("TEST");
+      }).pipe(Effect.provide(TestTeamRepositoryLayer())),
+    );
+
+    it.effect("should get team by id", () =>
+      Effect.gen(function* () {
+        const repo = yield* TeamRepository;
+        const team = yield* repo.getTeam("test-team-id" as TeamId);
+        expect(team.name).toBe("Test Team");
+      }).pipe(Effect.provide(TestTeamRepositoryLayer())),
+    );
+
+    it.effect("should fail with TeamNotFoundError for unknown team", () =>
+      Effect.gen(function* () {
+        const repo = yield* TeamRepository;
+        const result = yield* repo.getTeam("unknown" as TeamId).pipe(Effect.exit);
+
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          const error = Cause.failureOption(result.cause);
+          expect(Option.isSome(error)).toBe(true);
+          if (Option.isSome(error)) {
+            expect(error.value._tag).toBe("TeamNotFoundError");
+          }
+        }
+      }).pipe(Effect.provide(TestTeamRepositoryLayer())),
+    );
+
+    it.effect("should create team successfully", () =>
+      Effect.gen(function* () {
+        const repo = yield* TeamRepository;
+        const team = yield* repo.createTeam({ name: "New Team", key: "NEW" });
+        expect(team.name).toBe("New Team");
+        expect(team.key).toBe("NEW");
+
+        // Verify it's in the list
+        const teams = yield* repo.getTeams();
+        expect(teams.length).toBe(2);
+      }).pipe(Effect.provide(TestTeamRepositoryLayer())),
     );
   });
 });

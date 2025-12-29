@@ -20,6 +20,15 @@ export class MilestoneNotFoundError extends Data.TaggedError("MilestoneNotFoundE
   }
 }
 
+export class TeamNotFoundError extends Data.TaggedError("TeamNotFoundError")<{
+  readonly teamId: string;
+  readonly cause?: unknown;
+}> {
+  override get message() {
+    return `Team not found: ${this.teamId}`;
+  }
+}
+
 export class TaskError extends Data.TaggedError("TaskError")<{
   readonly message: string;
   readonly cause?: unknown;
