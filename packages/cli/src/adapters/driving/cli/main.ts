@@ -69,5 +69,5 @@ export const command = ship.pipe(
 
 export const run = Command.run(command, {
   name: "ship",
-  version: "0.0.1",
+  version: __VERSION__,
 });
