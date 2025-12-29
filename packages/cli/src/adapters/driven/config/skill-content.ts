@@ -243,7 +243,7 @@ Every ship command includes contextual guidance in its output to help you unders
 ---
 Next: <suggested actions>
 Workdir: <path>           # Only shown when working directory changed
-Skill: skill(name="ship-cli")  # Only on entry points or complex situations
+IMPORTANT: Load skill first → skill(name="ship-cli")  # Only on entry points or complex situations
 Note: <contextual message>
 \`\`\`
 
@@ -263,7 +263,7 @@ Cleaned up workspace: bri-123-feature
 ---
 Next: action=done (mark task complete) | action=ready (find next task)
 Workdir: /Users/dev/project
-Skill: skill(name="ship-cli")
+IMPORTANT: Load skill first → skill(name="ship-cli")
 Note: Workspace 'bri-123-feature' was deleted. Use the workdir above for subsequent commands.
 \`\`\`
 

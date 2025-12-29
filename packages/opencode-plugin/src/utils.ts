@@ -174,7 +174,7 @@ export interface GuidanceOptions {
 export const addGuidance = (next: string, opts?: GuidanceOptions): string => {
   let g = `\n---\nNext: ${next}`;
   if (opts?.workdir) g += `\nWorkdir: ${opts.workdir}`;
-  if (opts?.skill) g += `\nSkill: skill(name="ship-cli")`;
+  if (opts?.skill) g += `\nIMPORTANT: Load skill first → skill(name="ship-cli")`;
   if (opts?.note) g += `\nNote: ${opts.note}`;
   return g;
 };
