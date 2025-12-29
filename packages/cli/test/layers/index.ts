@@ -106,3 +106,12 @@ export {
   type TestMilestoneState,
   type TestMilestoneRepository,
 } from "./MilestoneRepository.testLayer.js";
+
+// TeamRepository test layer
+export {
+  TestTeamRepositoryLayer,
+  defaultTestTeamState,
+  createTestTeam,
+  type TestTeamState,
+  type TestTeamRepository,
+} from "./TeamRepository.testLayer.js";

@@ -5,7 +5,7 @@ import * as Duration from "effect/Duration";
 import { TeamRepository, type CreateTeamInput } from "../../../ports/TeamRepository.js";
 import { LinearClientService } from "./LinearClient.js";
 import { Team, type TeamId } from "../../../domain/Task.js";
-import { LinearApiError, TaskError } from "../../../domain/Errors.js";
+import { LinearApiError, TaskError, TeamNotFoundError } from "../../../domain/Errors.js";
 import { mapTeam } from "./Mapper.js";
 
 // Retry policy: exponential backoff with max 3 retries
@@ -45,7 +45,7 @@ const make = Effect.gen(function* () {
       "Fetching teams",
     );
 
-  const getTeam = (id: TeamId): Effect.Effect<Team, LinearApiError> =>
+  const getTeam = (id: TeamId): Effect.Effect<Team, TeamNotFoundError | LinearApiError> =>
     withRetryAndTimeout(
       Effect.gen(function* () {
         const client = yield* linearClient.client();
@@ -53,6 +53,9 @@ const make = Effect.gen(function* () {
           try: () => client.team(id),
           catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
         });
+        if (!team) {
+          return yield* Effect.fail(new TeamNotFoundError({ teamId: id }));
+        }
         return mapTeam(team);
       }),
       "Fetching team",

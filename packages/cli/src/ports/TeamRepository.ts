@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type { Team, TeamId } from "../domain/Task.js";
-import type { LinearApiError, TaskError } from "../domain/Errors.js";
+import type { LinearApiError, TaskError, TeamNotFoundError } from "../domain/Errors.js";
 
 export interface CreateTeamInput {
   readonly name: string;
@@ -10,7 +10,7 @@ export interface CreateTeamInput {
 
 export interface TeamRepository {
   readonly getTeams: () => Effect.Effect<ReadonlyArray<Team>, LinearApiError>;
-  readonly getTeam: (id: TeamId) => Effect.Effect<Team, LinearApiError>;
+  readonly getTeam: (id: TeamId) => Effect.Effect<Team, TeamNotFoundError | LinearApiError>;
   readonly createTeam: (input: CreateTeamInput) => Effect.Effect<Team, TaskError | LinearApiError>;
 }
 
