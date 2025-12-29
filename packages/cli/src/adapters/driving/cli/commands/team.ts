@@ -5,8 +5,8 @@ import * as clack from "@clack/prompts";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { AuthService } from "../../../../ports/AuthService.js";
 import { TeamRepository } from "../../../../ports/TeamRepository.js";
+import { Prompts } from "../../../../ports/Prompts.js";
 import { LinearConfig } from "../../../../domain/Config.js";
-import { PromptCancelledError } from "../../../../domain/Errors.js";
 import type { Team, TeamId } from "../../../../domain/Task.js";
 
 const CREATE_NEW = "__create_new__" as const;
@@ -16,6 +16,7 @@ export const teamCommand = Command.make("team", {}, () =>
     const config = yield* ConfigRepository;
     const auth = yield* AuthService;
     const teamRepo = yield* TeamRepository;
+    const prompts = yield* Prompts;
 
     clack.intro("ship team");
 
@@ -53,65 +54,38 @@ export const teamCommand = Command.make("team", {}, () =>
         { value: CREATE_NEW, label: "Create new team..." },
       ];
 
-    const teamChoice = yield* Effect.tryPromise({
-      try: () =>
-        clack.select({
-          message: "Select a team",
-          options: teamOptions,
-        }),
-      catch: () => PromptCancelledError.default,
+    const teamChoice = yield* prompts.select({
+      message: "Select a team",
+      options: teamOptions,
     });
-
-    if (clack.isCancel(teamChoice)) {
-      clack.cancel("Cancelled");
-      return;
-    }
 
     let selectedTeam: Team;
 
     if (teamChoice === CREATE_NEW) {
       // Create new team
-      const teamName = yield* Effect.tryPromise({
-        try: () =>
-          clack.text({
-            message: "Team name",
-            placeholder: "My Team",
-            validate: (v) => (!v ? "Name is required" : undefined),
-          }),
-        catch: () => PromptCancelledError.default,
+      const teamName = yield* prompts.text({
+        message: "Team name",
+        placeholder: "My Team",
+        validate: (v) => (!v ? "Name is required" : undefined),
       });
 
-      if (clack.isCancel(teamName)) {
-        clack.cancel("Cancelled");
-        return;
-      }
-
-      const teamKey = yield* Effect.tryPromise({
-        try: () =>
-          clack.text({
-            message: "Team key (short identifier, e.g. ENG)",
-            placeholder: "ENG",
-            validate: (v) => {
-              if (!v) return "Key is required";
-              if (!/^[A-Z]{2,5}$/.test(v.toUpperCase())) return "Key must be 2-5 uppercase letters";
-              return undefined;
-            },
-          }),
-        catch: () => PromptCancelledError.default,
+      const teamKey = yield* prompts.text({
+        message: "Team key (short identifier, e.g. ENG)",
+        placeholder: "ENG",
+        validate: (v) => {
+          if (!v) return "Key is required";
+          if (!/^[A-Z]{2,5}$/.test(v.toUpperCase())) return "Key must be 2-5 uppercase letters";
+          return undefined;
+        },
       });
-
-      if (clack.isCancel(teamKey)) {
-        clack.cancel("Cancelled");
-        return;
-      }
 
       const createSpinner = clack.spinner();
       createSpinner.start("Creating team...");
 
       selectedTeam = yield* teamRepo
         .createTeam({
-          name: teamName as string,
-          key: (teamKey as string).toUpperCase(),
+          name: teamName,
+          key: teamKey.toUpperCase(),
         })
         .pipe(
           Effect.tap((team) => Effect.sync(() => createSpinner.stop(`Created team: ${team.key}`))),

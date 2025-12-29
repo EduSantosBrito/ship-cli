@@ -7,8 +7,8 @@ import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { AuthService } from "../../../../ports/AuthService.js";
 import { TeamRepository } from "../../../../ports/TeamRepository.js";
 import { ProjectRepository } from "../../../../ports/ProjectRepository.js";
+import { Prompts } from "../../../../ports/Prompts.js";
 import { LinearConfig } from "../../../../domain/Config.js";
-import { PromptCancelledError } from "../../../../domain/Errors.js";
 import type { Team, Project } from "../../../../domain/Task.js";
 
 const teamOption = Options.text("team").pipe(
@@ -32,6 +32,7 @@ export const initCommand = Command.make(
       const auth = yield* AuthService;
       const teamRepo = yield* TeamRepository;
       const projectRepo = yield* ProjectRepository;
+      const prompts = yield* Prompts;
 
       clack.intro("ship init");
 
@@ -57,29 +58,20 @@ export const initCommand = Command.make(
           "Linear Authentication",
         );
 
-        const apiKey = yield* Effect.tryPromise({
-          try: () =>
-            clack.text({
-              message: "Paste your API key",
-              placeholder: "lin_api_...",
-              validate: (value) => {
-                if (!value) return "API key is required";
-                if (!value.startsWith("lin_api_")) return "API key should start with lin_api_";
-                return undefined;
-              },
-            }),
-          catch: () => PromptCancelledError.default,
+        const apiKey = yield* prompts.text({
+          message: "Paste your API key",
+          placeholder: "lin_api_...",
+          validate: (value) => {
+            if (!value) return "API key is required";
+            if (!value.startsWith("lin_api_")) return "API key should start with lin_api_";
+            return undefined;
+          },
         });
-
-        if (clack.isCancel(apiKey)) {
-          clack.cancel("Setup cancelled");
-          return;
-        }
 
         const spinner = clack.spinner();
         spinner.start("Validating API key...");
 
-        yield* auth.saveApiKey(apiKey as string).pipe(
+        yield* auth.saveApiKey(apiKey).pipe(
           Effect.tap(() => Effect.sync(() => spinner.stop("Authenticated"))),
           Effect.tapError(() => Effect.sync(() => spinner.stop("Invalid API key"))),
         );
@@ -117,22 +109,13 @@ export const initCommand = Command.make(
         selectedTeam = teams[0]!;
         clack.log.success(`Using team: ${selectedTeam.key} - ${selectedTeam.name}`);
       } else {
-        const teamChoice = yield* Effect.tryPromise({
-          try: () =>
-            clack.select({
-              message: "Select a team",
-              options: teams.map((t) => ({
-                value: t.id,
-                label: `${t.key} - ${t.name}`,
-              })),
-            }),
-          catch: () => PromptCancelledError.default,
+        const teamChoice = yield* prompts.select({
+          message: "Select a team",
+          options: teams.map((t) => ({
+            value: t.id,
+            label: `${t.key} - ${t.name}`,
+          })),
         });
-
-        if (clack.isCancel(teamChoice)) {
-          clack.cancel("Setup cancelled");
-          return;
-        }
 
         selectedTeam = teams.find((t) => t.id === teamChoice)!;
       }
@@ -154,25 +137,16 @@ export const initCommand = Command.make(
           );
         }
       } else if (projects.length > 0) {
-        const projectChoice = yield* Effect.tryPromise({
-          try: () =>
-            clack.select({
-              message: "Select a project (optional)",
-              options: [
-                { value: null, label: "No project filter" },
-                ...projects.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                })),
-              ],
-            }),
-          catch: () => PromptCancelledError.default,
+        const projectChoice = yield* prompts.select({
+          message: "Select a project (optional)",
+          options: [
+            { value: null as string | null, label: "No project filter" },
+            ...projects.map((p) => ({
+              value: p.id as string | null,
+              label: p.name,
+            })),
+          ],
         });
-
-        if (clack.isCancel(projectChoice)) {
-          clack.cancel("Setup cancelled");
-          return;
-        }
 
         if (projectChoice) {
           selectedProject = projects.find((p) => p.id === projectChoice);

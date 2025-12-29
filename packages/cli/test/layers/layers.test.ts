@@ -24,6 +24,7 @@ import { MilestoneRepository } from "../../src/ports/MilestoneRepository.js";
 import { TeamRepository } from "../../src/ports/TeamRepository.js";
 import { ProjectRepository } from "../../src/ports/ProjectRepository.js";
 import { OpenCodeService, SessionId } from "../../src/ports/OpenCodeService.js";
+import { Prompts } from "../../src/ports/Prompts.js";
 import { TaskId, MilestoneId, ProjectId, TeamId, CreateMilestoneInput } from "../../src/domain/Task.js";
 import { WebhookPermissionError } from "../../src/domain/Errors.js";
 
@@ -40,6 +41,7 @@ import {
   TestTeamRepositoryLayer,
   TestProjectRepositoryLayer,
   TestOpenCodeServiceLayer,
+  TestPromptsLayer,
 } from "./index.js";
 
 describe("Test Layers", () => {
@@ -552,6 +554,116 @@ describe("Test Layers", () => {
           }
         }
       }).pipe(Effect.provide(TestOpenCodeServiceLayer({ isAvailable: false }))),
+    );
+  });
+
+  describe("TestPromptsLayer", () => {
+    it.effect("should return configured text response", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.text({ message: "Enter API key" });
+        expect(result).toBe("lin_api_test");
+      }).pipe(Effect.provide(TestPromptsLayer({ textResponses: ["lin_api_test"] }))),
+    );
+
+    it.effect("should return empty string when no text responses queued", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.text({ message: "Enter API key" });
+        expect(result).toBe("");
+      }).pipe(Effect.provide(TestPromptsLayer({ textResponses: [] }))),
+    );
+
+    it.effect("should consume text responses in order", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const first = yield* prompts.text({ message: "First" });
+        const second = yield* prompts.text({ message: "Second" });
+        expect(first).toBe("first-response");
+        expect(second).toBe("second-response");
+      }).pipe(
+        Effect.provide(
+          TestPromptsLayer({ textResponses: ["first-response", "second-response"] }),
+        ),
+      ),
+    );
+
+    it.effect("should fail with PromptCancelledError when shouldCancel is true", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.text({ message: "Enter API key" }).pipe(Effect.exit);
+
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          const error = Cause.failureOption(result.cause);
+          expect(Option.isSome(error)).toBe(true);
+          if (Option.isSome(error)) {
+            expect(error.value._tag).toBe("PromptCancelledError");
+          }
+        }
+      }).pipe(Effect.provide(TestPromptsLayer({ shouldCancel: true }))),
+    );
+
+    it.effect("should return configured select response", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.select({
+          message: "Select team",
+          options: [
+            { value: "team-1", label: "Team 1" },
+            { value: "team-2", label: "Team 2" },
+          ],
+        });
+        expect(result).toBe("team-1");
+      }).pipe(Effect.provide(TestPromptsLayer({ selectResponses: ["team-1"] }))),
+    );
+
+    it.effect("should return first option when no select responses queued", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.select({
+          message: "Select team",
+          options: [
+            { value: "default-team", label: "Default" },
+            { value: "other-team", label: "Other" },
+          ],
+        });
+        expect(result).toBe("default-team");
+      }).pipe(Effect.provide(TestPromptsLayer({ selectResponses: [] }))),
+    );
+
+    it.effect("should return configured confirm response", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.confirm({ message: "Continue?" });
+        expect(result).toBe(false);
+      }).pipe(Effect.provide(TestPromptsLayer({ confirmResponses: [false] }))),
+    );
+
+    it.effect("should return true when no confirm responses queued", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        const result = yield* prompts.confirm({ message: "Continue?" });
+        expect(result).toBe(true);
+      }).pipe(Effect.provide(TestPromptsLayer({ confirmResponses: [] }))),
+    );
+
+    it.effect("should track method calls", () =>
+      Effect.gen(function* () {
+        const prompts = yield* Prompts;
+        yield* prompts.text({ message: "API key" });
+        yield* prompts.confirm({ message: "Continue?" });
+
+        // Access the test helper to verify calls
+        const testPrompts = prompts as unknown as {
+          _getState: () => Effect.Effect<{ methodCalls: Array<{ method: string; args: unknown[] }> }>;
+        };
+        const state = yield* testPrompts._getState();
+
+        expect(state.methodCalls).toHaveLength(2);
+        expect(state.methodCalls[0].method).toBe("text");
+        expect(state.methodCalls[1].method).toBe("confirm");
+      }).pipe(Effect.provide(TestPromptsLayer({ textResponses: ["test"] }))),
     );
   });
 });

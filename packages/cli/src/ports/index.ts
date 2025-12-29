@@ -10,3 +10,4 @@ export * from "./WebhookService.js";
 export * from "./OpenCodeService.js";
 export * from "./DaemonService.js";
 export * from "./TemplateService.js";
+export * from "./Prompts.js";
