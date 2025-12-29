@@ -227,6 +227,49 @@ export interface WebhookCleanupResult {
   error?: string;
 }
 
+// PR Review types
+// Note: This type mirrors ReviewOutput from CLI's review.ts
+// Kept separate for plugin isolation (plugin doesn't depend on CLI package)
+export interface PrReviewOutput {
+  prNumber: number;
+  prTitle?: string;
+  prUrl?: string;
+  reviews: Array<{
+    id: number;
+    author: string;
+    state: string;
+    body: string;
+    submittedAt: string;
+  }>;
+  codeComments: Array<{
+    id: number;
+    path: string;
+    line: number | null;
+    body: string;
+    author: string;
+    createdAt: string;
+    inReplyToId: number | null;
+    diffHunk?: string;
+  }>;
+  conversationComments: Array<{
+    id: number;
+    body: string;
+    author: string;
+    createdAt: string;
+  }>;
+  commentsByFile: Record<
+    string,
+    Array<{
+      line: number | null;
+      author: string;
+      body: string;
+      id: number;
+      diffHunk?: string;
+    }>
+  >;
+  error?: string;
+}
+
 // =============================================================================
 // Shell Service
 // =============================================================================
@@ -412,6 +455,12 @@ export interface ShipService {
   readonly unsetTaskMilestone: (
     taskId: string,
   ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
+  // PR review operations
+  readonly getPrReviews: (
+    prNumber?: number,
+    unresolved?: boolean,
+    workdir?: string,
+  ) => Effect.Effect<PrReviewOutput, ShipCommandError | JsonParseError>;
 }
 
 export const ShipServiceTag = Context.GenericTag<ShipService>("ShipService");
@@ -777,6 +826,20 @@ export const makeShipService = Effect.gen(function* () {
       return response.task;
     });
 
+  // PR reviews operations
+  const getPrReviews = (
+    prNumber?: number,
+    unresolved?: boolean,
+    workdir?: string,
+  ): Effect.Effect<PrReviewOutput, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const args = ["pr", "reviews", "--json"];
+      if (unresolved) args.push("--unresolved");
+      if (prNumber !== undefined) args.push(String(prNumber));
+      const output = yield* shell.run(args, workdir);
+      return yield* parseJson<PrReviewOutput>(output);
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -817,5 +880,6 @@ export const makeShipService = Effect.gen(function* () {
     deleteMilestone,
     setTaskMilestone,
     unsetTaskMilestone,
+    getPrReviews,
   } satisfies ShipService;
 });
