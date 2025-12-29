@@ -20,3 +20,6 @@ Closes #
 - [ ] Linting passes (`pnpm lint`)
 - [ ] Type checking passes (`pnpm check`)
 - [ ] Documentation updated (if applicable)
+
+<!-- AI Disclosure: Set to "true" if this PR was created with AI assistance -->
+<!-- ai-assisted: false -->
