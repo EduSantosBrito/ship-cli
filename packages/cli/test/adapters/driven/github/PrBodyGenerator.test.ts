@@ -1,4 +1,5 @@
 import { describe, it, expect } from "@effect/vitest"
+import * as Option from "effect/Option"
 import {
   generatePrBody,
   generateMinimalPrBody,
@@ -48,51 +49,51 @@ const makeChange = (
 describe("PrBodyGenerator", () => {
   describe("parseTaskIdentifierFromBookmark", () => {
     it("should parse identifier from user/TASK-123-feature format", () => {
-      expect(parseTaskIdentifierFromBookmark("user/BRI-123-feature-name")).toBe("BRI-123")
+      expect(parseTaskIdentifierFromBookmark("user/BRI-123-feature-name")).toStrictEqual(Option.some("BRI-123"))
     })
 
     it("should parse identifier from lowercase user/task-123-feature format", () => {
-      expect(parseTaskIdentifierFromBookmark("edusantosbrito/bri-456-add-feature")).toBe("BRI-456")
+      expect(parseTaskIdentifierFromBookmark("edusantosbrito/bri-456-add-feature")).toStrictEqual(Option.some("BRI-456"))
     })
 
     it("should parse identifier from TASK-123-feature format (no user prefix)", () => {
-      expect(parseTaskIdentifierFromBookmark("BRI-789-some-task")).toBe("BRI-789")
+      expect(parseTaskIdentifierFromBookmark("BRI-789-some-task")).toStrictEqual(Option.some("BRI-789"))
     })
 
     it("should parse identifier from just task-123 format", () => {
-      expect(parseTaskIdentifierFromBookmark("bri-100")).toBe("BRI-100")
+      expect(parseTaskIdentifierFromBookmark("bri-100")).toStrictEqual(Option.some("BRI-100"))
     })
 
     it("should handle various team prefixes", () => {
-      expect(parseTaskIdentifierFromBookmark("ENG-42-fix")).toBe("ENG-42")
-      expect(parseTaskIdentifierFromBookmark("SHIP-1-init")).toBe("SHIP-1")
-      expect(parseTaskIdentifierFromBookmark("user/FE-999-component")).toBe("FE-999")
+      expect(parseTaskIdentifierFromBookmark("ENG-42-fix")).toStrictEqual(Option.some("ENG-42"))
+      expect(parseTaskIdentifierFromBookmark("SHIP-1-init")).toStrictEqual(Option.some("SHIP-1"))
+      expect(parseTaskIdentifierFromBookmark("user/FE-999-component")).toStrictEqual(Option.some("FE-999"))
     })
 
     it("should handle single letter prefixes", () => {
-      expect(parseTaskIdentifierFromBookmark("X-123-task")).toBe("X-123")
-      expect(parseTaskIdentifierFromBookmark("user/A-1-fix")).toBe("A-1")
+      expect(parseTaskIdentifierFromBookmark("X-123-task")).toStrictEqual(Option.some("X-123"))
+      expect(parseTaskIdentifierFromBookmark("user/A-1-fix")).toStrictEqual(Option.some("A-1"))
     })
 
     it("should handle longer team prefixes up to 10 letters", () => {
-      expect(parseTaskIdentifierFromBookmark("MYTEAM-456-feature")).toBe("MYTEAM-456")
-      expect(parseTaskIdentifierFromBookmark("user/ABCDEFGHIJ-789")).toBe("ABCDEFGHIJ-789") // 10 letters
+      expect(parseTaskIdentifierFromBookmark("MYTEAM-456-feature")).toStrictEqual(Option.some("MYTEAM-456"))
+      expect(parseTaskIdentifierFromBookmark("user/ABCDEFGHIJ-789")).toStrictEqual(Option.some("ABCDEFGHIJ-789")) // 10 letters
     })
 
-    it("should return null for bookmarks without task identifier", () => {
-      expect(parseTaskIdentifierFromBookmark("main")).toBeNull()
-      expect(parseTaskIdentifierFromBookmark("feature/my-feature")).toBeNull()
-      expect(parseTaskIdentifierFromBookmark("hotfix-urgent")).toBeNull()
+    it("should return None for bookmarks without task identifier", () => {
+      expect(parseTaskIdentifierFromBookmark("main")).toStrictEqual(Option.none())
+      expect(parseTaskIdentifierFromBookmark("feature/my-feature")).toStrictEqual(Option.none())
+      expect(parseTaskIdentifierFromBookmark("hotfix-urgent")).toStrictEqual(Option.none())
     })
 
-    it("should return null for empty string", () => {
-      expect(parseTaskIdentifierFromBookmark("")).toBeNull()
+    it("should return None for empty string", () => {
+      expect(parseTaskIdentifierFromBookmark("")).toStrictEqual(Option.none())
     })
 
     it("should return uppercase identifier regardless of input case", () => {
-      expect(parseTaskIdentifierFromBookmark("bri-123")).toBe("BRI-123")
-      expect(parseTaskIdentifierFromBookmark("Bri-123")).toBe("BRI-123")
-      expect(parseTaskIdentifierFromBookmark("BRI-123")).toBe("BRI-123")
+      expect(parseTaskIdentifierFromBookmark("bri-123")).toStrictEqual(Option.some("BRI-123"))
+      expect(parseTaskIdentifierFromBookmark("Bri-123")).toStrictEqual(Option.some("BRI-123"))
+      expect(parseTaskIdentifierFromBookmark("BRI-123")).toStrictEqual(Option.some("BRI-123"))
     })
   })
 

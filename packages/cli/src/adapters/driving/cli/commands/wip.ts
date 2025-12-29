@@ -18,14 +18,14 @@ const jsonOption = Options.boolean("json").pipe(
  * Extract task identifier from bookmark name.
  * Requires identifier at start or after a slash to avoid false positives.
  * @example
- * parseTaskIdentifier("bri-123-feature") // "BRI-123"
- * parseTaskIdentifier("user/bri-123-feature") // "BRI-123"
- * parseTaskIdentifier("feature-add-123-items") // null (not at start or after /)
+ * parseTaskIdentifier("bri-123-feature") // Option.some("BRI-123")
+ * parseTaskIdentifier("user/bri-123-feature") // Option.some("BRI-123")
+ * parseTaskIdentifier("feature-add-123-items") // Option.none() (not at start or after /)
  */
-export const parseTaskIdentifier = (bookmark: string): string | null => {
+export const parseTaskIdentifier = (bookmark: string): Option.Option<string> => {
   // Match 2-5 letter prefix followed by dash and number, at start or after /
   const match = bookmark.match(/(?:^|\/)([a-zA-Z]{2,5}-\d+)/i);
-  return match ? match[1].toUpperCase() : null;
+  return Option.fromNullable(match?.[1]?.toUpperCase());
 };
 
 /** Truncate string with ellipsis if too long */
@@ -122,10 +122,10 @@ export const wipCommand = Command.make("wip", { json: jsonOption }, ({ json }) =
     const bookmarkToChange = new Map<string, { change: Change; bookmark: string }>();
     for (const change of changes) {
       for (const bookmark of change.bookmarks) {
-        const taskId = parseTaskIdentifier(bookmark);
-        if (taskId) {
-          bookmarkToChange.set(taskId, { change, bookmark });
-        }
+        Option.match(parseTaskIdentifier(bookmark), {
+          onNone: () => {},
+          onSome: (taskId) => bookmarkToChange.set(taskId, { change, bookmark }),
+        });
       }
     }
 
@@ -171,14 +171,18 @@ export const wipCommand = Command.make("wip", { json: jsonOption }, ({ json }) =
 
     for (const change of changes) {
       for (const bookmark of change.bookmarks) {
-        const taskId = parseTaskIdentifier(bookmark);
-        if (taskId && !inProgressIdentifiers.has(taskId)) {
-          orphanedChanges.push({
-            change,
-            bookmark,
-            taskIdentifier: taskId,
-          });
-        }
+        Option.match(parseTaskIdentifier(bookmark), {
+          onNone: () => {},
+          onSome: (taskId) => {
+            if (!inProgressIdentifiers.has(taskId)) {
+              orphanedChanges.push({
+                change,
+                bookmark,
+                taskIdentifier: taskId,
+              });
+            }
+          },
+        });
       }
     }
 
