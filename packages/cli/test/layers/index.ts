@@ -97,3 +97,12 @@ export {
   type TestAuthState,
   type TestAuthService,
 } from "./AuthService.testLayer.js";
+
+// MilestoneRepository test layer
+export {
+  TestMilestoneRepositoryLayer,
+  defaultTestMilestoneState,
+  createTestMilestone,
+  type TestMilestoneState,
+  type TestMilestoneRepository,
+} from "./MilestoneRepository.testLayer.js";
