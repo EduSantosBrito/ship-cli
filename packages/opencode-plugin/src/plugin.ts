@@ -633,19 +633,19 @@ const makeShipService = Effect.gen(function* () {
 
   const getReadyTasks = () =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["ready", "--json"]);
+      const output = yield* shell.run(["task", "ready", "--json"]);
       return yield* parseJson<ShipTask[]>(output);
     });
 
   const getBlockedTasks = () =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["blocked", "--json"]);
+      const output = yield* shell.run(["task", "blocked", "--json"]);
       return yield* parseJson<ShipTask[]>(output);
     });
 
   const listTasks = (filter?: { status?: string; priority?: string; mine?: boolean }) =>
     Effect.gen(function* () {
-      const args = ["list", "--json"];
+      const args = ["task", "list", "--json"];
       if (filter?.status) args.push("--status", filter.status);
       if (filter?.priority) args.push("--priority", filter.priority);
       if (filter?.mine) args.push("--mine");
@@ -656,12 +656,12 @@ const makeShipService = Effect.gen(function* () {
 
   const getTask = (taskId: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["show", "--json", taskId]);
+      const output = yield* shell.run(["task", "show", "--json", taskId]);
       return yield* parseJson<ShipTask>(output);
     });
 
   const startTask = (taskId: string, sessionId?: string) => {
-    const args = ["start"];
+    const args = ["task", "start"];
     if (sessionId) {
       args.push("--session", sessionId);
     }
@@ -669,7 +669,7 @@ const makeShipService = Effect.gen(function* () {
     return shell.run(args).pipe(Effect.asVoid);
   };
 
-  const completeTask = (taskId: string) => shell.run(["done", taskId]).pipe(Effect.asVoid);
+  const completeTask = (taskId: string) => shell.run(["task", "done", taskId]).pipe(Effect.asVoid);
 
   const createTask = (input: {
     title: string;
@@ -678,7 +678,7 @@ const makeShipService = Effect.gen(function* () {
     parentId?: string;
   }) =>
     Effect.gen(function* () {
-      const args = ["create", "--json"];
+      const args = ["task", "create", "--json"];
       if (input.description) args.push("--description", input.description);
       if (input.priority) args.push("--priority", input.priority);
       if (input.parentId) args.push("--parent", input.parentId);
@@ -700,7 +700,7 @@ const makeShipService = Effect.gen(function* () {
     },
   ) =>
     Effect.gen(function* () {
-      const args = ["update", "--json"];
+      const args = ["task", "update", "--json"];
       if (input.title) args.push("--title", input.title);
       if (input.description) args.push("--description", input.description);
       if (input.priority) args.push("--priority", input.priority);
@@ -714,13 +714,13 @@ const makeShipService = Effect.gen(function* () {
     });
 
   const addBlocker = (blocker: string, blocked: string) =>
-    shell.run(["block", blocker, blocked]).pipe(Effect.asVoid);
+    shell.run(["task", "block", blocker, blocked]).pipe(Effect.asVoid);
 
   const removeBlocker = (blocker: string, blocked: string) =>
-    shell.run(["unblock", blocker, blocked]).pipe(Effect.asVoid);
+    shell.run(["task", "unblock", blocker, blocked]).pipe(Effect.asVoid);
 
   const relateTask = (taskId: string, relatedTaskId: string) =>
-    shell.run(["relate", taskId, relatedTaskId]).pipe(Effect.asVoid);
+    shell.run(["task", "relate", taskId, relatedTaskId]).pipe(Effect.asVoid);
 
   // Stack operations - all accept optional workdir for workspace support
   const getStackLog = (workdir?: string) =>
@@ -1097,7 +1097,7 @@ const makeShipService = Effect.gen(function* () {
     milestoneId: string,
   ): Effect.Effect<ShipTask, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
-      const args = ["update", "--json", "--milestone", milestoneId, taskId];
+      const args = ["task", "update", "--json", "--milestone", milestoneId, taskId];
       const output = yield* shell.run(args);
       const response = yield* parseJson<{ task: ShipTask }>(output);
       return response.task;
@@ -1108,7 +1108,7 @@ const makeShipService = Effect.gen(function* () {
   ): Effect.Effect<ShipTask, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       // Empty string removes milestone
-      const args = ["update", "--json", "--milestone", "", taskId];
+      const args = ["task", "update", "--json", "--milestone", "", taskId];
       const output = yield* shell.run(args);
       const response = yield* parseJson<{ task: ShipTask }>(output);
       return response.task;
