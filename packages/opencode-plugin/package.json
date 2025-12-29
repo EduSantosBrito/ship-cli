@@ -45,8 +45,8 @@
     "effect": "^3.19.13"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.62.4",
-    "@effect/vitest": "^0.25.1",
+    "@effect/language-service": "^0.63.2",
+    "@effect/vitest": "^0.27.0",
     "@types/bun": "latest",
     "@types/node": "^25.0.3",
     "oxfmt": "^0.21.0",
