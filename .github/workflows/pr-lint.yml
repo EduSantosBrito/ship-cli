@@ -1,0 +1,88 @@
+name: PR Lint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Validate PR title
+        run: echo "${{ github.event.pull_request.title }}" | pnpm exec commitlint
+        env:
+          NODE_ENV: production
+
+  pr-body:
+    name: Validate PR Body
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+            const errors = [];
+            
+            // Required sections for PRs
+            const requiredSections = [
+              { name: 'Summary', pattern: /##\s*Summary/i },
+            ];
+            
+            // Optional but recommended sections
+            const recommendedSections = [
+              { name: 'Type of Change', pattern: /##\s*Type of Change/i },
+              { name: 'Checklist', pattern: /##\s*Checklist/i },
+            ];
+            
+            // Check required sections
+            for (const section of requiredSections) {
+              if (!section.pattern.test(body)) {
+                errors.push(`Missing required section: "${section.name}"`);
+              }
+            }
+            
+            // Check if Summary section has content (not just template text)
+            const summaryMatch = body.match(/##\s*Summary\s*\n+(.+?)(?=\n##|\n*$)/is);
+            if (summaryMatch) {
+              const summaryContent = summaryMatch[1].trim();
+              // Remove HTML comments from content check
+              const contentWithoutComments = summaryContent.replace(/<!--[\s\S]*?-->/g, '').trim();
+              if (contentWithoutComments === 'Brief description of the changes.' || contentWithoutComments.length < 25) {
+                errors.push('Summary section must contain at least 25 characters of meaningful content');
+              }
+            }
+            
+            // Warn about missing recommended sections (but don't fail)
+            const warnings = [];
+            for (const section of recommendedSections) {
+              if (!section.pattern.test(body)) {
+                warnings.push(`Consider adding section: "${section.name}"`);
+              }
+            }
+            
+            // Output warnings
+            if (warnings.length > 0) {
+              core.warning('PR body recommendations:\n' + warnings.join('\n'));
+            }
+            
+            // Fail if there are errors
+            if (errors.length > 0) {
+              core.setFailed('PR body validation failed:\n' + errors.join('\n'));
+            }
