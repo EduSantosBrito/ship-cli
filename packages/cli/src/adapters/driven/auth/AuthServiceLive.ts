@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "@effect/platform/FetchHttpClient";
 import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
@@ -8,6 +9,30 @@ import { AuthConfig } from "../../../domain/Config.js";
 import { AuthError, ConfigError, NotAuthenticatedError } from "../../../domain/Errors.js";
 import { AuthService } from "../../../ports/AuthService.js";
 import { ConfigRepository } from "../../../ports/ConfigRepository.js";
+
+/**
+ * Schema for Linear GraphQL viewer response.
+ * Used to validate API responses when checking API key validity.
+ */
+const LinearViewerResponseSchema = Schema.Struct({
+  data: Schema.optional(
+    Schema.Struct({
+      viewer: Schema.optional(
+        Schema.Struct({
+          id: Schema.String,
+          name: Schema.String,
+        }),
+      ),
+    }),
+  ),
+  errors: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        message: Schema.String,
+      }),
+    ),
+  ),
+});
 
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 
@@ -35,10 +60,11 @@ const make = Effect.gen(function* () {
         ),
       );
 
-      const data = response as {
-        data?: { viewer?: { id: string } };
-        errors?: Array<{ message: string }>;
-      };
+      const data = yield* Schema.decodeUnknown(LinearViewerResponseSchema)(response).pipe(
+        Effect.mapError(
+          (e) => new AuthError({ message: "Invalid API response from Linear", cause: e }),
+        ),
+      );
 
       if (data.errors && data.errors.length > 0) {
         return false;
