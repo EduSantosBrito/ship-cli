@@ -78,7 +78,7 @@ export const subscribeCommand = Command.make(
       const resolvedServerUrl =
         serverUrl._tag === "Some"
           ? serverUrl.value
-          : process.env.OPENCODE_SERVER_URL ?? undefined;
+          : (process.env.OPENCODE_SERVER_URL ?? undefined);
 
       // Subscribe
       const result = yield* daemonService.subscribe(session, prs, resolvedServerUrl).pipe(

@@ -89,9 +89,7 @@ interface ReviewOutput {
 // === Helpers ===
 
 const outputError = (message: string, json: boolean) =>
-  json
-    ? Console.log(JSON.stringify({ error: message }))
-    : Console.error(`Error: ${message}`);
+  json ? Console.log(JSON.stringify({ error: message })) : Console.error(`Error: ${message}`);
 
 /**
  * Group comments by file path for easier navigation
@@ -290,10 +288,7 @@ export const reviewCommand = Command.make(
         );
 
         if (!changeResult.success) {
-          yield* outputError(
-            "Failed to get current change. Provide a PR number explicitly.",
-            json,
-          );
+          yield* outputError("Failed to get current change. Provide a PR number explicitly.", json);
           return;
         }
 
@@ -307,9 +302,9 @@ export const reviewCommand = Command.make(
         }
 
         const bookmark = change.bookmarks[0];
-        const pr = yield* prService.getPrByBranch(bookmark).pipe(
-          Effect.catchAll(() => Effect.succeed(null)),
-        );
+        const pr = yield* prService
+          .getPrByBranch(bookmark)
+          .pipe(Effect.catchAll(() => Effect.succeed(null)));
 
         if (!pr) {
           yield* outputError(

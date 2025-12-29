@@ -380,7 +380,10 @@ const make = Effect.gen(function* () {
       Effect.orElse(() => Effect.succeed(payload)),
       Effect.tap((parsed) =>
         Effect.logDebug("Parsed webhook payload").pipe(
-          Effect.annotateLogs("wasBase64", String(parsed !== payload && typeof parsed === "object")),
+          Effect.annotateLogs(
+            "wasBase64",
+            String(parsed !== payload && typeof parsed === "object"),
+          ),
           Effect.annotateLogs("resultType", typeof parsed),
         ),
       ),
@@ -432,9 +435,7 @@ const make = Effect.gen(function* () {
 
       // Parse the body - GitHub sends it as base64-encoded JSON string
       const payload: unknown =
-        typeof wsEvent.body === "string"
-          ? yield* parseStringPayload(wsEvent.body)
-          : wsEvent.body;
+        typeof wsEvent.body === "string" ? yield* parseStringPayload(wsEvent.body) : wsEvent.body;
 
       // Try to extract action from payload if it exists
       const action =

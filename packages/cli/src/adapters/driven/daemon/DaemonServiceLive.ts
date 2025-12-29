@@ -48,15 +48,8 @@ import {
   type CliWebhook,
   type WebhookEvent,
 } from "../../../ports/WebhookService.js";
-import {
-  OpenCodeService,
-  SessionId,
-  type OpenCodeErrors,
-} from "../../../ports/OpenCodeService.js";
-import {
-  OpenCodeError,
-  OpenCodeSessionNotFoundError,
-} from "../../../domain/Errors.js";
+import { OpenCodeService, SessionId, type OpenCodeErrors } from "../../../ports/OpenCodeService.js";
+import { OpenCodeError, OpenCodeSessionNotFoundError } from "../../../domain/Errors.js";
 import { formatWebhookEvent } from "../opencode/WebhookEventFormatter.js";
 
 // === Registry Types ===
@@ -69,8 +62,6 @@ class SubscriptionEntry extends Data.Class<{
   readonly sessionId: string;
   readonly serverUrl: string | undefined;
 }> {}
-
-
 
 /**
  * The daemon registry maps PR numbers to sets of subscription entries.
@@ -362,7 +353,11 @@ const runDaemonServer = (
             });
 
             yield* Effect.logInfo("Unsubscribed session from PRs").pipe(
-              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(","), serverUrl: serverUrl ?? "default" }),
+              Effect.annotateLogs({
+                sessionId,
+                prNumbers: prNumbers.join(","),
+                serverUrl: serverUrl ?? "default",
+              }),
             );
 
             return new SuccessResponse({
@@ -378,7 +373,8 @@ const runDaemonServer = (
             // Build subscriptions list - group by (sessionId, serverUrl) tuple using HashMap.reduce
             // Accumulator: HashMap<subscriptionKey, { sessionId, serverUrl, prs }>
             type SessionData = { sessionId: string; serverUrl: string | undefined; prs: number[] };
-            const subscriptionKey = (e: SubscriptionEntry) => `${e.sessionId}@${e.serverUrl ?? "default"}`;
+            const subscriptionKey = (e: SubscriptionEntry) =>
+              `${e.sessionId}@${e.serverUrl ?? "default"}`;
 
             const grouped = HashMap.reduce(
               registry,
@@ -388,8 +384,15 @@ const runDaemonServer = (
                   const key = subscriptionKey(entry);
                   const existing = HashMap.get(innerAcc, key);
                   return existing._tag === "Some"
-                    ? HashMap.set(innerAcc, key, { ...existing.value, prs: [...existing.value.prs, pr] })
-                    : HashMap.set(innerAcc, key, { sessionId: entry.sessionId, serverUrl: entry.serverUrl, prs: [pr] });
+                    ? HashMap.set(innerAcc, key, {
+                        ...existing.value,
+                        prs: [...existing.value.prs, pr],
+                      })
+                    : HashMap.set(innerAcc, key, {
+                        sessionId: entry.sessionId,
+                        serverUrl: entry.serverUrl,
+                        prs: [pr],
+                      });
                 }),
             );
 
@@ -435,10 +438,8 @@ const runDaemonServer = (
             const registry = yield* Ref.get(registryRef);
 
             // Collect all unique session IDs from the registry using reduce
-            const allSessionIds = HashMap.reduce(
-              registry,
-              new Set<string>(),
-              (acc, entries) => HashSet.reduce(entries, acc, (set, entry) => set.add(entry.sessionId)),
+            const allSessionIds = HashMap.reduce(registry, new Set<string>(), (acc, entries) =>
+              HashSet.reduce(entries, acc, (set, entry) => set.add(entry.sessionId)),
             );
 
             // Find stale session IDs (subscribed but not in active sessions)
@@ -449,10 +450,17 @@ const runDaemonServer = (
             // Remove stale entries from registry using HashMap.map + HashSet.filter
             if (staleSessionIds.size > 0) {
               yield* Ref.update(registryRef, (reg) =>
-                HashMap.reduce(reg, HashMap.empty<number, HashSet.HashSet<SubscriptionEntry>>(), (acc, entries, pr) => {
-                  const filtered = HashSet.filter(entries, (entry) => !staleSessionIds.has(entry.sessionId));
-                  return HashSet.size(filtered) > 0 ? HashMap.set(acc, pr, filtered) : acc;
-                }),
+                HashMap.reduce(
+                  reg,
+                  HashMap.empty<number, HashSet.HashSet<SubscriptionEntry>>(),
+                  (acc, entries, pr) => {
+                    const filtered = HashSet.filter(
+                      entries,
+                      (entry) => !staleSessionIds.has(entry.sessionId),
+                    );
+                    return HashSet.size(filtered) > 0 ? HashMap.set(acc, pr, filtered) : acc;
+                  },
+                ),
               );
 
               yield* Effect.logInfo("Cleaned up stale subscriptions").pipe(

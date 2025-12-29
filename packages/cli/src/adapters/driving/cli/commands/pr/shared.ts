@@ -11,7 +11,6 @@ import { VcsService, type Change } from "../../../../../ports/VcsService.js";
 import { PrService } from "../../../../../ports/PrService.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 
-
 // === Types ===
 
 /**

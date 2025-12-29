@@ -75,7 +75,7 @@ export const unsubscribeCommand = Command.make(
       const resolvedServerUrl =
         serverUrl._tag === "Some"
           ? serverUrl.value
-          : process.env.OPENCODE_SERVER_URL ?? undefined;
+          : (process.env.OPENCODE_SERVER_URL ?? undefined);
 
       // Unsubscribe
       const result = yield* daemonService.unsubscribe(session, prs, resolvedServerUrl).pipe(
