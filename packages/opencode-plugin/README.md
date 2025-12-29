@@ -42,10 +42,14 @@ This plugin exposes the `ship` tool to OpenCode, enabling AI agents to:
 | Action | Description |
 |--------|-------------|
 | `stack-create` | Create isolated workspace for a task |
+| `stack-describe` | Update commit message (use `title` + `description` params for multi-line) |
 | `stack-sync` | Fetch and rebase onto trunk |
 | `stack-submit` | Push and create/update PR |
 | `stack-status` | View current change info |
 | `stack-log` | View stack of changes |
+| `stack-squash` | Squash current change into parent |
+| `stack-abandon` | Abandon current change |
+| `stack-up` / `stack-down` | Navigate stack |
 
 ### PR Workflow
 

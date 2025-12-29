@@ -540,7 +540,7 @@ interface ShipService {
     workdir?: string;
   }) => Effect.Effect<StackCreateResult, ShipCommandError | JsonParseError>;
   readonly describeStackChange: (
-    message: string,
+    input: { message?: string; title?: string; description?: string },
     workdir?: string,
   ) => Effect.Effect<StackDescribeResult, ShipCommandError | JsonParseError>;
   readonly syncStack: (
@@ -801,12 +801,21 @@ const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackCreateResult>(output);
     });
 
-  const describeStackChange = (message: string, workdir?: string) =>
+  const describeStackChange = (
+    input: { message?: string; title?: string; description?: string },
+    workdir?: string,
+  ) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(
-        ["stack", "describe", "--json", "--message", message],
-        workdir,
-      );
+      const args = ["stack", "describe", "--json"];
+      if (input.message) {
+        args.push("--message", input.message);
+      } else if (input.title) {
+        args.push("--title", input.title);
+        if (input.description) {
+          args.push("--description", input.description);
+        }
+      }
+      const output = yield* shell.run(args, workdir);
       return yield* parseJson<StackDescribeResult>(output);
     });
 
@@ -1613,14 +1622,17 @@ Description: ${c.description.split("\n")[0] || "(no description)"}`;
 
   "stack-describe": (ship, args, _ctx) =>
     Effect.gen(function* () {
-      if (!args.message) {
-        return "Error: message is required for stack-describe action";
+      if (!args.message && !args.title) {
+        return "Error: Either message or title is required for stack-describe action";
       }
-      const result = yield* ship.describeStackChange(args.message, args.workdir);
+      const result = yield* ship.describeStackChange(
+        { message: args.message, title: args.title, description: args.description },
+        args.workdir,
+      );
       if (!result.updated) {
         return `Error: ${result.error || "Failed to update description"}`;
       }
-      return `Updated change ${result.changeId?.slice(0, 8) || ""}\nDescription: ${result.description || args.message}`;
+      return `Updated change ${result.changeId?.slice(0, 8) || ""}\nDescription: ${result.description || args.title || args.message}`;
     }),
 
   "stack-sync": (ship, args, ctx) =>
@@ -2293,11 +2305,15 @@ Run 'ship init' in the terminal first if not configured.`,
       title: createTool.schema
         .string()
         .optional()
-        .describe("Task title - required for create, optional for update"),
+        .describe(
+          "Title - for task create/update OR for stack-describe (first line of commit message)",
+        ),
       description: createTool.schema
         .string()
         .optional()
-        .describe("Task description - optional for create/update"),
+        .describe(
+          "Description - for task create/update OR for stack-describe (commit body after title)",
+        ),
       priority: createTool.schema
         .enum(["urgent", "high", "medium", "low", "none"])
         .optional()
@@ -2335,7 +2351,9 @@ Run 'ship init' in the terminal first if not configured.`,
       message: createTool.schema
         .string()
         .optional()
-        .describe("Message for stack-create or stack-describe actions"),
+        .describe(
+          "Message for stack-create. For stack-describe, prefer using title + description params for proper multi-line commits",
+        ),
       bookmark: createTool.schema
         .string()
         .optional()

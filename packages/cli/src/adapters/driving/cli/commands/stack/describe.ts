@@ -2,12 +2,13 @@
  * ship stack describe - Update change description
  *
  * Updates the description of the current jj change.
- * Message is required (no interactive mode for AI agents).
+ * Supports either a single --message or separate --title and --description.
  */
 
 import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Console from "effect/Console";
 import { checkVcsAvailability, outputError } from "./shared.js";
 
@@ -20,8 +21,49 @@ const jsonOption = Options.boolean("json").pipe(
 
 const messageOption = Options.text("message").pipe(
   Options.withAlias("m"),
-  Options.withDescription("New description for the change"),
+  Options.withDescription("Full description for the change (alternative to --title/--description)"),
+  Options.withDefault(""),
 );
+
+const titleOption = Options.text("title").pipe(
+  Options.withAlias("t"),
+  Options.withDescription("Title (first line) of the commit message"),
+  Options.withDefault(""),
+);
+
+const descriptionOption = Options.text("description").pipe(
+  Options.withAlias("d"),
+  Options.withDescription("Body of the commit message (appears after title with blank line)"),
+  Options.withDefault(""),
+);
+
+/**
+ * Build the full commit message from title and description, or use message directly.
+ * Returns None if no valid message could be constructed.
+ */
+const buildMessage = (
+  message: string,
+  title: string,
+  description: string,
+): Option.Option<string> => {
+  // If message is provided, use it directly
+  if (message) {
+    return Option.some(message);
+  }
+
+  // If title is provided, build message from title + optional description
+  if (title) {
+    if (description) {
+      // Title + blank line + description
+      return Option.some(`${title}\n\n${description}`);
+    }
+    // Title only
+    return Option.some(title);
+  }
+
+  // No valid message
+  return Option.none();
+};
 
 // === Output Types ===
 
@@ -36,8 +78,13 @@ interface DescribeOutput {
 
 export const describeCommand = Command.make(
   "describe",
-  { json: jsonOption, message: messageOption },
-  ({ json, message }) =>
+  {
+    json: jsonOption,
+    message: messageOption,
+    title: titleOption,
+    description: descriptionOption,
+  },
+  ({ json, message, title, description }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -47,8 +94,21 @@ export const describeCommand = Command.make(
       }
       const { vcs } = vcsCheck;
 
+      // Build the message from options
+      const fullMessage = buildMessage(message, title, description);
+
+      if (Option.isNone(fullMessage)) {
+        yield* outputError(
+          "Either --message or --title is required. Use --title with optional --description for multi-line commits.",
+          json,
+        );
+        return;
+      }
+
+      const messageText = fullMessage.value;
+
       // Update the description - handle errors explicitly
-      const describeResult = yield* vcs.describe(message).pipe(
+      const describeResult = yield* vcs.describe(messageText).pipe(
         Effect.map(() => ({ success: true as const })),
         Effect.catchAll((e) => Effect.succeed({ success: false as const, error: String(e) })),
       );
@@ -69,13 +129,13 @@ export const describeCommand = Command.make(
         // Report success with partial info
         const output: DescribeOutput = {
           updated: true,
-          description: message,
+          description: messageText,
         };
         if (json) {
           yield* Console.log(JSON.stringify(output, null, 2));
         } else {
           yield* Console.log(`Updated description`);
-          yield* Console.log(`Description: ${message}`);
+          yield* Console.log(`Description: ${messageText}`);
         }
         return;
       }
@@ -92,7 +152,7 @@ export const describeCommand = Command.make(
         yield* Console.log(JSON.stringify(output, null, 2));
       } else {
         yield* Console.log(`Updated change ${change.changeId.slice(0, 8)}`);
-        yield* Console.log(`Description: ${message}`);
+        yield* Console.log(`Description: ${messageText}`);
       }
     }),
 );
