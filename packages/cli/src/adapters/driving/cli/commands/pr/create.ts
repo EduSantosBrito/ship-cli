@@ -176,7 +176,7 @@ export const createPrCommand = Command.make(
       );
 
       // Try to extract task ID from bookmark
-      const taskId = parseTaskIdentifierFromBookmark(bookmark);
+      const taskIdOpt = parseTaskIdentifierFromBookmark(bookmark);
 
       // Get stack changes for PR body
       const stackChanges = yield* vcs.getStack().pipe(Effect.catchAll(() => Effect.succeed([])));
@@ -185,7 +185,8 @@ export const createPrCommand = Command.make(
       let prTitle: string;
       let prBody: string;
 
-      if (taskId) {
+      if (Option.isSome(taskIdOpt)) {
+        const taskId = taskIdOpt.value;
         // Try to fetch task from Linear
         const issueRepo = yield* IssueRepository;
         const taskResult = yield* issueRepo.getTaskByIdentifier(taskId).pipe(
@@ -230,7 +231,7 @@ export const createPrCommand = Command.make(
         const output: CreateOutput = {
           bookmark,
           baseBranch,
-          taskId: taskId ?? undefined,
+          taskId: Option.getOrUndefined(taskIdOpt),
           error: `Failed to create PR: ${createResult.error}`,
         };
 
@@ -248,7 +249,7 @@ export const createPrCommand = Command.make(
       const output: CreateOutput = {
         bookmark,
         baseBranch,
-        taskId: taskId ?? undefined,
+        taskId: Option.getOrUndefined(taskIdOpt),
         pr: {
           url: createResult.pr.url,
           number: createResult.pr.number,
@@ -262,8 +263,8 @@ export const createPrCommand = Command.make(
         yield* Console.log(`Created PR: #${createResult.pr.number}`);
         yield* Console.log(`Bookmark: ${bookmark}`);
         yield* Console.log(`Base branch: ${baseBranch}`);
-        if (taskId) {
-          yield* Console.log(`Task: ${taskId}`);
+        if (Option.isSome(taskIdOpt)) {
+          yield* Console.log(`Task: ${taskIdOpt.value}`);
         }
         yield* Console.log(`URL: ${createResult.pr.url}`);
       }

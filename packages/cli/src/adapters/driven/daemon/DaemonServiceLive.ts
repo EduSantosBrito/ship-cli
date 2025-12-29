@@ -23,6 +23,7 @@ import * as Duration from "effect/Duration";
 import * as Scope from "effect/Scope";
 import * as Queue from "effect/Queue";
 import * as Data from "effect/Data";
+import * as Option from "effect/Option";
 import * as Net from "node:net";
 import * as Fs from "node:fs";
 import {
@@ -687,30 +688,30 @@ const runDaemonServer = (
     };
 
     // Extract PR number from webhook event
-    const extractPrNumber = (event: WebhookEvent): number | null => {
+    const extractPrNumber = (event: WebhookEvent): Option.Option<number> => {
       const payload = event.payload as Record<string, unknown> | null;
-      if (!payload) return null;
+      if (!payload) return Option.none();
 
       // Try pull_request object first
       const pr = payload.pull_request as Record<string, unknown> | undefined;
       if (pr?.number && typeof pr.number === "number") {
-        return pr.number;
+        return Option.some(pr.number);
       }
 
       // Try issue object (for issue_comment on PRs)
       const issue = payload.issue as Record<string, unknown> | undefined;
       if (issue?.number && typeof issue.number === "number" && "pull_request" in issue) {
-        return issue.number;
+        return Option.some(issue.number);
       }
 
       // Try check_run for check events
       const checkRun = payload.check_run as Record<string, unknown> | undefined;
       const pullRequests = checkRun?.pull_requests as Array<{ number: number }> | undefined;
       if (pullRequests && pullRequests.length > 0) {
-        return pullRequests[0]?.number ?? null;
+        return Option.fromNullable(pullRequests[0]?.number);
       }
 
-      return null;
+      return Option.none();
     };
 
     // Route event to subscribed sessions - with concurrent forwarding
@@ -728,13 +729,14 @@ const runDaemonServer = (
           return;
         }
 
-        const prNumber = extractPrNumber(event);
-        if (prNumber === null) {
+        const prNumberOpt = extractPrNumber(event);
+        if (Option.isNone(prNumberOpt)) {
           yield* Effect.logInfo("Event has no PR number, skipping").pipe(
             Effect.annotateLogs({ event: event.event, action: event.action ?? "none" }),
           );
           return;
         }
+        const prNumber = prNumberOpt.value;
 
         yield* Effect.logInfo("Extracted PR number").pipe(
           Effect.annotateLogs({ prNumber: String(prNumber) }),

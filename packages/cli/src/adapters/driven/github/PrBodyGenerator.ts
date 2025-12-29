@@ -19,24 +19,24 @@ import type { Change } from "../../../ports/VcsService.js";
  * Parse a task identifier from a bookmark name.
  *
  * Supports formats like:
- * - `user/BRI-123-feature-name` -> `BRI-123`
- * - `edusantosbrito/bri-123-feature` -> `BRI-123`
- * - `BRI-456-some-task` -> `BRI-456`
- * - `bri-789` -> `BRI-789`
- * - `X-1-fix` -> `X-1` (single letter prefix)
- * - `MYTEAM-456` -> `MYTEAM-456` (longer prefix)
+ * - `user/BRI-123-feature-name` -> `Option.some("BRI-123")`
+ * - `edusantosbrito/bri-123-feature` -> `Option.some("BRI-123")`
+ * - `BRI-456-some-task` -> `Option.some("BRI-456")`
+ * - `bri-789` -> `Option.some("BRI-789")`
+ * - `X-1-fix` -> `Option.some("X-1")` (single letter prefix)
+ * - `MYTEAM-456` -> `Option.some("MYTEAM-456")` (longer prefix)
  *
  * @param bookmark - The bookmark name to parse
- * @returns The task identifier in uppercase (e.g., "BRI-123") or null if not found
+ * @returns Option containing the task identifier in uppercase (e.g., "BRI-123") or None if not found
  */
-export const parseTaskIdentifierFromBookmark = (bookmark: string): string | null => {
+export const parseTaskIdentifierFromBookmark = (bookmark: string): Option.Option<string> => {
   // Match patterns like BRI-123, bri-456, X-1, MYTEAM-999, etc.
   // Supports 1-10 letter prefixes to handle various team naming conventions
   // The identifier is typically at the start or after a slash
   const pattern = /(?:^|\/)([a-zA-Z]{1,10}-\d+)/i;
   const match = bookmark.match(pattern);
 
-  return match?.[1]?.toUpperCase() ?? null;
+  return Option.fromNullable(match?.[1]?.toUpperCase());
 };
 
 // === Types ===

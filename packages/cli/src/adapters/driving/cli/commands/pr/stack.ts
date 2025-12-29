@@ -22,6 +22,7 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
+import * as Option from "effect/Option";
 import {
   checkPrPrerequisites,
   outputError,
@@ -148,10 +149,10 @@ export const stackCommand = Command.make(
       const taskIdMap = new Map<string, string>();
       for (const change of changesWithBookmarks) {
         const bookmark = change.bookmarks[0];
-        const taskId = parseTaskIdentifierFromBookmark(bookmark);
-        if (taskId) {
-          taskIdMap.set(bookmark, taskId);
-        }
+        Option.match(parseTaskIdentifierFromBookmark(bookmark), {
+          onNone: () => {},
+          onSome: (taskId) => taskIdMap.set(bookmark, taskId),
+        });
       }
 
       // Fetch all tasks in parallel (with concurrency limit)
