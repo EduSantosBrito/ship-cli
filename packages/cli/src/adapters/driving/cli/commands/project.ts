@@ -5,8 +5,8 @@ import * as clack from "@clack/prompts";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { AuthService } from "../../../../ports/AuthService.js";
 import { ProjectRepository } from "../../../../ports/ProjectRepository.js";
+import { Prompts } from "../../../../ports/Prompts.js";
 import { LinearConfig } from "../../../../domain/Config.js";
-import { PromptCancelledError } from "../../../../domain/Errors.js";
 import type { Project, ProjectId } from "../../../../domain/Task.js";
 
 const CREATE_NEW = "__create_new__" as const;
@@ -17,6 +17,7 @@ export const projectCommand = Command.make("project", {}, () =>
     const config = yield* ConfigRepository;
     const auth = yield* AuthService;
     const projectRepo = yield* ProjectRepository;
+    const prompts = yield* Prompts;
 
     clack.intro("ship project");
 
@@ -70,59 +71,32 @@ export const projectCommand = Command.make("project", {}, () =>
       { value: CREATE_NEW, label: "Create new project..." },
     ];
 
-    const projectChoice = yield* Effect.tryPromise({
-      try: () =>
-        clack.select({
-          message: "Select a project",
-          options: projectOptions,
-        }),
-      catch: () => PromptCancelledError.default,
+    const projectChoice = yield* prompts.select({
+      message: "Select a project",
+      options: projectOptions,
     });
-
-    if (clack.isCancel(projectChoice)) {
-      clack.cancel("Cancelled");
-      return;
-    }
 
     let selectedProject: Project | undefined;
 
     if (projectChoice === CREATE_NEW) {
       // Create new project
-      const projectName = yield* Effect.tryPromise({
-        try: () =>
-          clack.text({
-            message: "Project name",
-            placeholder: "My Project",
-            validate: (v) => (!v ? "Name is required" : undefined),
-          }),
-        catch: () => PromptCancelledError.default,
+      const projectName = yield* prompts.text({
+        message: "Project name",
+        placeholder: "My Project",
+        validate: (v) => (!v ? "Name is required" : undefined),
       });
 
-      if (clack.isCancel(projectName)) {
-        clack.cancel("Cancelled");
-        return;
-      }
-
-      const projectDesc = yield* Effect.tryPromise({
-        try: () =>
-          clack.text({
-            message: "Description (optional)",
-            placeholder: "A brief description of the project",
-          }),
-        catch: () => PromptCancelledError.default,
+      const projectDesc = yield* prompts.text({
+        message: "Description (optional)",
+        placeholder: "A brief description of the project",
       });
-
-      if (clack.isCancel(projectDesc)) {
-        clack.cancel("Cancelled");
-        return;
-      }
 
       const createSpinner = clack.spinner();
       createSpinner.start("Creating project...");
 
-      const createInput = { name: projectName as string } as { name: string; description?: string };
+      const createInput = { name: projectName } as { name: string; description?: string };
       if (projectDesc) {
-        createInput.description = projectDesc as string;
+        createInput.description = projectDesc;
       }
 
       selectedProject = yield* projectRepo.createProject(currentConfig.teamId, createInput).pipe(

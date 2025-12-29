@@ -13,6 +13,7 @@ import { WebhookServiceLive } from "../adapters/driven/github/WebhookServiceLive
 import { OpenCodeServiceLive } from "../adapters/driven/opencode/OpenCodeServiceLive.js";
 import { DaemonServiceLive } from "../adapters/driven/daemon/DaemonServiceLive.js";
 import { TemplateServiceLive } from "../adapters/driven/template/TemplateServiceLive.js";
+import { PromptsLive } from "../adapters/driven/prompts/PromptsLive.js";
 
 // Layer dependencies:
 // ConfigRepositoryLive: FileSystem + Path -> ConfigRepository
@@ -46,6 +47,7 @@ const RepositoryLayers = Layer.mergeAll(
 // VcsService, PrService, WebhookService depend on CommandExecutor (from NodeContext)
 // OpenCodeService has no dependencies
 // TemplateService depends on ConfigRepository + FileSystem + Path
+// PromptsLive has no dependencies (uses @clack/prompts directly)
 // First merge services that don't have inter-service dependencies
 const BaseServices = Layer.mergeAll(
   RepositoryLayers,
@@ -54,6 +56,7 @@ const BaseServices = Layer.mergeAll(
   WebhookServiceLive,
   OpenCodeServiceLive,
   TemplateServiceLive,
+  PromptsLive,
 ).pipe(Layer.provideMerge(ConfigAuthAndLinear));
 
 // DaemonService depends on WebhookService and OpenCodeService
@@ -68,6 +71,7 @@ export const AppLayer = AllServices.pipe(Layer.provideMerge(NodeContext.layer));
 
 // Minimal layer for init/login commands (before full config exists)
 // Also includes TeamRepository and ProjectRepository for init flow
-const MinimalRepositories = Layer.mergeAll(TeamRepositoryLive, ProjectRepositoryLive);
+// PromptsLive is included for interactive prompts in login/init
+const MinimalRepositories = Layer.mergeAll(TeamRepositoryLive, ProjectRepositoryLive, PromptsLive);
 const MinimalServices = MinimalRepositories.pipe(Layer.provideMerge(ConfigAuthAndLinear));
 export const MinimalLayer = MinimalServices.pipe(Layer.provideMerge(NodeContext.layer));

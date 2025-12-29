@@ -133,3 +133,11 @@ export {
   type TestOpenCodeState,
   type TestOpenCodeService,
 } from "./OpenCodeService.testLayer.js";
+
+// Prompts test layer
+export {
+  TestPromptsLayer,
+  defaultTestPromptsState,
+  type TestPromptsState,
+  type TestPrompts,
+} from "./Prompts.testLayer.js";
