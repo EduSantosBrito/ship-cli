@@ -82,7 +82,7 @@ Repository: ${repoName}
 Title: ${prTitle}
 URL: ${prUrl}
 
-→ Action: Run stack-sync to update your local stack`;
+→ Action: Run stack-sync --auto-submit to rebase and push dependent PRs`;
       }
       return `[GitHub] PR #${prNumber} closed (not merged) by @${senderLogin}
 

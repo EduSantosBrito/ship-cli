@@ -45,6 +45,20 @@ const yesOption = Options.boolean("yes").pipe(
   Options.withDefault(false),
 );
 
+const autoSubmitOption = Options.boolean("auto-submit").pipe(
+  Options.withDescription(
+    "Automatically push rebased changes after sync when parent PRs were merged",
+  ),
+  Options.withDefault(false),
+);
+
+const dryRunOption = Options.boolean("dry-run").pipe(
+  Options.withDescription(
+    "Show what would be auto-submitted without actually pushing (requires --auto-submit)",
+  ),
+  Options.withDefault(false),
+);
+
 // === Output Types ===
 
 interface AbandonedChangeOutput {
@@ -59,6 +73,14 @@ interface UpdatedPrBaseOutput {
   newBase: string;
 }
 
+interface AutoSubmittedPrOutput {
+  bookmark: string;
+  prNumber: number;
+  url: string;
+  /** Only present if there was a push failure */
+  error?: string;
+}
+
 interface SyncOutput {
   fetched: boolean;
   rebased: boolean;
@@ -71,6 +93,12 @@ interface SyncOutput {
   deletedBookmarks: string[] | undefined;
   /** PRs whose base branch was updated after parent merge */
   updatedPrBases: UpdatedPrBaseOutput[] | undefined;
+  /** PRs that were auto-submitted (pushed) after rebasing due to merged parent PRs */
+  autoSubmittedPrs: AutoSubmittedPrOutput[] | undefined;
+  /** PRs that would be auto-submitted (dry-run mode) */
+  wouldAutoSubmitPrs: AutoSubmittedPrOutput[] | undefined;
+  /** PRs that failed to push during auto-submit */
+  failedAutoSubmitPrs: AutoSubmittedPrOutput[] | undefined;
   /** Whether the entire stack was merged and workspace was cleaned up */
   stackFullyMerged: boolean | undefined;
   /** Workspace that was cleaned up (only if stackFullyMerged) */
@@ -82,8 +110,8 @@ interface SyncOutput {
 
 export const syncCommand = Command.make(
   "sync",
-  { json: jsonOption, yes: yesOption },
-  ({ json, yes }) =>
+  { json: jsonOption, yes: yesOption, autoSubmit: autoSubmitOption, dryRun: dryRunOption },
+  ({ json, yes, autoSubmit, dryRun }) =>
     Effect.gen(function* () {
       // Check VCS availability (jj installed and in repo)
       const vcsCheck = yield* checkVcsAvailability();
@@ -154,6 +182,9 @@ export const syncCommand = Command.make(
         abandonedMergedChanges: abandonedChanges.length > 0 ? abandonedChanges : undefined,
         deletedBookmarks: deletedBookmarks.length > 0 ? deletedBookmarks : undefined,
         updatedPrBases: undefined,
+        autoSubmittedPrs: undefined,
+        wouldAutoSubmitPrs: undefined,
+        failedAutoSubmitPrs: undefined,
         stackFullyMerged: result.stackFullyMerged,
         cleanedUpWorkspace: undefined,
         error: undefined,
@@ -165,6 +196,29 @@ export const syncCommand = Command.make(
         const updatedBases = yield* updatePrBasesAfterMerge(vcs, abandonedChanges, defaultBranch);
         if (updatedBases.length > 0) {
           output.updatedPrBases = updatedBases;
+        }
+      }
+
+      // Auto-submit: push rebased changes and update PRs when parent PRs were merged
+      // This is triggered with --auto-submit flag or when parent PRs were merged
+      if (
+        autoSubmit &&
+        abandonedChanges.length > 0 &&
+        !result.stackFullyMerged &&
+        !result.conflicted
+      ) {
+        const autoSubmitResult = yield* autoSubmitRebasedChanges(vcs, dryRun);
+        if (dryRun) {
+          if (autoSubmitResult.wouldSubmit.length > 0) {
+            output.wouldAutoSubmitPrs = autoSubmitResult.wouldSubmit;
+          }
+        } else {
+          if (autoSubmitResult.submitted.length > 0) {
+            output.autoSubmittedPrs = autoSubmitResult.submitted;
+          }
+          if (autoSubmitResult.failed.length > 0) {
+            output.failedAutoSubmitPrs = autoSubmitResult.failed;
+          }
         }
       }
 
@@ -207,6 +261,33 @@ export const syncCommand = Command.make(
             yield* Console.log(
               `  - PR #${update.prNumber} (${update.bookmark}): ${update.oldBase} -> ${update.newBase}`,
             );
+          }
+          yield* Console.log("");
+        }
+
+        // Report auto-submitted PRs
+        if (output.autoSubmittedPrs && output.autoSubmittedPrs.length > 0) {
+          yield* Console.log("Auto-submitted PRs (pushed rebased changes):");
+          for (const submitted of output.autoSubmittedPrs) {
+            yield* Console.log(`  - PR #${submitted.prNumber} (${submitted.bookmark})`);
+          }
+          yield* Console.log("");
+        }
+
+        // Report failed auto-submits
+        if (output.failedAutoSubmitPrs && output.failedAutoSubmitPrs.length > 0) {
+          yield* Console.log("Failed to auto-submit PRs:");
+          for (const failed of output.failedAutoSubmitPrs) {
+            yield* Console.log(`  - PR #${failed.prNumber} (${failed.bookmark}): ${failed.error}`);
+          }
+          yield* Console.log("");
+        }
+
+        // Report dry-run: would auto-submit PRs
+        if (output.wouldAutoSubmitPrs && output.wouldAutoSubmitPrs.length > 0) {
+          yield* Console.log("Would auto-submit PRs (dry-run):");
+          for (const wouldSubmit of output.wouldAutoSubmitPrs) {
+            yield* Console.log(`  - PR #${wouldSubmit.prNumber} (${wouldSubmit.bookmark})`);
           }
           yield* Console.log("");
         }
@@ -486,3 +567,102 @@ const updatePrBasesAfterMerge = (
 
     return updatedPrBases;
   }).pipe(Effect.catchAll(() => Effect.succeed([] as UpdatedPrBaseOutput[])));
+
+// === Auto-Submit Helper ===
+
+interface AutoSubmitResult {
+  submitted: AutoSubmittedPrOutput[];
+  failed: AutoSubmittedPrOutput[];
+  wouldSubmit: AutoSubmittedPrOutput[];
+}
+
+/**
+ * Automatically push rebased changes after parent PRs are merged.
+ *
+ * When a parent PR is merged and the stack is rebased:
+ * 1. Child changes have new commit SHAs that need to be pushed
+ * 2. This function pushes all changes with bookmarks that have open PRs
+ * 3. Returns info about each successfully pushed PR
+ *
+ * This is triggered by the --auto-submit flag and automates the workflow
+ * of pushing dependent PRs after a parent merge.
+ *
+ * @param vcs - VCS service for stack info and push
+ * @param dryRun - If true, don't actually push, just report what would be pushed
+ * @returns Object with submitted, failed, and wouldSubmit arrays
+ */
+const autoSubmitRebasedChanges = (
+  vcs: {
+    getStack: () => Effect.Effect<ReadonlyArray<Change>, unknown>;
+    push: (bookmark: string) => Effect.Effect<void, unknown>;
+  },
+  dryRun: boolean,
+): Effect.Effect<AutoSubmitResult, never, PrService> =>
+  Effect.gen(function* () {
+    const prService = yield* PrService;
+
+    const result: AutoSubmitResult = {
+      submitted: [],
+      failed: [],
+      wouldSubmit: [],
+    };
+
+    // Check if gh is available
+    const ghAvailable = yield* prService.isAvailable();
+    if (!ghAvailable) {
+      return result;
+    }
+
+    // Get current stack after sync
+    const stack = yield* vcs.getStack().pipe(Effect.catchAll(() => Effect.succeed([] as Change[])));
+
+    // Find all changes with bookmarks that have open PRs
+    const changesWithBookmarks = stack.filter(
+      (c) => c.bookmarks.length > 0 && !c.isEmpty && !c.hasConflict,
+    );
+
+    for (const change of changesWithBookmarks) {
+      const bookmark = change.bookmarks[0];
+
+      // Check if there's an open PR for this bookmark
+      const pr = yield* prService
+        .getPrByBranch(bookmark)
+        .pipe(Effect.catchAll(() => Effect.succeed(null)));
+
+      if (!pr || pr.state !== "open") {
+        continue;
+      }
+
+      const prOutput: AutoSubmittedPrOutput = {
+        bookmark,
+        prNumber: pr.number,
+        url: pr.url,
+      };
+
+      // In dry-run mode, just record what would be pushed
+      if (dryRun) {
+        result.wouldSubmit.push(prOutput);
+        continue;
+      }
+
+      // Push the bookmark to update the PR
+      const pushResult = yield* vcs.push(bookmark).pipe(
+        Effect.map(() => ({ success: true as const, error: undefined })),
+        Effect.catchAll((e) => {
+          const errorMsg = String(e);
+          return Effect.logWarning(`Failed to push ${bookmark}`).pipe(
+            Effect.annotateLogs({ error: errorMsg, bookmark }),
+            Effect.map(() => ({ success: false as const, error: errorMsg })),
+          );
+        }),
+      );
+
+      if (pushResult.success) {
+        result.submitted.push(prOutput);
+      } else {
+        result.failed.push({ ...prOutput, error: pushResult.error });
+      }
+    }
+
+    return result;
+  }).pipe(Effect.catchAll(() => Effect.succeed({ submitted: [], failed: [], wouldSubmit: [] })));
