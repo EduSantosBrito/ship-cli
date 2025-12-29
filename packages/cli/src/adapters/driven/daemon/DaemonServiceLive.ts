@@ -101,9 +101,10 @@ interface IpcRequest {
 
 /**
  * Send a command to the daemon via Unix socket and get the response.
+ * Uses Effect.async with proper cleanup on interruption.
  */
 const sendCommand = (command: IpcCommand): Effect.Effect<typeof IpcResponse.Type, DaemonErrors> =>
-  Effect.async<typeof IpcResponse.Type, DaemonErrors>((resume) => {
+  Effect.async<typeof IpcResponse.Type, DaemonErrors>((resume, signal) => {
     // Check if socket exists
     if (!Fs.existsSync(DAEMON_SOCKET_PATH)) {
       resume(Effect.fail(DaemonNotRunningError.default));
@@ -112,6 +113,15 @@ const sendCommand = (command: IpcCommand): Effect.Effect<typeof IpcResponse.Type
 
     const client = Net.createConnection(DAEMON_SOCKET_PATH);
     let responseData = "";
+
+    // Cleanup function to destroy socket and remove listeners
+    const cleanup = () => {
+      client.removeAllListeners();
+      client.destroy();
+    };
+
+    // Register cleanup on abort signal for proper interruption handling
+    signal.addEventListener("abort", cleanup);
 
     client.on("connect", () => {
       client.write(JSON.stringify(command) + "\n");
@@ -122,6 +132,7 @@ const sendCommand = (command: IpcCommand): Effect.Effect<typeof IpcResponse.Type
     });
 
     client.on("end", () => {
+      cleanup();
       const parseResult = Schema.decodeUnknownEither(IpcResponse)(JSON.parse(responseData));
       if (parseResult._tag === "Left") {
         resume(
@@ -137,6 +148,7 @@ const sendCommand = (command: IpcCommand): Effect.Effect<typeof IpcResponse.Type
     });
 
     client.on("error", (err) => {
+      cleanup();
       if (
         (err as NodeJS.ErrnoException).code === "ECONNREFUSED" ||
         (err as NodeJS.ErrnoException).code === "ENOENT"
@@ -480,6 +492,9 @@ const runDaemonServer = (
       ),
     );
 
+    // Track active client connections for proper cleanup
+    const activeClients = new Set<Net.Socket>();
+
     // Start IPC server using acquireRelease for proper cleanup
     const server = yield* Effect.acquireRelease(
       Effect.sync(() => {
@@ -489,9 +504,11 @@ const runDaemonServer = (
         }
 
         const srv = Net.createServer((socket) => {
+          // Track this client connection
+          activeClients.add(socket);
           let data = "";
 
-          socket.on("data", (chunk) => {
+          const onData = (chunk: Buffer) => {
             data += chunk.toString();
 
             // Check for complete message (newline-delimited)
@@ -534,32 +551,65 @@ const runDaemonServer = (
                 );
               }
             }
-          });
+          };
 
-          socket.on("error", () => {
+          const onError = () => {
             // Socket errors are expected (client disconnects, etc.) - silently ignore
-          });
+          };
+
+          const onClose = () => {
+            // Clean up: remove listeners and untrack this client
+            socket.removeListener("data", onData);
+            socket.removeListener("error", onError);
+            socket.removeListener("close", onClose);
+            activeClients.delete(socket);
+          };
+
+          socket.on("data", onData);
+          socket.on("error", onError);
+          socket.on("close", onClose);
         });
 
         return srv;
       }),
       (srv) =>
         Effect.async<void>((resume) => {
+          // Destroy all active client connections before closing server
+          for (const client of activeClients) {
+            client.removeAllListeners();
+            client.destroy();
+          }
+          activeClients.clear();
           srv.close(() => resume(Effect.void));
         }),
     );
 
-    // Start listening
-    yield* Effect.async<void, DaemonError>((resume) => {
-      server.on("error", (err) => {
+    // Start listening with proper cleanup of event handlers
+    yield* Effect.async<void, DaemonError>((resume, signal) => {
+      const onError = (err: Error) => {
+        cleanup();
         resume(
           Effect.fail(new DaemonError({ message: `IPC server error: ${err.message}`, cause: err })),
         );
-      });
+      };
 
-      server.listen(DAEMON_SOCKET_PATH, () => {
+      const onListening = () => {
+        // Remove error handler once listening successfully (errors after this are handled elsewhere)
+        server.removeListener("error", onError);
         resume(Effect.void);
-      });
+      };
+
+      const cleanup = () => {
+        server.removeListener("error", onError);
+        server.removeListener("listening", onListening);
+      };
+
+      // Register cleanup on abort signal for proper interruption handling
+      signal.addEventListener("abort", cleanup);
+
+      server.on("error", onError);
+      server.on("listening", onListening);
+      server.listen(DAEMON_SOCKET_PATH);
     });
 
     yield* Effect.logInfo("IPC server listening").pipe(
