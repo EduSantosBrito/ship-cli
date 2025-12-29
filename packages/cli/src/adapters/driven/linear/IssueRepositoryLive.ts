@@ -33,33 +33,6 @@ const retryPolicy = Schedule.intersect(
 // Timeout for API calls: 30 seconds
 const API_TIMEOUT = Duration.seconds(30);
 
-/**
- * Wraps a promise with abort signal support.
- * When the signal is aborted, the returned promise rejects immediately.
- * Note: The underlying promise continues to run, but we stop waiting for it.
- */
-const withAbortSignal = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> => {
-  if (signal.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
-  return new Promise((resolve, reject) => {
-    const abortHandler = () => {
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    signal.addEventListener("abort", abortHandler, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", abortHandler);
-        resolve(value);
-      },
-      (error) => {
-        signal.removeEventListener("abort", abortHandler);
-        reject(error);
-      },
-    );
-  });
-};
-
 const withRetryAndTimeout = <A, E>(
   effect: Effect.Effect<A, E>,
   operation: string,
@@ -79,7 +52,7 @@ const withRetryAndTimeout = <A, E>(
 const hasIncompleteBlockers = (issue: Issue): Effect.Effect<boolean, LinearApiError> =>
   Effect.gen(function* () {
     const inverseRelations = yield* Effect.tryPromise({
-      try: (signal) => withAbortSignal(issue.inverseRelations(), signal),
+      try: () => issue.inverseRelations(),
       catch: (e) =>
         new LinearApiError({ message: `Failed to fetch inverse relations: ${e}`, cause: e }),
     });
@@ -100,7 +73,7 @@ const hasIncompleteBlockers = (issue: Issue): Effect.Effect<boolean, LinearApiEr
           if (!relatedIssueFetch) return null;
 
           const blockerIssue = yield* Effect.tryPromise({
-            try: (signal) => withAbortSignal(relatedIssueFetch, signal),
+            try: () => relatedIssueFetch,
             catch: (e) =>
               new LinearApiError({ message: `Failed to fetch blocker issue: ${e}`, cause: e }),
           });
@@ -111,7 +84,7 @@ const hasIncompleteBlockers = (issue: Issue): Effect.Effect<boolean, LinearApiEr
           if (!stateFetch) return null;
 
           const state = yield* Effect.tryPromise({
-            try: (signal) => withAbortSignal(stateFetch, signal),
+            try: () => stateFetch,
             catch: (e) =>
               new LinearApiError({ message: `Failed to fetch blocker state: ${e}`, cause: e }),
           });
@@ -135,14 +108,14 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const client = yield* linearClient.client();
         const issue = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(id), signal),
+          try: () => client.issue(id),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
         if (!issue) {
           return yield* Effect.fail(new TaskNotFoundError({ taskId: id }));
         }
         return yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+          try: () => mapIssueToTask(issue),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -165,16 +138,13 @@ const make = Effect.gen(function* () {
         const number = parseInt(numberStr, 10);
 
         const issues = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(
-              client.issues({
-                filter: {
-                  number: { eq: number },
-                  team: { key: { eq: teamKey.toUpperCase() } },
-                },
-              }),
-              signal,
-            ),
+          try: () =>
+            client.issues({
+              filter: {
+                number: { eq: number },
+                team: { key: { eq: teamKey.toUpperCase() } },
+              },
+            }),
           catch: (e) => new LinearApiError({ message: `Failed to search issues: ${e}`, cause: e }),
         });
 
@@ -184,7 +154,7 @@ const make = Effect.gen(function* () {
         }
 
         return yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+          try: () => mapIssueToTask(issue),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -218,7 +188,7 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       // Fetch the issue to get team and current labels
       const issue = yield* Effect.tryPromise({
-        try: (signal) => withAbortSignal(client.issue(id), signal),
+        try: () => client.issue(id),
         catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
       });
 
@@ -228,14 +198,14 @@ const make = Effect.gen(function* () {
 
       // Get current labels on the issue
       const currentLabels = yield* Effect.tryPromise({
-        try: (signal) => withAbortSignal(issue.labels(), signal),
+        try: () => issue.labels(),
         catch: (e) =>
           new LinearApiError({ message: `Failed to fetch issue labels: ${e}`, cause: e }),
       });
 
       // Get the team to fetch team-level labels
       const team = yield* Effect.tryPromise({
-        try: (signal) => withAbortSignal(issue.team!, signal),
+        try: () => issue.team!,
         catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
       });
 
@@ -243,15 +213,12 @@ const make = Effect.gen(function* () {
 
       // Get all labels in the workspace/team that start with "type:"
       const allLabels = yield* Effect.tryPromise({
-        try: (signal) =>
-          withAbortSignal(
-            client.issueLabels({
-              filter: {
-                name: { startsWith: TYPE_LABEL_PREFIX },
-              },
-            }),
-            signal,
-          ),
+        try: () =>
+          client.issueLabels({
+            filter: {
+              name: { startsWith: TYPE_LABEL_PREFIX },
+            },
+          }),
         catch: (e) =>
           new LinearApiError({ message: `Failed to fetch type labels: ${e}`, cause: e }),
       });
@@ -264,16 +231,13 @@ const make = Effect.gen(function* () {
       if (!targetLabelId) {
         // Create the new type label (at team level)
         const createResult = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(
-              client.createIssueLabel({
-                name: targetLabelName,
-                teamId: team.id,
-                color: getTypeColor(type),
-                description: `Task type: ${type}`,
-              }),
-              signal,
-            ),
+          try: () =>
+            client.createIssueLabel({
+              name: targetLabelName,
+              teamId: team.id,
+              color: getTypeColor(type),
+              description: `Task type: ${type}`,
+            }),
           catch: (e) =>
             new LinearApiError({ message: `Failed to create type label: ${e}`, cause: e }),
         });
@@ -284,9 +248,9 @@ const make = Effect.gen(function* () {
 
         // Fetch the created label to get its ID
         const createdLabel = yield* Effect.tryPromise({
-          try: async (signal) => {
+          try: async () => {
             if (!createResult.issueLabel) throw new Error("Label not returned");
-            return withAbortSignal(createResult.issueLabel, signal);
+            return createResult.issueLabel;
           },
           catch: (e) =>
             new LinearApiError({ message: `Failed to get created label: ${e}`, cause: e }),
@@ -307,7 +271,7 @@ const make = Effect.gen(function* () {
 
       // Update the issue with new labels
       const result = yield* Effect.tryPromise({
-        try: (signal) => withAbortSignal(client.updateIssue(id, { labelIds: newLabelIds }), signal),
+        try: () => client.updateIssue(id, { labelIds: newLabelIds }),
         catch: (e) =>
           new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
       });
@@ -348,7 +312,7 @@ const make = Effect.gen(function* () {
         }
 
         const issuePayload = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.createIssue(createInput), signal),
+          try: () => client.createIssue(createInput),
           catch: (e) => new LinearApiError({ message: `Failed to create issue: ${e}`, cause: e }),
         });
 
@@ -357,9 +321,9 @@ const make = Effect.gen(function* () {
         }
 
         const issue = yield* Effect.tryPromise({
-          try: async (signal) => {
+          try: async () => {
             if (!issuePayload.issue) throw new Error("Issue not returned");
-            const i = await withAbortSignal(issuePayload.issue, signal);
+            const i = await issuePayload.issue;
             if (!i) throw new Error("Issue not returned");
             return i;
           },
@@ -372,13 +336,13 @@ const make = Effect.gen(function* () {
 
         // Re-fetch to get updated labels
         const updatedIssue = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(issue.id), signal),
+          try: () => client.issue(issue.id),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch updated issue: ${e}`, cause: e }),
         });
 
         return yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(mapIssueToTask(updatedIssue!), signal),
+          try: () => mapIssueToTask(updatedIssue!),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -435,7 +399,7 @@ const make = Effect.gen(function* () {
 
         if (Option.isSome(input.status)) {
           const issue = yield* Effect.tryPromise({
-            try: (signal) => withAbortSignal(client.issue(id), signal),
+            try: () => client.issue(id),
             catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
           });
 
@@ -449,12 +413,12 @@ const make = Effect.gen(function* () {
           }
 
           const team = yield* Effect.tryPromise({
-            try: (signal) => withAbortSignal(teamFetch, signal),
+            try: () => teamFetch,
             catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
           });
 
           const states = yield* Effect.tryPromise({
-            try: (signal) => withAbortSignal(team.states(), signal),
+            try: () => team.states(),
             catch: (e) => new LinearApiError({ message: `Failed to fetch states: ${e}`, cause: e }),
           });
 
@@ -467,7 +431,7 @@ const make = Effect.gen(function* () {
         }
 
         const result = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.updateIssue(id, updatePayload), signal),
+          try: () => client.updateIssue(id, updatePayload),
           catch: (e) => new LinearApiError({ message: `Failed to update issue: ${e}`, cause: e }),
         });
 
@@ -476,9 +440,9 @@ const make = Effect.gen(function* () {
         }
 
         const updatedIssue = yield* Effect.tryPromise({
-          try: async (signal) => {
+          try: async () => {
             if (!result.issue) throw new Error("Issue not returned");
-            const i = await withAbortSignal(result.issue, signal);
+            const i = await result.issue;
             if (!i) throw new Error("Issue not returned");
             return i;
           },
@@ -487,7 +451,7 @@ const make = Effect.gen(function* () {
         });
 
         return yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(mapIssueToTask(updatedIssue), signal),
+          try: () => mapIssueToTask(updatedIssue),
           catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
         });
       }),
@@ -529,21 +493,21 @@ const make = Effect.gen(function* () {
 
         if (filter.assignedToMe) {
           const viewer = yield* Effect.tryPromise({
-            try: (signal) => withAbortSignal(client.viewer, signal),
+            try: () => client.viewer,
             catch: (e) => new LinearApiError({ message: `Failed to fetch viewer: ${e}`, cause: e }),
           });
           linearFilter.assignee = { id: { eq: viewer.id } };
         }
 
         const issues = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issues({ filter: linearFilter }), signal),
+          try: () => client.issues({ filter: linearFilter }),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
         return yield* Effect.all(
           issues.nodes.map((issue: Issue) =>
             Effect.tryPromise({
-              try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+              try: () => mapIssueToTask(issue),
               catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
             }),
           ),
@@ -570,7 +534,7 @@ const make = Effect.gen(function* () {
         }
 
         const issues = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issues({ filter }), signal),
+          try: () => client.issues({ filter }),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
@@ -583,7 +547,7 @@ const make = Effect.gen(function* () {
                 return null;
               }
               return yield* Effect.tryPromise({
-                try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+                try: () => mapIssueToTask(issue),
                 catch: (e) =>
                   new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
               });
@@ -614,7 +578,7 @@ const make = Effect.gen(function* () {
         }
 
         const issues = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issues({ filter }), signal),
+          try: () => client.issues({ filter }),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
@@ -627,7 +591,7 @@ const make = Effect.gen(function* () {
                 return null;
               }
               return yield* Effect.tryPromise({
-                try: (signal) => withAbortSignal(mapIssueToTask(issue), signal),
+                try: () => mapIssueToTask(issue),
                 catch: (e) =>
                   new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
               });
@@ -649,15 +613,12 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const result = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(
-              client.createIssueRelation({
-                issueId: blockedId,
-                relatedIssueId: blockerId,
-                type: LinearDocument.IssueRelationType.Blocks,
-              }),
-              signal,
-            ),
+          try: () =>
+            client.createIssueRelation({
+              issueId: blockedId,
+              relatedIssueId: blockerId,
+              type: LinearDocument.IssueRelationType.Blocks,
+            }),
           catch: (e) =>
             new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
         });
@@ -680,7 +641,7 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const blocked = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(blockedId), signal),
+          try: () => client.issue(blockedId),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 
@@ -689,19 +650,18 @@ const make = Effect.gen(function* () {
         }
 
         const relations = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(blocked.relations(), signal),
+          try: () => blocked.relations(),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch relations: ${e}`, cause: e }),
         });
 
         const relationToDelete = yield* Effect.tryPromise({
-          try: async (signal) => {
+          try: async () => {
             for (const r of relations?.nodes ?? []) {
               if (r.type === "blocks") {
-                const relatedIssue = await withAbortSignal(
-                  (r as IssueRelation & { relatedIssue: Promise<Issue> }).relatedIssue,
-                  signal,
-                );
+                const relatedIssue = await (
+                  r as IssueRelation & { relatedIssue: Promise<Issue> }
+                ).relatedIssue;
                 if (relatedIssue?.id === blockerId) {
                   return r;
                 }
@@ -717,7 +677,7 @@ const make = Effect.gen(function* () {
         }
 
         yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.deleteIssueRelation(relationToDelete.id), signal),
+          try: () => client.deleteIssueRelation(relationToDelete.id),
           catch: (e) =>
             new LinearApiError({ message: `Failed to delete relation: ${e}`, cause: e }),
         });
@@ -734,15 +694,12 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const result = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(
-              client.createIssueRelation({
-                issueId: taskId,
-                relatedIssueId: relatedTaskId,
-                type: LinearDocument.IssueRelationType.Related,
-              }),
-              signal,
-            ),
+          try: () =>
+            client.createIssueRelation({
+              issueId: taskId,
+              relatedIssueId: relatedTaskId,
+              type: LinearDocument.IssueRelationType.Related,
+            }),
           catch: (e) =>
             new LinearApiError({ message: `Failed to create relation: ${e}`, cause: e }),
         });
@@ -762,7 +719,7 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const issue = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(id), signal),
+          try: () => client.issue(id),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 
@@ -809,7 +766,7 @@ const make = Effect.gen(function* () {
 
         // Fetch the issue to get team and current labels
         const issue = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(id), signal),
+          try: () => client.issue(id),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 
@@ -819,14 +776,14 @@ const make = Effect.gen(function* () {
 
         // Get current labels on the issue
         const currentLabels = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(issue.labels(), signal),
+          try: () => issue.labels(),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch issue labels: ${e}`, cause: e }),
         });
 
         // Get the team to fetch team-level labels
         const team = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(issue.team!, signal),
+          try: () => issue.team!,
           catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
         });
 
@@ -834,15 +791,12 @@ const make = Effect.gen(function* () {
 
         // Get all labels in the workspace/team that start with "session:"
         const allLabels = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(
-              client.issueLabels({
-                filter: {
-                  name: { startsWith: SESSION_LABEL_PREFIX },
-                },
-              }),
-              signal,
-            ),
+          try: () =>
+            client.issueLabels({
+              filter: {
+                name: { startsWith: SESSION_LABEL_PREFIX },
+              },
+            }),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch session labels: ${e}`, cause: e }),
         });
@@ -855,16 +809,13 @@ const make = Effect.gen(function* () {
         if (!targetLabelId) {
           // Create the new session label (at team level)
           const createResult = yield* Effect.tryPromise({
-            try: (signal) =>
-              withAbortSignal(
-                client.createIssueLabel({
-                  name: targetLabelName,
-                  teamId: team.id,
-                  color: "#6B7280", // Gray color for session labels
-                  description: `OpenCode agent session ${sessionId}`,
-                }),
-                signal,
-              ),
+            try: () =>
+              client.createIssueLabel({
+                name: targetLabelName,
+                teamId: team.id,
+                color: "#6B7280", // Gray color for session labels
+                description: `OpenCode agent session ${sessionId}`,
+              }),
             catch: (e) =>
               new LinearApiError({ message: `Failed to create session label: ${e}`, cause: e }),
           });
@@ -875,9 +826,9 @@ const make = Effect.gen(function* () {
 
           // Fetch the created label to get its ID
           const createdLabel = yield* Effect.tryPromise({
-            try: async (signal) => {
+            try: async () => {
               if (!createResult.issueLabel) throw new Error("Label not returned");
-              return withAbortSignal(createResult.issueLabel, signal);
+              return createResult.issueLabel;
             },
             catch: (e) =>
               new LinearApiError({ message: `Failed to get created label: ${e}`, cause: e }),
@@ -898,8 +849,7 @@ const make = Effect.gen(function* () {
 
         // Update the issue with new labels
         const result = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(client.updateIssue(id, { labelIds: newLabelIds }), signal),
+          try: () => client.updateIssue(id, { labelIds: newLabelIds }),
           catch: (e) =>
             new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
         });
@@ -920,7 +870,7 @@ const make = Effect.gen(function* () {
 
         // Fetch the issue to get current labels
         const issue = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(id), signal),
+          try: () => client.issue(id),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 
@@ -930,7 +880,7 @@ const make = Effect.gen(function* () {
 
         // Get current labels on the issue
         const currentLabels = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(issue.labels(), signal),
+          try: () => issue.labels(),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch issue labels: ${e}`, cause: e }),
         });
@@ -951,8 +901,7 @@ const make = Effect.gen(function* () {
             .map((l) => l.id) ?? [];
 
         const result = yield* Effect.tryPromise({
-          try: (signal) =>
-            withAbortSignal(client.updateIssue(id, { labelIds: nonSessionLabelIds }), signal),
+          try: () => client.updateIssue(id, { labelIds: nonSessionLabelIds }),
           catch: (e) =>
             new LinearApiError({ message: `Failed to update issue labels: ${e}`, cause: e }),
         });
@@ -965,16 +914,13 @@ const make = Effect.gen(function* () {
         for (const sessionLabel of sessionLabels) {
           // Find issues using this label
           const issuesWithLabel = yield* Effect.tryPromise({
-            try: (signal) =>
-              withAbortSignal(
-                client.issues({
-                  filter: {
-                    labels: { some: { id: { eq: sessionLabel.id } } },
-                  },
-                  first: 1, // We only need to know if at least one issue uses it
-                }),
-                signal,
-              ),
+            try: () =>
+              client.issues({
+                filter: {
+                  labels: { some: { id: { eq: sessionLabel.id } } },
+                },
+                first: 1, // We only need to know if at least one issue uses it
+              }),
             catch: (e) =>
               new LinearApiError({ message: `Failed to check label usage: ${e}`, cause: e }),
           });
@@ -982,7 +928,7 @@ const make = Effect.gen(function* () {
           // If no issues use this label, delete it (non-fatal if this fails)
           if (issuesWithLabel.nodes.length === 0) {
             yield* Effect.tryPromise({
-              try: (signal) => withAbortSignal(client.deleteIssueLabel(sessionLabel.id), signal),
+              try: () => client.deleteIssueLabel(sessionLabel.id),
               catch: (e) =>
                 new LinearApiError({ message: `Failed to delete session label: ${e}`, cause: e }),
             }).pipe(Effect.ignore);
@@ -1001,7 +947,7 @@ const make = Effect.gen(function* () {
 
         // Fetch the blocker issue
         const blocker = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.issue(blockerId), signal),
+          try: () => client.issue(blockerId),
           catch: (e) => new LinearApiError({ message: `Failed to fetch issue: ${e}`, cause: e }),
         });
 
@@ -1011,7 +957,7 @@ const make = Effect.gen(function* () {
 
         // Get inverse relations - these are issues that THIS task blocks
         const inverseRelations = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(blocker.inverseRelations(), signal),
+          try: () => blocker.inverseRelations(),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch inverse relations: ${e}`, cause: e }),
         });
@@ -1034,18 +980,14 @@ const make = Effect.gen(function* () {
               // The Linear SDK types don't expose `issue` on IssueRelation, but it exists
               // on inverse relations as a Promise<Issue> pointing to the blocked issue.
               const blockedIssue = yield* Effect.tryPromise({
-                try: (signal) =>
-                  withAbortSignal(
-                    (relation as IssueRelation & { issue: Promise<Issue> }).issue,
-                    signal,
-                  ),
+                try: () => (relation as IssueRelation & { issue: Promise<Issue> }).issue,
                 catch: (e) =>
                   new LinearApiError({ message: `Failed to fetch blocked issue: ${e}`, cause: e }),
               });
 
               // Delete the relation
               yield* Effect.tryPromise({
-                try: (signal) => withAbortSignal(client.deleteIssueRelation(relation.id), signal),
+                try: () => client.deleteIssueRelation(relation.id),
                 catch: (e) =>
                   new LinearApiError({ message: `Failed to delete relation: ${e}`, cause: e }),
               });

@@ -24,33 +24,6 @@ const retryPolicy = Schedule.intersect(
 // Timeout for API calls: 30 seconds
 const API_TIMEOUT = Duration.seconds(30);
 
-/**
- * Wraps a promise to handle abort signals for proper Effect interruption.
- * When the AbortSignal fires, we reject the promise wrapper.
- * Note: The underlying promise continues to run, but we stop waiting for it.
- */
-const withAbortSignal = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> => {
-  if (signal.aborted) {
-    return Promise.reject(new DOMException("Aborted", "AbortError"));
-  }
-  return new Promise((resolve, reject) => {
-    const abortHandler = () => {
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    signal.addEventListener("abort", abortHandler, { once: true });
-    promise.then(
-      (value) => {
-        signal.removeEventListener("abort", abortHandler);
-        resolve(value);
-      },
-      (error) => {
-        signal.removeEventListener("abort", abortHandler);
-        reject(error);
-      },
-    );
-  });
-};
-
 const withRetryAndTimeout = <A, E>(
   effect: Effect.Effect<A, E>,
   operation: string,
@@ -74,7 +47,7 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const milestone = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.projectMilestone(id), signal),
+          try: () => client.projectMilestone(id),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch milestone: ${e}`, cause: e }),
         });
@@ -85,8 +58,8 @@ const make = Effect.gen(function* () {
 
         // Get the project ID from the milestone
         const project = yield* Effect.tryPromise({
-          try: async (signal) => {
-            const p = await withAbortSignal(milestone.project as Promise<unknown>, signal);
+          try: async () => {
+            const p = await (milestone.project as Promise<unknown>);
             return p as { id?: string } | undefined;
           },
           catch: (e) =>
@@ -110,12 +83,12 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const project = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.project(projectId), signal),
+          try: () => client.project(projectId),
           catch: (e) => new LinearApiError({ message: `Failed to fetch project: ${e}`, cause: e }),
         });
 
         const milestones = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(project.projectMilestones(), signal),
+          try: () => project.projectMilestones(),
           catch: (e) =>
             new LinearApiError({ message: `Failed to fetch milestones: ${e}`, cause: e }),
         });
@@ -158,7 +131,7 @@ const make = Effect.gen(function* () {
         }
 
         const result = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.createProjectMilestone(createInput), signal),
+          try: () => client.createProjectMilestone(createInput),
           catch: (e) =>
             new LinearApiError({ message: `Failed to create milestone: ${e}`, cause: e }),
         });
@@ -168,8 +141,8 @@ const make = Effect.gen(function* () {
         }
 
         const milestone = yield* Effect.tryPromise({
-          try: async (signal) => {
-            const m = await withAbortSignal(result.projectMilestone as Promise<unknown>, signal);
+          try: async () => {
+            const m = await (result.projectMilestone as Promise<unknown>);
             if (!m) throw new Error("Milestone not returned");
             return m as typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
           },
@@ -215,7 +188,7 @@ const make = Effect.gen(function* () {
         }
 
         const result = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.updateProjectMilestone(id, updateInput), signal),
+          try: () => client.updateProjectMilestone(id, updateInput),
           catch: (e) =>
             new LinearApiError({ message: `Failed to update milestone: ${e}`, cause: e }),
         });
@@ -225,8 +198,8 @@ const make = Effect.gen(function* () {
         }
 
         const milestone = yield* Effect.tryPromise({
-          try: async (signal) => {
-            const m = await withAbortSignal(result.projectMilestone as Promise<unknown>, signal);
+          try: async () => {
+            const m = await (result.projectMilestone as Promise<unknown>);
             if (!m) throw new Error("Milestone not returned");
             return m as typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
           },
@@ -236,8 +209,8 @@ const make = Effect.gen(function* () {
 
         // Get the project ID from the milestone
         const project = yield* Effect.tryPromise({
-          try: async (signal) => {
-            const p = await withAbortSignal(milestone!.project as Promise<unknown>, signal);
+          try: async () => {
+            const p = await (milestone!.project as Promise<unknown>);
             return p as { id?: string } | undefined;
           },
           catch: (e) =>
@@ -261,7 +234,7 @@ const make = Effect.gen(function* () {
         const client = yield* linearClient.client();
 
         const result = yield* Effect.tryPromise({
-          try: (signal) => withAbortSignal(client.deleteProjectMilestone(id), signal),
+          try: () => client.deleteProjectMilestone(id),
           catch: (e) =>
             new LinearApiError({ message: `Failed to delete milestone: ${e}`, cause: e }),
         });
