@@ -165,12 +165,10 @@ const make = Effect.gen(function* () {
         ),
       );
     }).pipe(
-      Effect.catchAll((e) => {
-        if (e instanceof ConfigError) {
-          return Effect.fail(e);
-        }
-        return Effect.fail(new ConfigError({ message: `Failed to read config: ${e}`, cause: e }));
-      }),
+      Effect.catchTag("ConfigError", Effect.fail),
+      Effect.catchAll((e) =>
+        Effect.fail(new ConfigError({ message: `Failed to read config: ${e}`, cause: e })),
+      ),
     );
 
   const writeYaml = (yamlConfig: MutableYamlConfig): Effect.Effect<void, ConfigError> =>
