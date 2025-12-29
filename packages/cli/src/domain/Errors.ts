@@ -353,3 +353,16 @@ export class TemplateError extends Data.TaggedError("TemplateError")<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
+
+// === Input Validation Errors ===
+
+/** Invalid date format in CLI input */
+export class InvalidDateError extends Data.TaggedError("InvalidDateError")<{
+  readonly input: string;
+  readonly field: string;
+  readonly cause?: unknown;
+}> {
+  override get message() {
+    return `Invalid date format for ${this.field}: "${this.input}". Expected format: YYYY-MM-DD`;
+  }
+}

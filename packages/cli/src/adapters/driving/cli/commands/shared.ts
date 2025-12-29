@@ -3,6 +3,10 @@
  */
 
 import * as Options from "@effect/cli/Options";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { InvalidDateError } from "../../../../domain/Errors.js";
 
 /**
  * Shared --dry-run option for commands that mutate state.
@@ -38,3 +42,31 @@ export const formatDryRunOutput = (message: string, json: boolean): string => {
   }
   return `[DRY RUN] ${message}`;
 };
+
+/**
+ * Schema for parsing date strings into Date objects.
+ * Uses Effect's built-in Schema.Date which handles ISO 8601 formats.
+ */
+export const DateFromString = Schema.Date;
+
+/**
+ * Parse an optional date string with proper error handling.
+ *
+ * @param dateOption - Optional date string from CLI input
+ * @param field - Field name for error messages (e.g., "targetDate")
+ * @returns Effect that yields Option<Date> or fails with InvalidDateError
+ */
+export const parseOptionalDate = (
+  dateOption: Option.Option<string>,
+  field: string,
+): Effect.Effect<Option.Option<Date>, InvalidDateError> =>
+  Option.match(dateOption, {
+    onNone: () => Effect.succeed(Option.none<Date>()),
+    onSome: (dateStr) =>
+      Schema.decodeUnknown(DateFromString)(dateStr).pipe(
+        Effect.map(Option.some),
+        Effect.catchTag("ParseError", () =>
+          Effect.fail(new InvalidDateError({ input: dateStr, field })),
+        ),
+      ),
+  });
