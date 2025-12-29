@@ -1,0 +1,85 @@
+name: AI Disclosure
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+  issues:
+    types: [opened, edited]
+
+jobs:
+  label-ai-assisted:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check AI disclosure and apply label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isPR = context.eventName === 'pull_request';
+            const body = isPR 
+              ? context.payload.pull_request.body || ''
+              : context.payload.issue.body || '';
+            const number = isPR 
+              ? context.payload.pull_request.number 
+              : context.payload.issue.number;
+            
+            // Check for hidden HTML comment disclosure
+            // Matches: <!-- ai-assisted: true -->
+            const aiDisclosurePattern = /<!--\s*ai-assisted:\s*true\s*-->/i;
+            const isAiAssisted = aiDisclosurePattern.test(body);
+            
+            const labelName = 'ai-assisted';
+            
+            // Get current labels
+            const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: number,
+            });
+            
+            const hasLabel = currentLabels.some(label => label.name === labelName);
+            
+            if (isAiAssisted && !hasLabel) {
+              // Ensure the label exists
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: labelName,
+                    color: '7C3AED',
+                    description: 'Created with AI assistance (e.g., Copilot, Claude, ChatGPT)',
+                  });
+                } else {
+                  throw error;
+                }
+              }
+              
+              // Add the label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                labels: [labelName],
+              });
+              console.log(`Added "${labelName}" label to ${isPR ? 'PR' : 'issue'} #${number}`);
+            } else if (!isAiAssisted && hasLabel) {
+              // Remove the label if disclosure changed to false
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                name: labelName,
+              });
+              console.log(`Removed "${labelName}" label from ${isPR ? 'PR' : 'issue'} #${number}`);
+            } else {
+              console.log(`No label changes needed for ${isPR ? 'PR' : 'issue'} #${number}`);
+            }
