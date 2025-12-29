@@ -20,9 +20,7 @@ import { PromptCancelledError } from "../../../domain/Errors.js";
  * Helper to run a clack prompt and handle cancellation.
  * All clack prompts return the result or a symbol when cancelled.
  */
-const runPrompt = <T>(
-  prompt: () => Promise<T | symbol>,
-): Effect.Effect<T, PromptCancelledError> =>
+const runPrompt = <T>(prompt: () => Promise<T | symbol>): Effect.Effect<T, PromptCancelledError> =>
   Effect.tryPromise({
     try: prompt,
     catch: () => PromptCancelledError.default,

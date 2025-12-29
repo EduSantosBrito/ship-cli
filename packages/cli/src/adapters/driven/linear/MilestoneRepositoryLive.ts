@@ -140,7 +140,9 @@ const make = Effect.gen(function* () {
           return yield* new TaskError({ message: "Failed to create milestone" });
         }
 
-        type MilestoneType = typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
+        type MilestoneType = typeof result extends { projectMilestone: infer T }
+          ? Awaited<T>
+          : never;
         const milestone = yield* Effect.tryPromise({
           try: () => result.projectMilestone as Promise<MilestoneType | undefined>,
           catch: (e) =>
@@ -199,7 +201,9 @@ const make = Effect.gen(function* () {
           return yield* new TaskError({ message: "Failed to update milestone" });
         }
 
-        type MilestoneType = typeof result extends { projectMilestone: infer T } ? Awaited<T> : never;
+        type MilestoneType = typeof result extends { projectMilestone: infer T }
+          ? Awaited<T>
+          : never;
         const milestone = yield* Effect.tryPromise({
           try: () => result.projectMilestone as Promise<MilestoneType | undefined>,
           catch: (e) =>
