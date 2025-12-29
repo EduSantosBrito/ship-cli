@@ -85,8 +85,8 @@ importers:
         specifier: ^1.0.143
         version: 1.0.175
       '@opencode-ai/sdk':
-        specifier: ^1.0.143
-        version: 1.0.175
+        specifier: ^1.0.208
+        version: 1.0.208
       effect:
         specifier: ^3.19.13
         version: 3.19.13
@@ -470,6 +470,9 @@ packages:
 
   '@opencode-ai/sdk@1.0.175':
     resolution: {integrity: sha512-n0RtVBfU4j/nCEAr/s//jVRSFaZRS6DZZTzEOqwQce4C7957HnuMH674NeruHltl2AiXn/LNUkWa/7c/R4a3bA==}
+
+  '@opencode-ai/sdk@1.0.208':
+    resolution: {integrity: sha512-ZsbxUKlQgvi5AS1KEFF2qqaq96jO9VKmD63f/bkKAhZgly4SjWDA9462rTTe4PXRLF14d7M7O9BaYeJ6KWGMug==}
 
   '@oxfmt/darwin-arm64@0.21.0':
     resolution: {integrity: sha512-defgGcchFCq2F7f5Nr3E4VXYW1sUhBGmIejgcPZ1gSsc8FAeT+vP5cSeGnDv+kcX+OKFDt89C67c31qZ6yZBsQ==}
@@ -1623,6 +1626,8 @@ snapshots:
       zod: 4.1.8
 
   '@opencode-ai/sdk@1.0.175': {}
+
+  '@opencode-ai/sdk@1.0.208': {}
 
   '@oxfmt/darwin-arm64@0.21.0':
     optional: true
