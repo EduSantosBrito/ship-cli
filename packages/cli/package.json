@@ -44,7 +44,8 @@
     "format": "oxfmt --write src/",
     "format:check": "oxfmt src/",
     "test": "vitest run",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "prepare": "effect-language-service patch --module typescript"
   },
   "devDependencies": {
     "@effect/cli": "^0.69.0",

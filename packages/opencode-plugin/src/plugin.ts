@@ -2407,9 +2407,7 @@ Run 'ship init' in the terminal first if not configured.`,
       unresolved: createTool.schema
         .boolean()
         .optional()
-        .describe(
-          "Show only unresolved/actionable comments - for pr-reviews action",
-        ),
+        .describe("Show only unresolved/actionable comments - for pr-reviews action"),
       milestoneId: createTool.schema
         .string()
         .optional()

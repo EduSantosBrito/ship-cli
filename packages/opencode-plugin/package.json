@@ -36,7 +36,8 @@
     "format": "oxfmt --write src/",
     "format:check": "oxfmt src/",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "effect-language-service patch --module typescript"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.0.143",

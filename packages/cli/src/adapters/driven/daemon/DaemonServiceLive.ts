@@ -553,9 +553,7 @@ const runDaemonServer = (
 
               // Enqueue command using Effect-based queue operation
               // Use runtime obtained from Effect context to bridge callback into Effect
-              const offerResult = runSync(
-                Queue.offer(commandQueue, request).pipe(Effect.either),
-              );
+              const offerResult = runSync(Queue.offer(commandQueue, request).pipe(Effect.either));
 
               if (offerResult._tag === "Left") {
                 // Queue is shut down, respond with error
