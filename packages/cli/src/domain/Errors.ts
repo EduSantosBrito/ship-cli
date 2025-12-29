@@ -4,6 +4,7 @@ import * as Data from "effect/Data";
 
 export class TaskNotFoundError extends Data.TaggedError("TaskNotFoundError")<{
   readonly taskId: string;
+  readonly cause?: unknown;
 }> {
   get message() {
     return `Task not found: ${this.taskId}`;
@@ -12,6 +13,7 @@ export class TaskNotFoundError extends Data.TaggedError("TaskNotFoundError")<{
 
 export class MilestoneNotFoundError extends Data.TaggedError("MilestoneNotFoundError")<{
   readonly milestoneId: string;
+  readonly cause?: unknown;
 }> {
   get message() {
     return `Milestone not found: ${this.milestoneId}`;
@@ -32,6 +34,7 @@ export class AuthError extends Data.TaggedError("AuthError")<{
 
 export class NotAuthenticatedError extends Data.TaggedError("NotAuthenticatedError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 // === Config Errors ===
@@ -43,10 +46,12 @@ export class ConfigError extends Data.TaggedError("ConfigError")<{
 
 export class ConfigNotFoundError extends Data.TaggedError("ConfigNotFoundError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 export class WorkspaceNotInitializedError extends Data.TaggedError("WorkspaceNotInitializedError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new WorkspaceNotInitializedError({
     message: "Workspace not initialized. Run 'ship init' first.",
@@ -65,6 +70,7 @@ export class VcsError extends Data.TaggedError("VcsError")<{
 /** jj CLI is not installed or not in PATH */
 export class JjNotInstalledError extends Data.TaggedError("JjNotInstalledError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new JjNotInstalledError({
     message: "jj is not installed. Visit https://jj-vcs.github.io/jj/",
@@ -75,6 +81,7 @@ export class JjNotInstalledError extends Data.TaggedError("JjNotInstalledError")
 export class NotARepoError extends Data.TaggedError("NotARepoError")<{
   readonly message: string;
   readonly path?: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new NotARepoError({
     message: "Not a jj repository. Run 'jj git init' to initialize.",
@@ -85,6 +92,7 @@ export class NotARepoError extends Data.TaggedError("NotARepoError")<{
 export class JjConflictError extends Data.TaggedError("JjConflictError")<{
   readonly message: string;
   readonly conflictedPaths?: ReadonlyArray<string>;
+  readonly cause?: unknown;
 }> {}
 
 /** Push operation failed (auth, network, rejected, etc.) */
@@ -104,12 +112,14 @@ export class JjFetchError extends Data.TaggedError("JjFetchError")<{
 export class JjBookmarkError extends Data.TaggedError("JjBookmarkError")<{
   readonly message: string;
   readonly bookmark?: string;
+  readonly cause?: unknown;
 }> {}
 
 /** Revision/revset not found or invalid */
 export class JjRevisionError extends Data.TaggedError("JjRevisionError")<{
   readonly message: string;
   readonly revision?: string;
+  readonly cause?: unknown;
 }> {}
 
 /** Squash operation failed */
@@ -122,11 +132,13 @@ export class JjSquashError extends Data.TaggedError("JjSquashError")<{
 export class JjImmutableError extends Data.TaggedError("JjImmutableError")<{
   readonly message: string;
   readonly commitId?: string;
+  readonly cause?: unknown;
 }> {}
 
 /** Working copy is stale and needs to be updated */
 export class JjStaleWorkingCopyError extends Data.TaggedError("JjStaleWorkingCopyError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new JjStaleWorkingCopyError({
     message: "The working copy is stale. Run 'ship stack update-stale' to recover.",
@@ -142,6 +154,7 @@ export class PrError extends Data.TaggedError("PrError")<{
 
 export class GhNotInstalledError extends Data.TaggedError("GhNotInstalledError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new GhNotInstalledError({
     message: "gh CLI is not installed. Visit https://cli.github.com/",
@@ -151,6 +164,7 @@ export class GhNotInstalledError extends Data.TaggedError("GhNotInstalledError")
 /** gh CLI is installed but not authenticated with GitHub */
 export class GhNotAuthenticatedError extends Data.TaggedError("GhNotAuthenticatedError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new GhNotAuthenticatedError({
     message: "gh CLI is not authenticated. Run 'gh auth login' first.",
@@ -176,6 +190,7 @@ export class WebhookConnectionError extends Data.TaggedError("WebhookConnectionE
 export class WebhookPermissionError extends Data.TaggedError("WebhookPermissionError")<{
   readonly message: string;
   readonly repo?: string;
+  readonly cause?: unknown;
 }> {
   static forRepo(repo: string) {
     return new WebhookPermissionError({
@@ -189,6 +204,7 @@ export class WebhookPermissionError extends Data.TaggedError("WebhookPermissionE
 export class WebhookAlreadyExistsError extends Data.TaggedError("WebhookAlreadyExistsError")<{
   readonly message: string;
   readonly repo?: string;
+  readonly cause?: unknown;
 }> {
   static forRepo(repo: string) {
     return new WebhookAlreadyExistsError({
@@ -202,6 +218,7 @@ export class WebhookAlreadyExistsError extends Data.TaggedError("WebhookAlreadyE
 export class WebhookRateLimitError extends Data.TaggedError("WebhookRateLimitError")<{
   readonly message: string;
   readonly retryAfter?: number;
+  readonly cause?: unknown;
 }> {
   static fromHeaders(retryAfter?: number) {
     const retryMsg = retryAfter ? ` Retry after ${retryAfter} seconds.` : "";
@@ -217,6 +234,7 @@ export class WebhookRateLimitError extends Data.TaggedError("WebhookRateLimitErr
 /** User cancelled an interactive prompt (e.g., Ctrl+C) */
 export class PromptCancelledError extends Data.TaggedError("PromptCancelledError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {
   static readonly default = new PromptCancelledError({
     message: "Prompt cancelled by user",
@@ -234,6 +252,7 @@ export class LinearApiError extends Data.TaggedError("LinearApiError")<{
 export class RateLimitError extends Data.TaggedError("RateLimitError")<{
   readonly message: string;
   readonly retryAfter?: number;
+  readonly cause?: unknown;
 }> {}
 
 // === OpenCode Errors ===
@@ -248,6 +267,7 @@ export class OpenCodeError extends Data.TaggedError("OpenCodeError")<{
 export class OpenCodeNotRunningError extends Data.TaggedError("OpenCodeNotRunningError")<{
   readonly message: string;
   readonly serverUrl?: string;
+  readonly cause?: unknown;
 }> {
   static forUrl(serverUrl: string) {
     return new OpenCodeNotRunningError({
@@ -261,6 +281,7 @@ export class OpenCodeNotRunningError extends Data.TaggedError("OpenCodeNotRunnin
 export class OpenCodeSessionNotFoundError extends Data.TaggedError("OpenCodeSessionNotFoundError")<{
   readonly message: string;
   readonly sessionId?: string;
+  readonly cause?: unknown;
 }> {
   static forId(sessionId: string) {
     return new OpenCodeSessionNotFoundError({
@@ -285,6 +306,7 @@ export class WorkspaceExistsError extends Data.TaggedError("WorkspaceExistsError
   readonly message: string;
   readonly name: string;
   readonly path?: string;
+  readonly cause?: unknown;
 }> {
   static forName(name: string, path?: string) {
     const pathMsg = path ? ` at ${path}` : "";
@@ -300,6 +322,7 @@ export class WorkspaceExistsError extends Data.TaggedError("WorkspaceExistsError
 export class WorkspaceNotFoundError extends Data.TaggedError("WorkspaceNotFoundError")<{
   readonly message: string;
   readonly name: string;
+  readonly cause?: unknown;
 }> {
   static forName(name: string) {
     return new WorkspaceNotFoundError({
@@ -315,6 +338,7 @@ export class WorkspaceNotFoundError extends Data.TaggedError("WorkspaceNotFoundE
 export class TemplateNotFoundError extends Data.TaggedError("TemplateNotFoundError")<{
   readonly message: string;
   readonly templateName: string;
+  readonly cause?: unknown;
 }> {
   static forName(name: string) {
     return new TemplateNotFoundError({
