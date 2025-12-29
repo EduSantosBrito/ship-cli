@@ -18,6 +18,7 @@ import * as HashSet from "effect/HashSet";
 import * as Fiber from "effect/Fiber";
 import * as Deferred from "effect/Deferred";
 import * as Schedule from "effect/Schedule";
+import * as Runtime from "effect/Runtime";
 import * as Duration from "effect/Duration";
 import * as Scope from "effect/Scope";
 import * as Queue from "effect/Queue";
@@ -503,6 +504,10 @@ const runDaemonServer = (
     // Track active client connections for proper cleanup
     const activeClients = new Set<Net.Socket>();
 
+    // Get runtime for bridging callbacks into Effect
+    const runtime = yield* Effect.runtime<never>();
+    const runSync = Runtime.runSync(runtime);
+
     // Start IPC server using acquireRelease for proper cleanup
     const server = yield* Effect.acquireRelease(
       Effect.sync(() => {
@@ -546,10 +551,13 @@ const runDaemonServer = (
                 },
               };
 
-              // Enqueue - handle shutdown gracefully
-              try {
-                Queue.unsafeOffer(commandQueue, request);
-              } catch {
+              // Enqueue command using Effect-based queue operation
+              // Use runtime obtained from Effect context to bridge callback into Effect
+              const offerResult = runSync(
+                Queue.offer(commandQueue, request).pipe(Effect.either),
+              );
+
+              if (offerResult._tag === "Left") {
                 // Queue is shut down, respond with error
                 request.respond(
                   new ErrorResponse({
