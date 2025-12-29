@@ -72,7 +72,8 @@ const make = Effect.gen(function* () {
         .ensureGitignore()
         .pipe(
           Effect.mapError(
-            (e) => new AuthError({ message: `Failed to update .gitignore: ${e.message}`, cause: e }),
+            (e) =>
+              new AuthError({ message: `Failed to update .gitignore: ${e.message}`, cause: e }),
           ),
         );
 

@@ -7,7 +7,6 @@ import * as Console from "effect/Console";
 import { VcsService } from "../../../../../ports/VcsService.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
 
-
 /**
  * Result of checking VCS availability
  */

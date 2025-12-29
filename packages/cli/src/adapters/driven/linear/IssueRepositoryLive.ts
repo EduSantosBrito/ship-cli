@@ -638,9 +638,8 @@ const make = Effect.gen(function* () {
           try: async () => {
             for (const r of relations?.nodes ?? []) {
               if (r.type === "blocks") {
-                const relatedIssue = await (
-                  r as IssueRelation & { relatedIssue: Promise<Issue> }
-                ).relatedIssue;
+                const relatedIssue = await (r as IssueRelation & { relatedIssue: Promise<Issue> })
+                  .relatedIssue;
                 if (relatedIssue?.id === blockerId) {
                   return r;
                 }

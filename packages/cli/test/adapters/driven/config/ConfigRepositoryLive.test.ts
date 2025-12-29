@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "@effect/vitest";
+import { describe, it, expect } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import * as YAML from "yaml";
@@ -18,64 +18,71 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
-// === Test Utilities ===
+// === Effect-Managed Test Resources ===
 
 /**
- * Create a temporary directory for testing.
- * Returns cleanup function and temp path.
+ * TempDir resource that creates a temp directory and changes process.cwd to it.
+ * Uses Effect.acquireRelease to guarantee cleanup even on test failure.
  */
-const createTempDir = async (): Promise<{ path: string; cleanup: () => Promise<void> }> => {
-  const tmpPath = await fs.mkdtemp(path.join(os.tmpdir(), "ship-config-test-"));
-  return {
-    path: tmpPath,
-    cleanup: async () => {
+const TempDirResource = Effect.acquireRelease(
+  Effect.promise(async () => {
+    const tmpPath = await fs.mkdtemp(path.join(os.tmpdir(), "ship-config-test-"));
+    const originalCwd = process.cwd();
+    process.chdir(tmpPath);
+    return { path: tmpPath, originalCwd };
+  }),
+  ({ path: tmpPath, originalCwd }) =>
+    Effect.promise(async () => {
+      process.chdir(originalCwd);
       await fs.rm(tmpPath, { recursive: true, force: true });
-    },
-  };
-};
+    }),
+);
 
 /**
  * Write a config file in the temp directory
  */
-const writeConfigFile = async (tmpDir: string, content: string): Promise<void> => {
-  const configDir = path.join(tmpDir, ".ship");
-  await fs.mkdir(configDir, { recursive: true });
-  await fs.writeFile(path.join(configDir, "config.yaml"), content);
-};
+const writeConfigFile = (tmpDir: string, content: string): Effect.Effect<void> =>
+  Effect.promise(async () => {
+    const configDir = path.join(tmpDir, ".ship");
+    await fs.mkdir(configDir, { recursive: true });
+    await fs.writeFile(path.join(configDir, "config.yaml"), content);
+  });
 
 /**
  * Read config file from temp directory
  */
-const readConfigFile = async (tmpDir: string): Promise<string> => {
-  return fs.readFile(path.join(tmpDir, ".ship", "config.yaml"), "utf-8");
-};
+const readConfigFile = (tmpDir: string): Effect.Effect<string> =>
+  Effect.promise(() => fs.readFile(path.join(tmpDir, ".ship", "config.yaml"), "utf-8"));
 
 /**
  * Check if config file exists
  */
-const configFileExists = async (tmpDir: string): Promise<boolean> => {
-  try {
-    await fs.access(path.join(tmpDir, ".ship", "config.yaml"));
-    return true;
-  } catch {
-    return false;
-  }
-};
+const configFileExists = (tmpDir: string): Effect.Effect<boolean> =>
+  Effect.promise(async () => {
+    try {
+      await fs.access(path.join(tmpDir, ".ship", "config.yaml"));
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
 // Layer that provides FileSystem and Path from Node, then ConfigRepository on top
 const PlatformLayer = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 const TestLayer = ConfigRepositoryLive.pipe(Layer.provide(PlatformLayer));
 
 // Test fixtures
-const makeValidYamlConfig = (overrides: Partial<{
-  teamId: string;
-  teamKey: string;
-  projectId: string | null;
-  apiKey: string;
-  defaultBranch: string;
-  openBrowser: boolean;
-  conventionalFormat: boolean;
-}> = {}): string => {
+const makeValidYamlConfig = (
+  overrides: Partial<{
+    teamId: string;
+    teamKey: string;
+    projectId: string | null;
+    apiKey: string;
+    defaultBranch: string;
+    openBrowser: boolean;
+    conventionalFormat: boolean;
+  }> = {},
+): string => {
   const config = {
     linear: {
       teamId: overrides.teamId ?? "team-123",
@@ -99,32 +106,22 @@ const makeValidYamlConfig = (overrides: Partial<{
 };
 
 describe("ConfigRepositoryLive Integration", () => {
-  let tmpDir: { path: string; cleanup: () => Promise<void> };
-  let originalCwd: string;
-
-  beforeEach(async () => {
-    tmpDir = await createTempDir();
-    originalCwd = process.cwd();
-    process.chdir(tmpDir.path);
-  });
-
-  afterEach(async () => {
-    process.chdir(originalCwd);
-    await tmpDir.cleanup();
-  });
-
   describe("exists", () => {
-    it.effect("returns false when config file does not exist", () =>
+    it.scoped("returns false when config file does not exist", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         const result = yield* repo.exists();
         expect(result).toBe(false);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("returns true when config file exists", () =>
+    it.scoped("returns true when config file exists", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, makeValidYamlConfig()));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, makeValidYamlConfig());
+
         const repo = yield* ConfigRepository;
         const result = yield* repo.exists();
         expect(result).toBe(true);
@@ -133,18 +130,17 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("load", () => {
-    it.effect("loads valid config with all required fields", () =>
+    it.scoped("loads valid config with all required fields", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            makeValidYamlConfig({
-              teamId: "team-abc",
-              teamKey: "PROD",
-              projectId: "proj-123",
-              apiKey: "lin_api_secret",
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          makeValidYamlConfig({
+            teamId: "team-abc",
+            teamKey: "PROD",
+            projectId: "proj-123",
+            apiKey: "lin_api_secret",
+          }),
         );
 
         const repo = yield* ConfigRepository;
@@ -158,9 +154,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("applies defaults for optional fields", () =>
+    it.scoped("applies defaults for optional fields", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, makeValidYamlConfig()));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, makeValidYamlConfig());
 
         const repo = yield* ConfigRepository;
         const config = yield* repo.load();
@@ -171,17 +168,16 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("loads config with custom optional fields", () =>
+    it.scoped("loads config with custom optional fields", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            makeValidYamlConfig({
-              defaultBranch: "develop",
-              openBrowser: false,
-              conventionalFormat: false,
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          makeValidYamlConfig({
+            defaultBranch: "develop",
+            openBrowser: false,
+            conventionalFormat: false,
+          }),
         );
 
         const repo = yield* ConfigRepository;
@@ -193,8 +189,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with WorkspaceNotInitializedError when config file is missing", () =>
+    it.scoped("fails with WorkspaceNotInitializedError when config file is missing", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         const result = yield* repo.load().pipe(Effect.either);
 
@@ -205,10 +203,29 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with WorkspaceNotInitializedError when linear config is missing", () =>
+    it.scoped("fails with WorkspaceNotInitializedError when linear config is missing", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(tmpDir.path, YAML.stringify({ auth: { apiKey: "test" } })),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, YAML.stringify({ auth: { apiKey: "test" } }));
+
+        const repo = yield* ConfigRepository;
+        const result = yield* repo.load().pipe(Effect.either);
+
+        expect(result._tag).toBe("Left");
+        if (result._tag === "Left") {
+          expect(result.left).toBeInstanceOf(WorkspaceNotInitializedError);
+        }
+      }).pipe(Effect.provide(TestLayer)),
+    );
+
+    it.scoped("fails with WorkspaceNotInitializedError when auth config is missing", () =>
+      Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          YAML.stringify({
+            linear: { teamId: "t1", teamKey: "T", projectId: null },
+          }),
         );
 
         const repo = yield* ConfigRepository;
@@ -221,30 +238,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with WorkspaceNotInitializedError when auth config is missing", () =>
+    it.scoped("fails with ConfigError for invalid YAML syntax", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            YAML.stringify({
-              linear: { teamId: "t1", teamKey: "T", projectId: null },
-            }),
-          ),
-        );
-
-        const repo = yield* ConfigRepository;
-        const result = yield* repo.load().pipe(Effect.either);
-
-        expect(result._tag).toBe("Left");
-        if (result._tag === "Left") {
-          expect(result.left).toBeInstanceOf(WorkspaceNotInitializedError);
-        }
-      }).pipe(Effect.provide(TestLayer)),
-    );
-
-    it.effect("fails with ConfigError for invalid YAML syntax", () =>
-      Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, "invalid: yaml: syntax: ["));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, "invalid: yaml: syntax: [");
 
         const repo = yield* ConfigRepository;
         const result = yield* repo.load().pipe(Effect.either);
@@ -257,16 +254,15 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with ConfigError for invalid schema", () =>
+    it.scoped("fails with ConfigError for invalid schema", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            YAML.stringify({
-              linear: { teamId: 123, teamKey: true }, // Wrong types
-              auth: { apiKey: "test" },
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          YAML.stringify({
+            linear: { teamId: 123, teamKey: true }, // Wrong types
+            auth: { apiKey: "test" },
+          }),
         );
 
         const repo = yield* ConfigRepository;
@@ -282,15 +278,14 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("loadPartial", () => {
-    it.effect("loads partial config when file exists", () =>
+    it.scoped("loads partial config when file exists", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            YAML.stringify({
-              linear: { teamId: "t1", teamKey: "T", projectId: null },
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          YAML.stringify({
+            linear: { teamId: "t1", teamKey: "T", projectId: null },
+          }),
         );
 
         const repo = yield* ConfigRepository;
@@ -301,8 +296,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("returns empty partial config when file does not exist", () =>
+    it.scoped("returns empty partial config when file does not exist", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         const config = yield* repo.loadPartial();
 
@@ -313,8 +310,10 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("save", () => {
-    it.effect("creates config directory and file when missing", () =>
+    it.scoped("creates config directory and file when missing", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
 
         const config = new ShipConfig({
@@ -331,19 +330,20 @@ describe("ConfigRepositoryLive Integration", () => {
 
         yield* repo.save(config);
 
-        const exists = yield* Effect.promise(() => configFileExists(tmpDir.path));
+        const exists = yield* configFileExists(tmpPath);
         expect(exists).toBe(true);
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.linear.teamId).toBe("team-new");
         expect(parsed.auth.apiKey).toBe("new_api_key");
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("overwrites existing config file", () =>
+    it.scoped("overwrites existing config file", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, makeValidYamlConfig()));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, makeValidYamlConfig());
 
         const repo = yield* ConfigRepository;
 
@@ -361,7 +361,7 @@ describe("ConfigRepositoryLive Integration", () => {
 
         yield* repo.save(config);
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.linear.teamId).toBe("updated-team");
         expect(parsed.linear.projectId).toBe("proj-upd");
@@ -372,23 +372,22 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("saveAuth", () => {
-    it.effect("saves auth while preserving existing config", () =>
+    it.scoped("saves auth while preserving existing config", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            makeValidYamlConfig({
-              teamId: "existing-team",
-              teamKey: "EXS",
-              apiKey: "old_key",
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          makeValidYamlConfig({
+            teamId: "existing-team",
+            teamKey: "EXS",
+            apiKey: "old_key",
+          }),
         );
 
         const repo = yield* ConfigRepository;
         yield* repo.saveAuth(new AuthConfig({ apiKey: "new_auth_key" }));
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.auth.apiKey).toBe("new_auth_key");
         expect(parsed.linear.teamId).toBe("existing-team");
@@ -396,34 +395,35 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("saves auth when no existing config", () =>
+    it.scoped("saves auth when no existing config", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         yield* repo.saveAuth(new AuthConfig({ apiKey: "fresh_key" }));
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.auth.apiKey).toBe("fresh_key");
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("preserves git, pr, and commit config when updating auth", () =>
+    it.scoped("preserves git, pr, and commit config when updating auth", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            makeValidYamlConfig({
-              defaultBranch: "develop",
-              openBrowser: false,
-              conventionalFormat: false,
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          makeValidYamlConfig({
+            defaultBranch: "develop",
+            openBrowser: false,
+            conventionalFormat: false,
+          }),
         );
 
         const repo = yield* ConfigRepository;
         yield* repo.saveAuth(new AuthConfig({ apiKey: "updated_key" }));
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.git.defaultBranch).toBe("develop");
         expect(parsed.pr.openBrowser).toBe(false);
@@ -433,11 +433,10 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("saveLinear", () => {
-    it.effect("saves linear config while preserving auth", () =>
+    it.scoped("saves linear config while preserving auth", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(tmpDir.path, makeValidYamlConfig({ apiKey: "existing_key" })),
-        );
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, makeValidYamlConfig({ apiKey: "existing_key" }));
 
         const repo = yield* ConfigRepository;
         yield* repo.saveLinear(
@@ -448,7 +447,7 @@ describe("ConfigRepositoryLive Integration", () => {
           }),
         );
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.linear.teamId).toBe("new-team");
         expect(parsed.linear.teamKey).toBe("NEW");
@@ -457,9 +456,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("saves linear config with null projectId", () =>
+    it.scoped("saves linear config with null projectId", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, makeValidYamlConfig()));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, makeValidYamlConfig());
 
         const repo = yield* ConfigRepository;
         yield* repo.saveLinear(
@@ -470,7 +470,7 @@ describe("ConfigRepositoryLive Integration", () => {
           }),
         );
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.linear.projectId).toBeNull();
       }).pipe(Effect.provide(TestLayer)),
@@ -478,20 +478,23 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("delete", () => {
-    it.effect("deletes existing config file", () =>
+    it.scoped("deletes existing config file", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, makeValidYamlConfig()));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, makeValidYamlConfig());
 
         const repo = yield* ConfigRepository;
         yield* repo.delete();
 
-        const exists = yield* Effect.promise(() => configFileExists(tmpDir.path));
+        const exists = yield* configFileExists(tmpPath);
         expect(exists).toBe(false);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("succeeds even when config file does not exist", () =>
+    it.scoped("succeeds even when config file does not exist", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         const result = yield* repo.delete().pipe(Effect.either);
         expect(result._tag).toBe("Right");
@@ -500,14 +503,16 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("ensureConfigDir", () => {
-    it.effect("creates .ship directory when it does not exist", () =>
+    it.scoped("creates .ship directory when it does not exist", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         yield* repo.ensureConfigDir();
 
         const dirExists = yield* Effect.promise(async () => {
           try {
-            await fs.access(path.join(tmpDir.path, ".ship"));
+            await fs.access(path.join(tmpPath, ".ship"));
             return true;
           } catch {
             return false;
@@ -517,9 +522,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("succeeds when .ship directory already exists", () =>
+    it.scoped("succeeds when .ship directory already exists", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => fs.mkdir(path.join(tmpDir.path, ".ship"), { recursive: true }));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* Effect.promise(() => fs.mkdir(path.join(tmpPath, ".ship"), { recursive: true }));
 
         const repo = yield* ConfigRepository;
         const result = yield* repo.ensureConfigDir().pipe(Effect.either);
@@ -529,63 +535,68 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("ensureGitignore", () => {
-    it.effect("creates .gitignore with .ship/ when it does not exist", () =>
+    it.scoped("creates .gitignore with .ship/ when it does not exist", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         yield* repo.ensureGitignore();
 
         const content = yield* Effect.promise(() =>
-          fs.readFile(path.join(tmpDir.path, ".gitignore"), "utf-8"),
+          fs.readFile(path.join(tmpPath, ".gitignore"), "utf-8"),
         );
         expect(content).toContain(".ship/");
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("appends .ship/ to existing .gitignore without it", () =>
+    it.scoped("appends .ship/ to existing .gitignore without it", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
         yield* Effect.promise(() =>
-          fs.writeFile(path.join(tmpDir.path, ".gitignore"), "node_modules/\n"),
+          fs.writeFile(path.join(tmpPath, ".gitignore"), "node_modules/\n"),
         );
 
         const repo = yield* ConfigRepository;
         yield* repo.ensureGitignore();
 
         const content = yield* Effect.promise(() =>
-          fs.readFile(path.join(tmpDir.path, ".gitignore"), "utf-8"),
+          fs.readFile(path.join(tmpPath, ".gitignore"), "utf-8"),
         );
         expect(content).toContain("node_modules/");
         expect(content).toContain(".ship/");
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("does not duplicate .ship/ in .gitignore", () =>
+    it.scoped("does not duplicate .ship/ in .gitignore", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
         yield* Effect.promise(() =>
-          fs.writeFile(path.join(tmpDir.path, ".gitignore"), "node_modules/\n.ship/\n"),
+          fs.writeFile(path.join(tmpPath, ".gitignore"), "node_modules/\n.ship/\n"),
         );
 
         const repo = yield* ConfigRepository;
         yield* repo.ensureGitignore();
 
         const content = yield* Effect.promise(() =>
-          fs.readFile(path.join(tmpDir.path, ".gitignore"), "utf-8"),
+          fs.readFile(path.join(tmpPath, ".gitignore"), "utf-8"),
         );
         const matches = content.match(/\.ship\//g);
         expect(matches).toHaveLength(1);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles .gitignore without trailing newline", () =>
+    it.scoped("handles .gitignore without trailing newline", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
         yield* Effect.promise(() =>
-          fs.writeFile(path.join(tmpDir.path, ".gitignore"), "node_modules/"),
+          fs.writeFile(path.join(tmpPath, ".gitignore"), "node_modules/"),
         );
 
         const repo = yield* ConfigRepository;
         yield* repo.ensureGitignore();
 
         const content = yield* Effect.promise(() =>
-          fs.readFile(path.join(tmpDir.path, ".gitignore"), "utf-8"),
+          fs.readFile(path.join(tmpPath, ".gitignore"), "utf-8"),
         );
         expect(content).toContain("node_modules/");
         expect(content).toContain(".ship/");
@@ -596,8 +607,10 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("getConfigDir", () => {
-    it.effect("returns path to .ship directory", () =>
+    it.scoped("returns path to .ship directory", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
         const dir = yield* repo.getConfigDir();
         // Use endsWith to handle macOS /private symlink resolution
@@ -608,8 +621,10 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("savePartial", () => {
-    it.effect("saves partial config with only linear", () =>
+    it.scoped("saves partial config with only linear", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
 
         const partial = new PartialShipConfig({
@@ -625,15 +640,17 @@ describe("ConfigRepositoryLive Integration", () => {
 
         yield* repo.savePartial(partial);
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.linear.teamId).toBe("partial-team");
         expect(parsed.auth).toBeUndefined();
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("saves partial config with only auth", () =>
+    it.scoped("saves partial config with only auth", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
+
         const repo = yield* ConfigRepository;
 
         const partial = new PartialShipConfig({
@@ -643,7 +660,7 @@ describe("ConfigRepositoryLive Integration", () => {
 
         yield* repo.savePartial(partial);
 
-        const content = yield* Effect.promise(() => readConfigFile(tmpDir.path));
+        const content = yield* readConfigFile(tmpPath);
         const parsed = YAML.parse(content);
         expect(parsed.auth.apiKey).toBe("partial_key");
         expect(parsed.linear).toBeUndefined();
@@ -652,9 +669,10 @@ describe("ConfigRepositoryLive Integration", () => {
   });
 
   describe("edge cases", () => {
-    it.effect("handles empty config file", () =>
+    it.scoped("handles empty config file", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, ""));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, "");
 
         const repo = yield* ConfigRepository;
         const result = yield* repo.load().pipe(Effect.either);
@@ -664,9 +682,10 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles config file with only comments", () =>
+    it.scoped("handles config file with only comments", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeConfigFile(tmpDir.path, "# This is a comment\n"));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(tmpPath, "# This is a comment\n");
 
         const repo = yield* ConfigRepository;
         const result = yield* repo.load().pipe(Effect.either);
@@ -675,18 +694,17 @@ describe("ConfigRepositoryLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles config with extra unknown fields (should be ignored)", () =>
+    it.scoped("handles config with extra unknown fields (should be ignored)", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeConfigFile(
-            tmpDir.path,
-            YAML.stringify({
-              linear: { teamId: "t1", teamKey: "T", projectId: null },
-              auth: { apiKey: "key" },
-              unknownField: "should be ignored",
-              anotherUnknown: { nested: true },
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeConfigFile(
+          tmpPath,
+          YAML.stringify({
+            linear: { teamId: "t1", teamKey: "T", projectId: null },
+            auth: { apiKey: "key" },
+            unknownField: "should be ignored",
+            anotherUnknown: { nested: true },
+          }),
         );
 
         const repo = yield* ConfigRepository;

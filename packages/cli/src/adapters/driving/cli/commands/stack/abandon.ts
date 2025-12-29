@@ -94,7 +94,9 @@ export const abandonCommand = Command.make(
         } else {
           yield* Console.log(`[DRY RUN] Would abandon change:`);
           yield* Console.log(`  Change ID: ${abandonedChangeId.slice(0, 8)}`);
-          yield* Console.log(`  Description: ${changeDescription.split("\n")[0] || "(no description)"}`);
+          yield* Console.log(
+            `  Description: ${changeDescription.split("\n")[0] || "(no description)"}`,
+          );
           if (bookmarks.length > 0) {
             yield* Console.log(`  Bookmarks: ${bookmarks.join(", ")}`);
           }

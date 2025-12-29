@@ -551,7 +551,10 @@ export const makeShipService = Effect.gen(function* () {
 
   const describeStackChange = (message: string, workdir?: string) =>
     Effect.gen(function* () {
-      const output = yield* shell.run(["stack", "describe", "--json", "--message", message], workdir);
+      const output = yield* shell.run(
+        ["stack", "describe", "--json", "--message", message],
+        workdir,
+      );
       return yield* parseJson<StackDescribeResult>(output);
     });
 
@@ -631,7 +634,10 @@ export const makeShipService = Effect.gen(function* () {
       return yield* parseJson<StackBookmarkResult>(output);
     });
 
-  const getDaemonStatus = (): Effect.Effect<WebhookDaemonStatus, ShipCommandError | JsonParseError> =>
+  const getDaemonStatus = (): Effect.Effect<
+    WebhookDaemonStatus,
+    ShipCommandError | JsonParseError
+  > =>
     Effect.gen(function* () {
       const output = yield* shell
         .run(["webhook", "status", "--json"])
