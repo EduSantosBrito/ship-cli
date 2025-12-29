@@ -114,10 +114,7 @@ const make = Effect.gen(function* () {
         if (!issue) {
           return yield* Effect.fail(new TaskNotFoundError({ taskId: id }));
         }
-        return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(issue),
-          catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-        });
+        return yield* mapIssueToTask(issue);
       }),
       "Fetching task",
     );
@@ -153,10 +150,7 @@ const make = Effect.gen(function* () {
           return yield* Effect.fail(new TaskNotFoundError({ taskId: identifier }));
         }
 
-        return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(issue),
-          catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-        });
+        return yield* mapIssueToTask(issue);
       }),
       "Fetching task by identifier",
     );
@@ -341,10 +335,13 @@ const make = Effect.gen(function* () {
             new LinearApiError({ message: `Failed to fetch updated issue: ${e}`, cause: e }),
         });
 
-        return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(updatedIssue!),
-          catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-        });
+        if (!updatedIssue) {
+          return yield* Effect.fail(
+            new TaskError({ message: `Issue ${issue.id} not found after creation` }),
+          );
+        }
+
+        return yield* mapIssueToTask(updatedIssue);
       }),
       "Creating task",
     );
@@ -450,10 +447,7 @@ const make = Effect.gen(function* () {
             new LinearApiError({ message: `Failed to get updated issue: ${e}`, cause: e }),
         });
 
-        return yield* Effect.tryPromise({
-          try: () => mapIssueToTask(updatedIssue),
-          catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-        });
+        return yield* mapIssueToTask(updatedIssue);
       }),
       "Updating task",
     );
@@ -504,14 +498,7 @@ const make = Effect.gen(function* () {
           catch: (e) => new LinearApiError({ message: `Failed to fetch issues: ${e}`, cause: e }),
         });
 
-        return yield* Effect.all(
-          issues.nodes.map((issue: Issue) =>
-            Effect.tryPromise({
-              try: () => mapIssueToTask(issue),
-              catch: (e) => new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-            }),
-          ),
-        );
+        return yield* Effect.all(issues.nodes.map((issue: Issue) => mapIssueToTask(issue)));
       }),
       "Listing tasks",
     );
@@ -546,11 +533,7 @@ const make = Effect.gen(function* () {
               if (isBlocked) {
                 return null;
               }
-              return yield* Effect.tryPromise({
-                try: () => mapIssueToTask(issue),
-                catch: (e) =>
-                  new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-              });
+              return yield* mapIssueToTask(issue);
             }),
           { concurrency: 5 },
         );
@@ -590,11 +573,7 @@ const make = Effect.gen(function* () {
               if (!isBlocked) {
                 return null;
               }
-              return yield* Effect.tryPromise({
-                try: () => mapIssueToTask(issue),
-                catch: (e) =>
-                  new LinearApiError({ message: `Failed to map issue: ${e}`, cause: e }),
-              });
+              return yield* mapIssueToTask(issue);
             }),
           { concurrency: 5 },
         );

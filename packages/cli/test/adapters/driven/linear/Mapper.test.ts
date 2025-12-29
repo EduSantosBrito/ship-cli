@@ -1,5 +1,5 @@
 import { describe, it, expect } from "@effect/vitest"
-import { Option } from "effect"
+import { Effect, Option } from "effect"
 import type {
   Issue,
   Project as LinearProject,
@@ -95,292 +95,346 @@ describe("Linear Mapper", () => {
   })
 
   describe("mapIssueToTask", () => {
-    it("should map basic issue properties", async () => {
-      const issue = createMockIssue({
-        id: "issue-abc",
-        identifier: "ENG-999",
-        title: "Fix bug",
-        url: "https://linear.app/test",
-        priority: 2, // high
+    it.effect("maps basic issue properties", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          id: "issue-abc",
+          identifier: "ENG-999",
+          title: "Fix bug",
+          url: "https://linear.app/test",
+          priority: 2, // high
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.id).toBe("issue-abc")
+        expect(task.identifier).toBe("ENG-999")
+        expect(task.title).toBe("Fix bug")
+        expect(task.url).toBe("https://linear.app/test")
+        expect(task.priority).toBe("high")
       })
+    )
 
-      const task = await mapIssueToTask(issue)
+    it.effect("maps description as Some when present", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          description: "This is a description",
+        })
 
-      expect(task.id).toBe("issue-abc")
-      expect(task.identifier).toBe("ENG-999")
-      expect(task.title).toBe("Fix bug")
-      expect(task.url).toBe("https://linear.app/test")
-      expect(task.priority).toBe("high")
-    })
+        const task = yield* mapIssueToTask(issue)
 
-    it("should map description as Some when present", async () => {
-      const issue = createMockIssue({
-        description: "This is a description",
+        expect(Option.isSome(task.description)).toBe(true)
+        expect(Option.getOrElse(task.description, () => "")).toBe(
+          "This is a description",
+        )
       })
+    )
 
-      const task = await mapIssueToTask(issue)
+    it.effect("maps description as None when not present", () =>
+      Effect.gen(function* () {
+        // Create issue without description (uses default undefined from fixture)
+        const issue = createMockIssue({})
 
-      expect(Option.isSome(task.description)).toBe(true)
-      expect(Option.getOrElse(task.description, () => "")).toBe(
-        "This is a description",
+        const task = yield* mapIssueToTask(issue)
+
+        expect(Option.isNone(task.description)).toBe(true)
+      })
+    )
+
+    it.effect("maps branchName as Some when present", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          branchName: "feature/auth",
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(Option.isSome(task.branchName)).toBe(true)
+        expect(Option.getOrElse(task.branchName, () => "")).toBe("feature/auth")
+      })
+    )
+
+    it.effect("maps branchName as None when not present", () =>
+      Effect.gen(function* () {
+        // Create issue without branchName (uses default undefined from fixture)
+        const issue = createMockIssue({})
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(Option.isNone(task.branchName)).toBe(true)
+      })
+    )
+
+    it.effect("maps workflow state correctly", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          state: createMockWorkflowState({
+            id: "state-xyz",
+            name: "Done",
+            type: "completed",
+          }),
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.state.id).toBe("state-xyz")
+        expect(task.state.name).toBe("Done")
+        expect(task.state.type).toBe("completed")
+      })
+    )
+
+    it.effect("handles undefined state with defaults", () =>
+      Effect.gen(function* () {
+        // Test with undefined state - need to create issue manually for this edge case
+        const issue = {
+          ...createMockIssue({}),
+          state: Promise.resolve(undefined),
+        } as unknown as Issue
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.state.id).toBe("")
+        expect(task.state.name).toBe("Unknown")
+        expect(task.state.type).toBe("unstarted")
+      })
+    )
+
+    it.effect("maps team id", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          team: createMockTeam({ id: "team-xyz" }),
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.teamId).toBe("team-xyz")
+      })
+    )
+
+    it.effect("handles undefined team with empty id", () =>
+      Effect.gen(function* () {
+        // Test with undefined team - need to create issue manually for this edge case
+        const issue = {
+          ...createMockIssue({}),
+          team: Promise.resolve(undefined),
+        } as unknown as Issue
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.teamId).toBe("")
+      })
+    )
+
+    it.effect("maps labels", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          labels: [createMockLabel("bug"), createMockLabel("urgent")],
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.labels).toEqual(["bug", "urgent"])
+      })
+    )
+
+    it.effect("extracts task type from type: label", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          labels: [createMockLabel("type:bug"), createMockLabel("priority:high")],
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(Option.isSome(task.type)).toBe(true)
+        expect(Option.getOrElse(task.type, () => "task" as const)).toBe("bug")
+      })
+    )
+
+    it.effect("sets type as None when no type: label", () =>
+      Effect.gen(function* () {
+        const issue = createMockIssue({
+          labels: [createMockLabel("bug"), createMockLabel("priority:high")],
+        })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(Option.isNone(task.type)).toBe(true)
+      })
+    )
+
+    it.effect("maps dates correctly", () =>
+      Effect.gen(function* () {
+        const createdAt = new Date("2024-06-01T10:00:00Z")
+        const updatedAt = new Date("2024-06-02T15:30:00Z")
+
+        const issue = createMockIssue({ createdAt, updatedAt })
+
+        const task = yield* mapIssueToTask(issue)
+
+        expect(task.createdAt).toEqual(createdAt)
+        expect(task.updatedAt).toEqual(updatedAt)
+      })
+    )
+
+    it.effect("maps subtasks when includeSubtasks is true", () =>
+      Effect.gen(function* () {
+        const childState = createMockWorkflowState({
+          id: "child-state",
+          name: "In Progress",
+          type: "started",
+        })
+
+        const issue = createMockIssue({
+          children: [
+            createMockChildIssue(
+              "child-1",
+              "ENG-124",
+              "Subtask 1",
+              childState,
+              2,
+            ),
+          ],
+        })
+
+        const task = yield* mapIssueToTask(issue, true)
+
+        expect(task.subtasks).toHaveLength(1)
+        expect(task.subtasks[0].id).toBe("child-1")
+        expect(task.subtasks[0].identifier).toBe("ENG-124")
+        expect(task.subtasks[0].title).toBe("Subtask 1")
+        expect(task.subtasks[0].state).toBe("In Progress")
+        expect(task.subtasks[0].stateType).toBe("started")
+        expect(task.subtasks[0].priority).toBe("high")
+      })
+    )
+
+    it.effect("does not map subtasks when includeSubtasks is false", () =>
+      Effect.gen(function* () {
+        const childState = createMockWorkflowState()
+        const issue = createMockIssue({
+          children: [
+            createMockChildIssue("child-1", "ENG-124", "Subtask 1", childState, 2),
+          ],
+        })
+
+        const task = yield* mapIssueToTask(issue, false)
+
+        expect(task.subtasks).toHaveLength(0)
+      })
+    )
+
+    describe("priority mapping via mapIssueToTask", () => {
+      it.effect("maps priority 0 to 'none'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({ priority: 0 })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.priority).toBe("none")
+        })
+      )
+
+      it.effect("maps priority 1 to 'urgent'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({ priority: 1 })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.priority).toBe("urgent")
+        })
+      )
+
+      it.effect("maps priority 2 to 'high'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({ priority: 2 })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.priority).toBe("high")
+        })
+      )
+
+      it.effect("maps priority 3 to 'medium'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({ priority: 3 })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.priority).toBe("medium")
+        })
+      )
+
+      it.effect("maps priority 4 to 'low'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({ priority: 4 })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.priority).toBe("low")
+        })
+      )
+
+      it.effect("maps unknown priority to 'none'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({ priority: 99 })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.priority).toBe("none")
+        })
       )
     })
 
-    it("should map description as None when not present", async () => {
-      // Create issue without description (uses default undefined from fixture)
-      const issue = createMockIssue({})
-
-      const task = await mapIssueToTask(issue)
-
-      expect(Option.isNone(task.description)).toBe(true)
-    })
-
-    it("should map branchName as Some when present", async () => {
-      const issue = createMockIssue({
-        branchName: "feature/auth",
-      })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(Option.isSome(task.branchName)).toBe(true)
-      expect(Option.getOrElse(task.branchName, () => "")).toBe("feature/auth")
-    })
-
-    it("should map branchName as None when not present", async () => {
-      // Create issue without branchName (uses default undefined from fixture)
-      const issue = createMockIssue({})
-
-      const task = await mapIssueToTask(issue)
-
-      expect(Option.isNone(task.branchName)).toBe(true)
-    })
-
-    it("should map workflow state correctly", async () => {
-      const issue = createMockIssue({
-        state: createMockWorkflowState({
-          id: "state-xyz",
-          name: "Done",
-          type: "completed",
-        }),
-      })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(task.state.id).toBe("state-xyz")
-      expect(task.state.name).toBe("Done")
-      expect(task.state.type).toBe("completed")
-    })
-
-    it("should handle undefined state with defaults", async () => {
-      // Test with undefined state - need to create issue manually for this edge case
-      const issue = {
-        ...createMockIssue({}),
-        state: Promise.resolve(undefined),
-      } as unknown as Issue
-
-      const task = await mapIssueToTask(issue)
-
-      expect(task.state.id).toBe("")
-      expect(task.state.name).toBe("Unknown")
-      expect(task.state.type).toBe("unstarted")
-    })
-
-    it("should map team id", async () => {
-      const issue = createMockIssue({
-        team: createMockTeam({ id: "team-xyz" }),
-      })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(task.teamId).toBe("team-xyz")
-    })
-
-    it("should handle undefined team with empty id", async () => {
-      // Test with undefined team - need to create issue manually for this edge case
-      const issue = {
-        ...createMockIssue({}),
-        team: Promise.resolve(undefined),
-      } as unknown as Issue
-
-      const task = await mapIssueToTask(issue)
-
-      expect(task.teamId).toBe("")
-    })
-
-    it("should map labels", async () => {
-      const issue = createMockIssue({
-        labels: [createMockLabel("bug"), createMockLabel("urgent")],
-      })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(task.labels).toEqual(["bug", "urgent"])
-    })
-
-    it("should extract task type from type: label", async () => {
-      const issue = createMockIssue({
-        labels: [createMockLabel("type:bug"), createMockLabel("priority:high")],
-      })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(Option.isSome(task.type)).toBe(true)
-      expect(Option.getOrElse(task.type, () => "task" as const)).toBe("bug")
-    })
-
-    it("should set type as None when no type: label", async () => {
-      const issue = createMockIssue({
-        labels: [createMockLabel("bug"), createMockLabel("priority:high")],
-      })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(Option.isNone(task.type)).toBe(true)
-    })
-
-    it("should map dates correctly", async () => {
-      const createdAt = new Date("2024-06-01T10:00:00Z")
-      const updatedAt = new Date("2024-06-02T15:30:00Z")
-
-      const issue = createMockIssue({ createdAt, updatedAt })
-
-      const task = await mapIssueToTask(issue)
-
-      expect(task.createdAt).toEqual(createdAt)
-      expect(task.updatedAt).toEqual(updatedAt)
-    })
-
-    it("should map subtasks when includeSubtasks is true", async () => {
-      const childState = createMockWorkflowState({
-        id: "child-state",
-        name: "In Progress",
-        type: "started",
-      })
-
-      const issue = createMockIssue({
-        children: [
-          createMockChildIssue(
-            "child-1",
-            "ENG-124",
-            "Subtask 1",
-            childState,
-            2,
-          ),
-        ],
-      })
-
-      const task = await mapIssueToTask(issue, true)
-
-      expect(task.subtasks).toHaveLength(1)
-      expect(task.subtasks[0].id).toBe("child-1")
-      expect(task.subtasks[0].identifier).toBe("ENG-124")
-      expect(task.subtasks[0].title).toBe("Subtask 1")
-      expect(task.subtasks[0].state).toBe("In Progress")
-      expect(task.subtasks[0].stateType).toBe("started")
-      expect(task.subtasks[0].priority).toBe("high")
-    })
-
-    it("should not map subtasks when includeSubtasks is false", async () => {
-      const childState = createMockWorkflowState()
-      const issue = createMockIssue({
-        children: [
-          createMockChildIssue("child-1", "ENG-124", "Subtask 1", childState, 2),
-        ],
-      })
-
-      const task = await mapIssueToTask(issue, false)
-
-      expect(task.subtasks).toHaveLength(0)
-    })
-
-    describe("priority mapping via mapIssueToTask", () => {
-      it("should map priority 0 to 'none'", async () => {
-        const issue = createMockIssue({ priority: 0 })
-        const task = await mapIssueToTask(issue)
-        expect(task.priority).toBe("none")
-      })
-
-      it("should map priority 1 to 'urgent'", async () => {
-        const issue = createMockIssue({ priority: 1 })
-        const task = await mapIssueToTask(issue)
-        expect(task.priority).toBe("urgent")
-      })
-
-      it("should map priority 2 to 'high'", async () => {
-        const issue = createMockIssue({ priority: 2 })
-        const task = await mapIssueToTask(issue)
-        expect(task.priority).toBe("high")
-      })
-
-      it("should map priority 3 to 'medium'", async () => {
-        const issue = createMockIssue({ priority: 3 })
-        const task = await mapIssueToTask(issue)
-        expect(task.priority).toBe("medium")
-      })
-
-      it("should map priority 4 to 'low'", async () => {
-        const issue = createMockIssue({ priority: 4 })
-        const task = await mapIssueToTask(issue)
-        expect(task.priority).toBe("low")
-      })
-
-      it("should map unknown priority to 'none'", async () => {
-        const issue = createMockIssue({ priority: 99 })
-        const task = await mapIssueToTask(issue)
-        expect(task.priority).toBe("none")
-      })
-    })
-
     describe("state type mapping via mapIssueToTask", () => {
-      it("should map state type 'backlog'", async () => {
-        const issue = createMockIssue({
-          state: createMockWorkflowState({ type: "backlog" }),
+      it.effect("maps state type 'backlog'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({
+            state: createMockWorkflowState({ type: "backlog" }),
+          })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.state.type).toBe("backlog")
         })
-        const task = await mapIssueToTask(issue)
-        expect(task.state.type).toBe("backlog")
-      })
+      )
 
-      it("should map state type 'unstarted'", async () => {
-        const issue = createMockIssue({
-          state: createMockWorkflowState({ type: "unstarted" }),
+      it.effect("maps state type 'unstarted'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({
+            state: createMockWorkflowState({ type: "unstarted" }),
+          })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.state.type).toBe("unstarted")
         })
-        const task = await mapIssueToTask(issue)
-        expect(task.state.type).toBe("unstarted")
-      })
+      )
 
-      it("should map state type 'started'", async () => {
-        const issue = createMockIssue({
-          state: createMockWorkflowState({ type: "started" }),
+      it.effect("maps state type 'started'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({
+            state: createMockWorkflowState({ type: "started" }),
+          })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.state.type).toBe("started")
         })
-        const task = await mapIssueToTask(issue)
-        expect(task.state.type).toBe("started")
-      })
+      )
 
-      it("should map state type 'completed'", async () => {
-        const issue = createMockIssue({
-          state: createMockWorkflowState({ type: "completed" }),
+      it.effect("maps state type 'completed'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({
+            state: createMockWorkflowState({ type: "completed" }),
+          })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.state.type).toBe("completed")
         })
-        const task = await mapIssueToTask(issue)
-        expect(task.state.type).toBe("completed")
-      })
+      )
 
-      it("should map state type 'canceled'", async () => {
-        const issue = createMockIssue({
-          state: createMockWorkflowState({ type: "canceled" }),
+      it.effect("maps state type 'canceled'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({
+            state: createMockWorkflowState({ type: "canceled" }),
+          })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.state.type).toBe("canceled")
         })
-        const task = await mapIssueToTask(issue)
-        expect(task.state.type).toBe("canceled")
-      })
+      )
 
-      it("should map unknown state type to 'unstarted'", async () => {
-        const issue = createMockIssue({
-          state: createMockWorkflowState({
-            type: "unknown" as unknown as string,
-          }),
+      it.effect("maps unknown state type to 'unstarted'", () =>
+        Effect.gen(function* () {
+          const issue = createMockIssue({
+            state: createMockWorkflowState({
+              type: "unknown" as unknown as string,
+            }),
+          })
+          const task = yield* mapIssueToTask(issue)
+          expect(task.state.type).toBe("unstarted")
         })
-        const task = await mapIssueToTask(issue)
-        expect(task.state.type).toBe("unstarted")
-      })
+      )
     })
   })
 
