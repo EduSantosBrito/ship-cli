@@ -1,5 +1,5 @@
 /**
- * ship pr review - Fetch PR reviews and comments
+ * ship pr reviews - Fetch PR reviews and comments
  *
  * Displays PR reviews, inline code comments, and conversation comments
  * in a format optimized for AI consumption.
@@ -45,7 +45,7 @@ const unresolvedOption = Options.boolean("unresolved").pipe(
 
 // === Output Types ===
 
-interface ReviewOutput {
+export interface ReviewOutput {
   prNumber: number;
   prTitle?: string;
   prUrl?: string;
@@ -250,8 +250,8 @@ const formatHumanOutput = (output: ReviewOutput): string => {
 
 // === Command ===
 
-export const reviewCommand = Command.make(
-  "review",
+export const reviewsCommand = Command.make(
+  "reviews",
   {
     prNumber: prNumberArg,
     json: jsonOption,

@@ -7,14 +7,14 @@
  *   ship pr              # Show help
  *   ship pr create       # Create PR for current bookmark
  *   ship pr stack        # Create stacked PRs for entire stack
- *   ship pr review       # Fetch PR reviews and comments
+ *   ship pr reviews      # Fetch PR reviews and comments
  */
 
 import * as Command from "@effect/cli/Command";
 import * as Console from "effect/Console";
 import { createPrCommand } from "./create.js";
 import { stackCommand } from "./stack.js";
-import { reviewCommand } from "./review.js";
+import { reviewsCommand } from "./review.js";
 
 // === Root Command ===
 
@@ -24,14 +24,14 @@ const prRoot = Command.make("pr", {}, () =>
 Usage: ship pr <command> [options]
 
 Commands:
-  create              Create PR for current bookmark
-  stack               Create stacked PRs for entire stack
-  review [pr-number]  Fetch PR reviews and comments
+  create               Create PR for current bookmark
+  stack                Create stacked PRs for entire stack
+  reviews [pr-number]  Fetch PR reviews and comments
 
 Run 'ship pr <command> --help' for more information on a command.`),
 );
 
 // Combine with subcommands
 export const prCommand = prRoot.pipe(
-  Command.withSubcommands([createPrCommand, stackCommand, reviewCommand]),
+  Command.withSubcommands([createPrCommand, stackCommand, reviewsCommand]),
 );

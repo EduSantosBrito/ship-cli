@@ -410,6 +410,147 @@ describe("ShipService", () => {
     );
   });
 
+  describe("pr commands use 'pr' subcommand", () => {
+    it.effect("getPrReviews calls 'pr reviews --json'", () =>
+      Effect.gen(function* () {
+        const commandsRef = yield* Ref.make<string[][]>([]);
+        const responses = new Map([
+          [
+            "pr reviews --json",
+            '{"prNumber": 123, "reviews": [], "codeComments": [], "conversationComments": [], "commentsByFile": {}}',
+          ],
+        ]);
+        const layer = createTestShellLayer(commandsRef, responses);
+
+        const shipService = yield* makeShipService.pipe(Effect.provide(layer));
+        yield* shipService.getPrReviews();
+
+        const commands = yield* Ref.get(commandsRef);
+        expect(commands[0]).toEqual(["pr", "reviews", "--json"]);
+      }),
+    );
+
+    it.effect("getPrReviews calls 'pr reviews --json' with prNumber", () =>
+      Effect.gen(function* () {
+        const commandsRef = yield* Ref.make<string[][]>([]);
+        const responses = new Map([
+          [
+            "pr reviews --json 456",
+            '{"prNumber": 456, "reviews": [], "codeComments": [], "conversationComments": [], "commentsByFile": {}}',
+          ],
+        ]);
+        const layer = createTestShellLayer(commandsRef, responses);
+
+        const shipService = yield* makeShipService.pipe(Effect.provide(layer));
+        yield* shipService.getPrReviews(456);
+
+        const commands = yield* Ref.get(commandsRef);
+        expect(commands[0]).toEqual(["pr", "reviews", "--json", "456"]);
+      }),
+    );
+
+    it.effect("getPrReviews calls 'pr reviews --json --unresolved' with unresolved flag", () =>
+      Effect.gen(function* () {
+        const commandsRef = yield* Ref.make<string[][]>([]);
+        const responses = new Map([
+          [
+            "pr reviews --json --unresolved",
+            '{"prNumber": 123, "reviews": [], "codeComments": [], "conversationComments": [], "commentsByFile": {}}',
+          ],
+        ]);
+        const layer = createTestShellLayer(commandsRef, responses);
+
+        const shipService = yield* makeShipService.pipe(Effect.provide(layer));
+        yield* shipService.getPrReviews(undefined, true);
+
+        const commands = yield* Ref.get(commandsRef);
+        expect(commands[0]).toEqual(["pr", "reviews", "--json", "--unresolved"]);
+      }),
+    );
+
+    it.effect("getPrReviews calls with all options", () =>
+      Effect.gen(function* () {
+        const commandsRef = yield* Ref.make<string[][]>([]);
+        const responses = new Map([
+          [
+            "pr reviews --json --unresolved 789",
+            '{"prNumber": 789, "reviews": [], "codeComments": [], "conversationComments": [], "commentsByFile": {}}',
+          ],
+        ]);
+        const layer = createTestShellLayer(commandsRef, responses);
+
+        const shipService = yield* makeShipService.pipe(Effect.provide(layer));
+        yield* shipService.getPrReviews(789, true);
+
+        const commands = yield* Ref.get(commandsRef);
+        expect(commands[0]).toEqual(["pr", "reviews", "--json", "--unresolved", "789"]);
+      }),
+    );
+
+    it.effect("getPrReviews parses response with reviews and comments", () =>
+      Effect.gen(function* () {
+        const commandsRef = yield* Ref.make<string[][]>([]);
+        const mockResponse = {
+          prNumber: 123,
+          prTitle: "Test PR",
+          prUrl: "https://github.com/test/repo/pull/123",
+          reviews: [
+            {
+              id: 1,
+              author: "reviewer",
+              state: "APPROVED",
+              body: "LGTM",
+              submittedAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+          codeComments: [
+            {
+              id: 2,
+              path: "src/file.ts",
+              line: 10,
+              body: "Consider renaming",
+              author: "reviewer",
+              createdAt: "2024-01-01T00:00:00Z",
+              inReplyToId: null,
+            },
+          ],
+          conversationComments: [
+            {
+              id: 3,
+              body: "Great work!",
+              author: "commenter",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+          commentsByFile: {
+            "src/file.ts": [
+              {
+                line: 10,
+                author: "reviewer",
+                body: "Consider renaming",
+                id: 2,
+              },
+            ],
+          },
+        };
+        const responses = new Map([["pr reviews --json", JSON.stringify(mockResponse)]]);
+        const layer = createTestShellLayer(commandsRef, responses);
+
+        const shipService = yield* makeShipService.pipe(Effect.provide(layer));
+        const result = yield* shipService.getPrReviews();
+
+        expect(result.prNumber).toBe(123);
+        expect(result.prTitle).toBe("Test PR");
+        expect(result.reviews).toHaveLength(1);
+        expect(result.reviews[0].state).toBe("APPROVED");
+        expect(result.codeComments).toHaveLength(1);
+        expect(result.codeComments[0].path).toBe("src/file.ts");
+        expect(result.conversationComments).toHaveLength(1);
+        expect(Object.keys(result.commentsByFile)).toHaveLength(1);
+      }),
+    );
+  });
+
   describe("webhook commands use 'webhook' subcommand", () => {
     it.effect("getDaemonStatus calls 'webhook status --json'", () =>
       Effect.gen(function* () {

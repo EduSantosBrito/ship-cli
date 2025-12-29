@@ -314,6 +314,49 @@ interface WebhookCleanupResult {
   error?: string;
 }
 
+// PR Review types
+// Note: This type mirrors ReviewOutput from CLI's review.ts
+// Kept separate for plugin isolation (plugin doesn't depend on CLI package)
+interface PrReviewOutput {
+  prNumber: number;
+  prTitle?: string;
+  prUrl?: string;
+  reviews: Array<{
+    id: number;
+    author: string;
+    state: string;
+    body: string;
+    submittedAt: string;
+  }>;
+  codeComments: Array<{
+    id: number;
+    path: string;
+    line: number | null;
+    body: string;
+    author: string;
+    createdAt: string;
+    inReplyToId: number | null;
+    diffHunk?: string;
+  }>;
+  conversationComments: Array<{
+    id: number;
+    body: string;
+    author: string;
+    createdAt: string;
+  }>;
+  commentsByFile: Record<
+    string,
+    Array<{
+      line: number | null;
+      author: string;
+      body: string;
+      id: number;
+      diffHunk?: string;
+    }>
+  >;
+  error?: string;
+}
+
 // =============================================================================
 // Shell Service
 // =============================================================================
@@ -595,6 +638,12 @@ interface ShipService {
   readonly unsetTaskMilestone: (
     taskId: string,
   ) => Effect.Effect<ShipTask, ShipCommandError | JsonParseError>;
+  // PR review operations
+  readonly getPrReviews: (
+    prNumber?: number,
+    unresolved?: boolean,
+    workdir?: string,
+  ) => Effect.Effect<PrReviewOutput, ShipCommandError | JsonParseError>;
 }
 
 const ShipService = Context.GenericTag<ShipService>("ShipService");
@@ -1114,6 +1163,20 @@ const makeShipService = Effect.gen(function* () {
       return response.task;
     });
 
+  // PR reviews operations
+  const getPrReviews = (
+    prNumber?: number,
+    unresolved?: boolean,
+    workdir?: string,
+  ): Effect.Effect<PrReviewOutput, ShipCommandError | JsonParseError> =>
+    Effect.gen(function* () {
+      const args = ["pr", "reviews", "--json"];
+      if (unresolved) args.push("--unresolved");
+      if (prNumber !== undefined) args.push(String(prNumber));
+      const output = yield* shell.run(args, workdir);
+      return yield* parseJson<PrReviewOutput>(output);
+    });
+
   return {
     checkConfigured,
     getReadyTasks,
@@ -1157,6 +1220,7 @@ const makeShipService = Effect.gen(function* () {
     deleteMilestone,
     setTaskMilestone,
     unsetTaskMilestone,
+    getPrReviews,
   } satisfies ShipService;
 });
 
@@ -1236,6 +1300,9 @@ type ToolArgs = {
   // Daemon webhook subscription args
   sessionId?: string;
   prNumbers?: number[];
+  // PR review args
+  prNumber?: number;
+  unresolved?: boolean;
   // Milestone-specific args
   milestoneId?: string;
   milestoneName?: string;
@@ -1910,6 +1977,95 @@ Use 'webhook-unsubscribe' to stop receiving events.`;
       return `Cleaned up ${result.removedSessions.length} stale subscription(s):\n${result.removedSessions.map((s: string) => `  - ${s}`).join("\n")}\n\nThese sessions no longer exist in OpenCode.`;
     }),
 
+  // PR reviews action
+  "pr-reviews": (ship, args, _ctx) =>
+    Effect.gen(function* () {
+      const result = yield* ship.getPrReviews(args.prNumber, args.unresolved, args.workdir);
+
+      if (result.error) {
+        return `Error: ${result.error}`;
+      }
+
+      // Format the output in a human-readable way similar to the CLI
+      const lines: string[] = [];
+
+      lines.push(`## PR #${result.prNumber}${result.prTitle ? `: ${result.prTitle}` : ""}`);
+      if (result.prUrl) {
+        lines.push(`URL: ${result.prUrl}`);
+      }
+      lines.push("");
+
+      // Reviews section
+      if (result.reviews.length > 0) {
+        lines.push("### Reviews");
+        const sortedReviews = [...result.reviews].sort(
+          (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+        );
+        for (const review of sortedReviews) {
+          const stateLabel =
+            review.state === "APPROVED"
+              ? "[APPROVED]"
+              : review.state === "CHANGES_REQUESTED"
+                ? "[CHANGES_REQUESTED]"
+                : `[${review.state}]`;
+          lines.push(`- @${review.author}: ${stateLabel}`);
+          if (review.body) {
+            const bodyLines = review.body.split("\n").map((l: string) => `  ${l}`);
+            lines.push(...bodyLines);
+          }
+        }
+        lines.push("");
+      }
+
+      // Code comments section
+      const fileKeys = Object.keys(result.commentsByFile);
+      if (fileKeys.length > 0) {
+        lines.push(`### Code Comments (${result.codeComments.length} total)`);
+        lines.push("");
+
+        for (const filePath of fileKeys.sort()) {
+          const fileComments = result.commentsByFile[filePath];
+          lines.push(`#### ${filePath}`);
+
+          for (const comment of fileComments) {
+            const lineInfo = comment.line !== null ? `:${comment.line}` : "";
+            lines.push(`**${filePath}${lineInfo}** - @${comment.author}:`);
+            if (comment.diffHunk) {
+              lines.push("```diff");
+              lines.push(comment.diffHunk);
+              lines.push("```");
+            }
+            const bodyLines = comment.body.split("\n").map((l: string) => `> ${l}`);
+            lines.push(...bodyLines);
+            lines.push("");
+          }
+        }
+      }
+
+      // Conversation comments section
+      if (result.conversationComments.length > 0) {
+        lines.push("### Conversation");
+        for (const comment of result.conversationComments) {
+          lines.push(`- @${comment.author}:`);
+          const bodyLines = comment.body.split("\n").map((l: string) => `  ${l}`);
+          lines.push(...bodyLines);
+          lines.push("");
+        }
+      }
+
+      // Summary if no feedback
+      if (
+        result.reviews.length === 0 &&
+        result.codeComments.length === 0 &&
+        result.conversationComments.length === 0
+      ) {
+        lines.push("No reviews or comments found.");
+      }
+
+      const guidance = addGuidance("address review feedback | action=stack-submit (push updates)");
+      return lines.join("\n").trim() + guidance;
+    }),
+
   // Milestone actions
   "milestone-list": (ship, _args, _ctx) =>
     Effect.gen(function* () {
@@ -2116,6 +2272,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "webhook-subscribe",
           "webhook-unsubscribe",
           "webhook-cleanup",
+          "pr-reviews",
           "milestone-list",
           "milestone-show",
           "milestone-create",
@@ -2125,7 +2282,7 @@ Run 'ship init' in the terminal first if not configured.`,
           "task-unset-milestone",
         ])
         .describe(
-          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist), milestone-list (list project milestones), milestone-show (view milestone details), milestone-create (create new milestone), milestone-update (modify milestone), milestone-delete (delete milestone), task-set-milestone (assign task to milestone), task-unset-milestone (remove task from milestone)",
+          "Action to perform: ready (unblocked tasks), list (all tasks), blocked (blocked tasks), show (task details), start (begin task), done (complete task), create (new task), update (modify task), block/unblock (dependencies), relate (link related tasks), status (current config), stack-log (view stack), stack-status (current change), stack-create (new change with workspace by default), stack-describe (update description), stack-bookmark (create or move a bookmark on current change), stack-sync (fetch and rebase), stack-restack (rebase stack onto trunk without fetching), stack-submit (push and create/update PR, auto-subscribes to webhook events), stack-squash (squash into parent), stack-abandon (abandon change), stack-up (move to child change toward tip), stack-down (move to parent change toward trunk), stack-undo (undo last jj operation), stack-update-stale (update stale working copy after workspace or remote changes), stack-workspaces (list all jj workspaces), stack-remove-workspace (remove a jj workspace), webhook-daemon-status (check daemon status), webhook-subscribe (subscribe to PR events), webhook-unsubscribe (unsubscribe from PR events), webhook-cleanup (cleanup stale subscriptions for sessions that no longer exist), pr-reviews (fetch PR reviews and comments), milestone-list (list project milestones), milestone-show (view milestone details), milestone-create (create new milestone), milestone-update (modify milestone), milestone-delete (delete milestone), task-set-milestone (assign task to milestone), task-unset-milestone (remove task from milestone)",
         ),
       taskId: createTool.schema
         .string()
@@ -2240,6 +2397,18 @@ Run 'ship init' in the terminal first if not configured.`,
         .optional()
         .describe(
           "PR numbers to subscribe/unsubscribe - for webhook-subscribe/unsubscribe actions",
+        ),
+      prNumber: createTool.schema
+        .number()
+        .optional()
+        .describe(
+          "PR number - for pr-reviews action (defaults to current bookmark's PR if not provided)",
+        ),
+      unresolved: createTool.schema
+        .boolean()
+        .optional()
+        .describe(
+          "Show only unresolved/actionable comments - for pr-reviews action",
         ),
       milestoneId: createTool.schema
         .string()
