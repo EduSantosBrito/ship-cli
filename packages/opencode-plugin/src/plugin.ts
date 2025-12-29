@@ -1366,9 +1366,13 @@ const actionHandlers: Record<string, ActionHandler> = {
       yield* ship.startTask(args.taskId, ctx.sessionId);
       const sessionInfo = ctx.sessionId ? ` (labeled with session:${ctx.sessionId})` : "";
       const guidance = addGuidance(
-        `action=stack-create with taskId="${args.taskId}" (create workspace and begin work)`,
+        `action=stack-create with taskId="${args.taskId}" (creates isolated workspace for changes)`,
+        {
+          skill: true,
+          note: "IMPORTANT: Create workspace before making any file changes",
+        },
       );
-      return `Started working on ${args.taskId}${sessionInfo}${guidance}`;
+      return `Task ${args.taskId} is now in progress${sessionInfo}.\n\nNext step: Create a workspace to isolate your changes.${guidance}`;
     }),
 
   done: (ship, args, _ctx) =>
