@@ -1,3 +1,4 @@
+import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type {
   Issue,
@@ -22,6 +23,7 @@ import {
   type TaskStatus,
   type TaskType,
 } from "../../../domain/Task.js";
+import { LinearApiError } from "../../../domain/Errors.js";
 
 // Prefix for type labels in Linear
 export const TYPE_LABEL_PREFIX = "type:";
@@ -104,72 +106,102 @@ export const priorityToLinear = (priority: Priority): number => {
   }
 };
 
-export const mapIssueToTask = async (issue: Issue, includeSubtasks = true): Promise<Task> => {
-  // Fetch related data
-  const state = await issue.state;
-  const labels = await issue.labels();
-  const team = await issue.team;
+/**
+ * Map a Linear Issue to our Task domain model.
+ * Fetches related data (state, labels, team, milestone) in parallel for performance.
+ *
+ * @param issue - The Linear Issue to map
+ * @param includeSubtasks - Whether to fetch and include subtasks (default: true)
+ * @returns Effect that resolves to a Task or fails with LinearApiError
+ */
+export const mapIssueToTask = (
+  issue: Issue,
+  includeSubtasks = true,
+): Effect.Effect<Task, LinearApiError> =>
+  Effect.gen(function* () {
+    // Fetch related data in parallel for performance
+    // Use Effect.promise with async functions to handle potentially undefined LinearFetch values
+    const [state, labels, team, milestone] = yield* Effect.all(
+      [
+        Effect.promise(async () => (issue.state ? await issue.state : undefined)),
+        Effect.promise(() => issue.labels()),
+        Effect.promise(async () => (issue.team ? await issue.team : undefined)),
+        Effect.promise(async () => {
+          const milestonePromise = (
+            issue as unknown as { projectMilestone?: Promise<{ id: string; name: string } | null> }
+          ).projectMilestone;
+          return milestonePromise ? await milestonePromise : undefined;
+        }),
+      ],
+      { concurrency: 4 },
+    );
 
-  // Fetch milestone info if available
-  // Linear SDK exposes projectMilestone as a relation
-  const milestone = await (
-    issue as unknown as { projectMilestone?: Promise<{ id: string; name: string } | null> }
-  ).projectMilestone;
+    // Get blocking relations
+    // Note: Linear SDK doesn't directly expose relations, we'll handle this in the repository
+    const blockedBy: TaskId[] = [];
+    const blocks: TaskId[] = [];
 
-  // Get blocking relations
-  // Note: Linear SDK doesn't directly expose relations, we'll handle this in the repository
-  const blockedBy: TaskId[] = [];
-  const blocks: TaskId[] = [];
-
-  // Fetch subtasks (children) if requested
-  const subtasks: Subtask[] = [];
-  if (includeSubtasks) {
-    const children = await issue.children();
-    if (children?.nodes) {
-      for (const child of children.nodes) {
-        const childState = await child.state;
-        subtasks.push(
-          new Subtask({
-            id: child.id as TaskId,
-            identifier: child.identifier,
-            title: child.title,
-            state: childState?.name ?? "Unknown",
-            stateType: mapStateType(childState?.type ?? "unstarted"),
-            priority: mapPriority(child.priority),
-          }),
+    // Fetch subtasks (children) if requested
+    const subtasks: Subtask[] = [];
+    if (includeSubtasks) {
+      const children = yield* Effect.promise(() => issue.children());
+      if (children?.nodes) {
+        // Fetch child states in parallel
+        yield* Effect.forEach(
+          children.nodes,
+          (child) =>
+            Effect.gen(function* () {
+              const childState = yield* Effect.promise(async () =>
+                child.state ? await child.state : undefined,
+              );
+              subtasks.push(
+                new Subtask({
+                  id: child.id as TaskId,
+                  identifier: child.identifier,
+                  title: child.title,
+                  state: childState?.name ?? "Unknown",
+                  stateType: mapStateType(childState?.type ?? "unstarted"),
+                  priority: mapPriority(child.priority),
+                }),
+              );
+            }),
+          { concurrency: 5 },
         );
       }
     }
-  }
 
-  // Extract type from labels (look for "type:bug", "type:feature", etc.)
-  const typeLabel = labels?.nodes?.find((l) => l.name.startsWith(TYPE_LABEL_PREFIX));
-  const taskType: Option.Option<TaskType> = typeLabel
-    ? Option.some(typeLabel.name.slice(TYPE_LABEL_PREFIX.length) as TaskType)
-    : Option.none();
+    // Extract type from labels (look for "type:bug", "type:feature", etc.)
+    const typeLabel = labels?.nodes?.find((l) => l.name.startsWith(TYPE_LABEL_PREFIX));
+    const taskType: Option.Option<TaskType> = typeLabel
+      ? Option.some(typeLabel.name.slice(TYPE_LABEL_PREFIX.length) as TaskType)
+      : Option.none();
 
-  return new Task({
-    id: issue.id as TaskId,
-    identifier: issue.identifier,
-    title: issue.title,
-    description: issue.description ? Option.some(issue.description) : Option.none(),
-    state: mapWorkflowState(state),
-    priority: mapPriority(issue.priority),
-    type: taskType,
-    teamId: (team?.id ?? "") as TeamId,
-    projectId: Option.none(), // Will be populated if needed
-    milestoneId: milestone ? Option.some(milestone.id as MilestoneId) : Option.none(),
-    milestoneName: milestone ? Option.some(milestone.name) : Option.none(),
-    branchName: issue.branchName ? Option.some(issue.branchName) : Option.none(),
-    url: issue.url,
-    labels: labels?.nodes?.map((l) => l.name) ?? [],
-    blockedBy,
-    blocks,
-    subtasks,
-    createdAt: issue.createdAt,
-    updatedAt: issue.updatedAt,
-  });
-};
+    return new Task({
+      id: issue.id as TaskId,
+      identifier: issue.identifier,
+      title: issue.title,
+      description: issue.description ? Option.some(issue.description) : Option.none(),
+      state: mapWorkflowState(state),
+      priority: mapPriority(issue.priority),
+      type: taskType,
+      teamId: (team?.id ?? "") as TeamId,
+      projectId: Option.none(), // Will be populated if needed
+      milestoneId: milestone ? Option.some(milestone.id as MilestoneId) : Option.none(),
+      milestoneName: milestone ? Option.some(milestone.name) : Option.none(),
+      branchName: issue.branchName ? Option.some(issue.branchName) : Option.none(),
+      url: issue.url,
+      labels: labels?.nodes?.map((l) => l.name) ?? [],
+      blockedBy,
+      blocks,
+      subtasks,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+    });
+  }).pipe(
+    Effect.mapError(
+      (e) => new LinearApiError({ message: `Failed to map issue to task: ${e}`, cause: e }),
+    ),
+  );
 
 export const mapTeam = (team: LinearTeam): Team =>
   new Team({
