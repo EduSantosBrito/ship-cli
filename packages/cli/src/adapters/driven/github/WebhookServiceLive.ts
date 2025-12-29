@@ -366,6 +366,27 @@ const make = Effect.gen(function* () {
   };
 
   /**
+   * Parse a string payload, trying JSON first, then base64-decoded JSON.
+   * Returns the original string if neither parsing method works.
+   */
+  const parseStringPayload = (payload: string): Effect.Effect<unknown> =>
+    Effect.try(() => JSON.parse(payload)).pipe(
+      Effect.orElse(() =>
+        Effect.try(() => {
+          const decoded = Buffer.from(payload, "base64").toString("utf-8");
+          return JSON.parse(decoded);
+        }),
+      ),
+      Effect.orElse(() => Effect.succeed(payload)),
+      Effect.tap((parsed) =>
+        Effect.logDebug("Parsed webhook payload").pipe(
+          Effect.annotateLogs("wasBase64", String(parsed !== payload && typeof parsed === "object")),
+          Effect.annotateLogs("resultType", typeof parsed),
+        ),
+      ),
+    );
+
+  /**
    * Parse a WebSocket message into a WebhookEvent
    */
   const parseWsMessage = (data: string | Uint8Array): Effect.Effect<WebhookEvent, WebhookError> => {
@@ -410,22 +431,10 @@ const make = Effect.gen(function* () {
         "unknown";
 
       // Parse the body - GitHub sends it as base64-encoded JSON string
-      let payload: unknown = wsEvent.body;
-
-      if (typeof payload === "string") {
-        // Try parsing as JSON first
-        try {
-          payload = JSON.parse(payload);
-        } catch {
-          // It's base64 encoded - decode and parse
-          try {
-            const decoded = Buffer.from(payload as string, "base64").toString("utf-8");
-            payload = JSON.parse(decoded);
-          } catch {
-            // Keep as string if neither works
-          }
-        }
-      }
+      const payload: unknown =
+        typeof wsEvent.body === "string"
+          ? yield* parseStringPayload(wsEvent.body)
+          : wsEvent.body;
 
       // Try to extract action from payload if it exists
       const action =
