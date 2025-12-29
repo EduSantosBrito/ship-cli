@@ -115,3 +115,12 @@ export {
   type TestTeamState,
   type TestTeamRepository,
 } from "./TeamRepository.testLayer.js";
+
+// ProjectRepository test layer
+export {
+  TestProjectRepositoryLayer,
+  defaultTestProjectState,
+  createTestProject,
+  type TestProjectState,
+  type TestProjectRepository,
+} from "./ProjectRepository.testLayer.js";

@@ -22,6 +22,7 @@ import { TemplateService } from "../../src/ports/TemplateService.js";
 import { AuthService } from "../../src/ports/AuthService.js";
 import { MilestoneRepository } from "../../src/ports/MilestoneRepository.js";
 import { TeamRepository } from "../../src/ports/TeamRepository.js";
+import { ProjectRepository } from "../../src/ports/ProjectRepository.js";
 import { TaskId, MilestoneId, ProjectId, TeamId, CreateMilestoneInput } from "../../src/domain/Task.js";
 import { WebhookPermissionError } from "../../src/domain/Errors.js";
 
@@ -36,6 +37,7 @@ import {
   TestAuthServiceLayer,
   TestMilestoneRepositoryLayer,
   TestTeamRepositoryLayer,
+  TestProjectRepositoryLayer,
 } from "./index.js";
 
 describe("Test Layers", () => {
@@ -446,6 +448,41 @@ describe("Test Layers", () => {
         const teams = yield* repo.getTeams();
         expect(teams.length).toBe(2);
       }).pipe(Effect.provide(TestTeamRepositoryLayer())),
+    );
+  });
+
+  describe("TestProjectRepositoryLayer", () => {
+    it.effect("should list projects for a team", () =>
+      Effect.gen(function* () {
+        const repo = yield* ProjectRepository;
+        const projects = yield* repo.getProjects("test-team-id" as TeamId);
+        expect(projects.length).toBe(1);
+        expect(projects[0].name).toBe("Test Project");
+      }).pipe(Effect.provide(TestProjectRepositoryLayer())),
+    );
+
+    it.effect("should return empty array for unknown team", () =>
+      Effect.gen(function* () {
+        const repo = yield* ProjectRepository;
+        const projects = yield* repo.getProjects("unknown-team" as TeamId);
+        expect(projects.length).toBe(0);
+      }).pipe(Effect.provide(TestProjectRepositoryLayer())),
+    );
+
+    it.effect("should create project successfully", () =>
+      Effect.gen(function* () {
+        const repo = yield* ProjectRepository;
+        const project = yield* repo.createProject("test-team-id" as TeamId, {
+          name: "New Project",
+          description: "A test project",
+        });
+        expect(project.name).toBe("New Project");
+        expect(project.teamId).toBe("test-team-id");
+
+        // Verify it's in the list
+        const projects = yield* repo.getProjects("test-team-id" as TeamId);
+        expect(projects.length).toBe(2);
+      }).pipe(Effect.provide(TestProjectRepositoryLayer())),
     );
   });
 });
