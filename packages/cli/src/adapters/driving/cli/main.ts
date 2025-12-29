@@ -67,7 +67,10 @@ export const command = ship.pipe(
   ]),
 );
 
+// __VERSION__ is injected at build time; fallback for running from source
+const version = typeof __VERSION__ !== "undefined" ? __VERSION__ : "0.0.0-dev";
+
 export const run = Command.run(command, {
   name: "ship",
-  version: __VERSION__,
+  version,
 });
