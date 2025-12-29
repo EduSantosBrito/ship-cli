@@ -23,6 +23,7 @@ import { AuthService } from "../../src/ports/AuthService.js";
 import { MilestoneRepository } from "../../src/ports/MilestoneRepository.js";
 import { TeamRepository } from "../../src/ports/TeamRepository.js";
 import { ProjectRepository } from "../../src/ports/ProjectRepository.js";
+import { OpenCodeService, SessionId } from "../../src/ports/OpenCodeService.js";
 import { TaskId, MilestoneId, ProjectId, TeamId, CreateMilestoneInput } from "../../src/domain/Task.js";
 import { WebhookPermissionError } from "../../src/domain/Errors.js";
 
@@ -38,6 +39,7 @@ import {
   TestMilestoneRepositoryLayer,
   TestTeamRepositoryLayer,
   TestProjectRepositoryLayer,
+  TestOpenCodeServiceLayer,
 } from "./index.js";
 
 describe("Test Layers", () => {
@@ -483,6 +485,73 @@ describe("Test Layers", () => {
         const projects = yield* repo.getProjects("test-team-id" as TeamId);
         expect(projects.length).toBe(2);
       }).pipe(Effect.provide(TestProjectRepositoryLayer())),
+    );
+  });
+
+  describe("TestOpenCodeServiceLayer", () => {
+    it.effect("should report available when configured", () =>
+      Effect.gen(function* () {
+        const service = yield* OpenCodeService;
+        const available = yield* service.isAvailable();
+        expect(available).toBe(true);
+      }).pipe(Effect.provide(TestOpenCodeServiceLayer())),
+    );
+
+    it.effect("should report not available when configured", () =>
+      Effect.gen(function* () {
+        const service = yield* OpenCodeService;
+        const available = yield* service.isAvailable();
+        expect(available).toBe(false);
+      }).pipe(Effect.provide(TestOpenCodeServiceLayer({ isAvailable: false }))),
+    );
+
+    it.effect("should list sessions", () =>
+      Effect.gen(function* () {
+        const service = yield* OpenCodeService;
+        const sessions = yield* service.listSessions();
+        expect(sessions.length).toBe(1);
+        expect(sessions[0].title).toBe("Test Session");
+      }).pipe(Effect.provide(TestOpenCodeServiceLayer())),
+    );
+
+    it.effect("should get session by id", () =>
+      Effect.gen(function* () {
+        const service = yield* OpenCodeService;
+        const session = yield* service.getSession("test-session-id" as SessionId);
+        expect(session.title).toBe("Test Session");
+      }).pipe(Effect.provide(TestOpenCodeServiceLayer())),
+    );
+
+    it.effect("should fail with OpenCodeSessionNotFoundError for unknown session", () =>
+      Effect.gen(function* () {
+        const service = yield* OpenCodeService;
+        const result = yield* service.getSession("unknown" as SessionId).pipe(Effect.exit);
+
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          const error = Cause.failureOption(result.cause);
+          expect(Option.isSome(error)).toBe(true);
+          if (Option.isSome(error)) {
+            expect(error.value._tag).toBe("OpenCodeSessionNotFoundError");
+          }
+        }
+      }).pipe(Effect.provide(TestOpenCodeServiceLayer())),
+    );
+
+    it.effect("should fail with OpenCodeNotRunningError when not available", () =>
+      Effect.gen(function* () {
+        const service = yield* OpenCodeService;
+        const result = yield* service.listSessions().pipe(Effect.exit);
+
+        expect(Exit.isFailure(result)).toBe(true);
+        if (Exit.isFailure(result)) {
+          const error = Cause.failureOption(result.cause);
+          expect(Option.isSome(error)).toBe(true);
+          if (Option.isSome(error)) {
+            expect(error.value._tag).toBe("OpenCodeNotRunningError");
+          }
+        }
+      }).pipe(Effect.provide(TestOpenCodeServiceLayer({ isAvailable: false }))),
     );
   });
 });

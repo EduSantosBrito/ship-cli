@@ -124,3 +124,12 @@ export {
   type TestProjectState,
   type TestProjectRepository,
 } from "./ProjectRepository.testLayer.js";
+
+// OpenCodeService test layer
+export {
+  TestOpenCodeServiceLayer,
+  defaultTestOpenCodeState,
+  createTestSession,
+  type TestOpenCodeState,
+  type TestOpenCodeService,
+} from "./OpenCodeService.testLayer.js";
