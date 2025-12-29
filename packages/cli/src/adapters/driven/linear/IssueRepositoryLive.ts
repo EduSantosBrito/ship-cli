@@ -241,15 +241,16 @@ const make = Effect.gen(function* () {
         }
 
         // Fetch the created label to get its ID
+        if (!createResult.issueLabel) {
+          return yield* Effect.fail(
+            new TaskError({ message: "Label not returned after createIssueLabel" }),
+          );
+        }
         const createdLabel = yield* Effect.tryPromise({
-          try: async () => {
-            if (!createResult.issueLabel) throw new Error("Label not returned");
-            return createResult.issueLabel;
-          },
+          try: () => createResult.issueLabel!,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get created label: ${e}`, cause: e }),
         });
-
         targetLabelId = createdLabel.id;
       }
 
@@ -314,16 +315,17 @@ const make = Effect.gen(function* () {
           return yield* Effect.fail(new TaskError({ message: "Failed to create issue" }));
         }
 
+        if (!issuePayload.issue) {
+          return yield* Effect.fail(new TaskError({ message: "Issue not returned after create" }));
+        }
         const issue = yield* Effect.tryPromise({
-          try: async () => {
-            if (!issuePayload.issue) throw new Error("Issue not returned");
-            const i = await issuePayload.issue;
-            if (!i) throw new Error("Issue not returned");
-            return i;
-          },
+          try: () => issuePayload.issue!,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get created issue: ${e}`, cause: e }),
         });
+        if (!issue) {
+          return yield* Effect.fail(new TaskError({ message: "Issue not returned after create" }));
+        }
 
         // Set type label if provided (default is "task")
         yield* setTypeLabelInternal(client, issue.id as TaskId, input.type);
@@ -436,16 +438,17 @@ const make = Effect.gen(function* () {
           return yield* Effect.fail(new TaskError({ message: "Failed to update issue" }));
         }
 
+        if (!result.issue) {
+          return yield* Effect.fail(new TaskError({ message: "Issue not returned after update" }));
+        }
         const updatedIssue = yield* Effect.tryPromise({
-          try: async () => {
-            if (!result.issue) throw new Error("Issue not returned");
-            const i = await result.issue;
-            if (!i) throw new Error("Issue not returned");
-            return i;
-          },
+          try: () => result.issue!,
           catch: (e) =>
             new LinearApiError({ message: `Failed to get updated issue: ${e}`, cause: e }),
         });
+        if (!updatedIssue) {
+          return yield* Effect.fail(new TaskError({ message: "Issue not returned after update" }));
+        }
 
         return yield* mapIssueToTask(updatedIssue);
       }),
@@ -803,15 +806,16 @@ const make = Effect.gen(function* () {
           }
 
           // Fetch the created label to get its ID
+          if (!createResult.issueLabel) {
+            return yield* Effect.fail(
+              new TaskError({ message: "Label not returned after createIssueLabel" }),
+            );
+          }
           const createdLabel = yield* Effect.tryPromise({
-            try: async () => {
-              if (!createResult.issueLabel) throw new Error("Label not returned");
-              return createResult.issueLabel;
-            },
+            try: () => createResult.issueLabel!,
             catch: (e) =>
               new LinearApiError({ message: `Failed to get created label: ${e}`, cause: e }),
           });
-
           targetLabelId = createdLabel.id;
         }
 
