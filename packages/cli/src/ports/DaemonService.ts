@@ -16,6 +16,8 @@ export class SessionSubscription extends Schema.Class<SessionSubscription>("Sess
   sessionId: Schema.String,
   prNumbers: Schema.Array(PrNumber),
   subscribedAt: Schema.String,
+  /** OpenCode server URL for routing messages to the correct instance */
+  serverUrl: Schema.optional(Schema.String),
 }) {}
 
 /**
@@ -39,6 +41,8 @@ export class SubscribeCommand extends Schema.Class<SubscribeCommand>("SubscribeC
   type: Schema.Literal("subscribe"),
   sessionId: Schema.String,
   prNumbers: Schema.Array(Schema.Number),
+  /** OpenCode server URL for routing messages to the correct instance */
+  serverUrl: Schema.optional(Schema.String),
 }) {}
 
 /**
@@ -48,6 +52,8 @@ export class UnsubscribeCommand extends Schema.Class<UnsubscribeCommand>("Unsubs
   type: Schema.Literal("unsubscribe"),
   sessionId: Schema.String,
   prNumbers: Schema.Array(Schema.Number),
+  /** OpenCode server URL for matching the subscription to remove */
+  serverUrl: Schema.optional(Schema.String),
 }) {}
 
 /**
@@ -179,18 +185,26 @@ export interface DaemonService {
 
   /**
    * Subscribe a session to PR events
+   * @param sessionId - OpenCode session ID
+   * @param prNumbers - PR numbers to subscribe to
+   * @param serverUrl - OpenCode server URL for routing (e.g., http://127.0.0.1:4097)
    */
   readonly subscribe: (
     sessionId: string,
     prNumbers: ReadonlyArray<number>,
+    serverUrl?: string,
   ) => Effect.Effect<void, DaemonErrors>;
 
   /**
    * Unsubscribe a session from PR events
+   * @param sessionId - OpenCode session ID
+   * @param prNumbers - PR numbers to unsubscribe from
+   * @param serverUrl - OpenCode server URL for matching the subscription
    */
   readonly unsubscribe: (
     sessionId: string,
     prNumbers: ReadonlyArray<number>,
+    serverUrl?: string,
   ) => Effect.Effect<void, DaemonErrors>;
 
   /**

@@ -18,6 +18,11 @@ const sessionOption = Options.text("session").pipe(
   Options.withDescription("OpenCode session ID to unsubscribe"),
 );
 
+const serverUrlOption = Options.text("server-url").pipe(
+  Options.withDescription("OpenCode server URL (e.g., http://127.0.0.1:4097)"),
+  Options.optional,
+);
+
 const jsonOption = Options.boolean("json").pipe(
   Options.withDescription("Output as JSON"),
   Options.withDefault(false),
@@ -33,8 +38,8 @@ const prNumbersArg = Args.text({ name: "pr-numbers" }).pipe(
 
 export const unsubscribeCommand = Command.make(
   "unsubscribe",
-  { session: sessionOption, prNumbers: prNumbersArg, json: jsonOption },
-  ({ session, prNumbers, json }) =>
+  { session: sessionOption, serverUrl: serverUrlOption, prNumbers: prNumbersArg, json: jsonOption },
+  ({ session, serverUrl, prNumbers, json }) =>
     Effect.gen(function* () {
       const daemonService = yield* DaemonService;
 
@@ -66,8 +71,14 @@ export const unsubscribeCommand = Command.make(
         return;
       }
 
+      // Get server URL from option or environment variable
+      const resolvedServerUrl =
+        serverUrl._tag === "Some"
+          ? serverUrl.value
+          : process.env.OPENCODE_SERVER_URL ?? undefined;
+
       // Unsubscribe
-      const result = yield* daemonService.unsubscribe(session, prs).pipe(
+      const result = yield* daemonService.unsubscribe(session, prs, resolvedServerUrl).pipe(
         Effect.map(() => ({ unsubscribed: true, sessionId: session, prNumbers: prs })),
         Effect.catchAll((e) => Effect.succeed({ unsubscribed: false, error: String(e) })),
       );

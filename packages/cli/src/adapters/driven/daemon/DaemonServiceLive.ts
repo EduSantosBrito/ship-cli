@@ -21,6 +21,7 @@ import * as Schedule from "effect/Schedule";
 import * as Duration from "effect/Duration";
 import * as Scope from "effect/Scope";
 import * as Queue from "effect/Queue";
+import * as Data from "effect/Data";
 import * as Net from "node:net";
 import * as Fs from "node:fs";
 import {
@@ -47,16 +48,35 @@ import {
   type CliWebhook,
   type WebhookEvent,
 } from "../../../ports/WebhookService.js";
-import { OpenCodeService, SessionId } from "../../../ports/OpenCodeService.js";
+import {
+  OpenCodeService,
+  SessionId,
+  type OpenCodeErrors,
+} from "../../../ports/OpenCodeService.js";
+import {
+  OpenCodeError,
+  OpenCodeSessionNotFoundError,
+} from "../../../domain/Errors.js";
 import { formatWebhookEvent } from "../opencode/WebhookEventFormatter.js";
 
 // === Registry Types ===
 
 /**
- * The daemon registry maps PR numbers to sets of session IDs.
- * When an event for a PR comes in, we notify all subscribed sessions.
+ * A subscription entry containing session ID and server URL.
+ * Uses Effect's Data.Class for structural equality in HashSet.
  */
-type Registry = HashMap.HashMap<number, HashSet.HashSet<string>>;
+class SubscriptionEntry extends Data.Class<{
+  readonly sessionId: string;
+  readonly serverUrl: string | undefined;
+}> {}
+
+
+
+/**
+ * The daemon registry maps PR numbers to sets of subscription entries.
+ * When an event for a PR comes in, we notify all subscribed sessions at their respective server URLs.
+ */
+type Registry = HashMap.HashMap<number, HashSet.HashSet<SubscriptionEntry>>;
 
 // === Type Guards ===
 
@@ -154,6 +174,58 @@ const runDaemonServer = (
     // Create a queue for IPC requests to be processed within the Effect runtime
     const commandQueue = yield* Queue.unbounded<IpcRequest>();
 
+    /**
+     * Send a prompt to an OpenCode session, optionally at a specific server URL.
+     * If serverUrl is provided, makes a direct HTTP call; otherwise uses the default service.
+     */
+    const sendPromptToServer = (
+      sessionId: SessionId,
+      message: string,
+      serverUrl: string | undefined,
+    ): Effect.Effect<void, OpenCodeErrors> => {
+      // If no custom URL, use the default OpenCode service
+      if (!serverUrl) {
+        return openCodeService.sendPromptAsync(sessionId, message);
+      }
+
+      // Make a direct HTTP call to the custom server URL
+      return Effect.tryPromise({
+        try: async () => {
+          const url = `${serverUrl}/session/${sessionId}/prompt_async`;
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parts: [{ type: "text", text: message }] }),
+          });
+
+          if (response.status === 404) {
+            throw { type: "not_found", sessionId };
+          }
+          if (response.status >= 400) {
+            const text = await response.text().catch(() => "");
+            throw { type: "server_error", status: response.status, text };
+          }
+        },
+        catch: (error: unknown): OpenCodeErrors => {
+          if (error && typeof error === "object" && "type" in error) {
+            const e = error as Record<string, unknown>;
+            if (e.type === "not_found") {
+              return OpenCodeSessionNotFoundError.forId(String(e.sessionId));
+            }
+            if (e.type === "server_error") {
+              return new OpenCodeError({
+                message: `OpenCode server at ${serverUrl} returned ${e.status}: ${e.text}`,
+              });
+            }
+          }
+          return new OpenCodeError({
+            message: `Failed to send prompt to ${serverUrl}: ${error}`,
+            cause: error,
+          });
+        },
+      });
+    };
+
     // Write PID file
     yield* Effect.sync(() => {
       Fs.writeFileSync(DAEMON_PID_PATH, String(process.pid));
@@ -194,12 +266,13 @@ const runDaemonServer = (
       Effect.gen(function* () {
         switch (command.type) {
           case "subscribe": {
-            const { sessionId, prNumbers } = command;
+            const { sessionId, prNumbers, serverUrl } = command;
 
             yield* Effect.logInfo("Received subscribe command").pipe(
               Effect.annotateLogs({
                 sessionId: sessionId ?? "undefined",
                 prNumbers: prNumbers?.join(",") ?? "undefined",
+                serverUrl: serverUrl ?? "default",
               }),
             );
 
@@ -228,15 +301,18 @@ const runDaemonServer = (
               }),
             );
 
+            // Create subscription entry with serverUrl
+            const entry = new SubscriptionEntry({ sessionId, serverUrl });
+
             yield* Ref.update(registryRef, (registry) => {
               let updated = registry;
               for (const pr of prNumbers) {
                 const existing = HashMap.get(updated, pr);
-                const sessions =
+                const entries =
                   existing._tag === "Some"
-                    ? HashSet.add(existing.value, sessionId)
-                    : HashSet.make(sessionId);
-                updated = HashMap.set(updated, pr, sessions);
+                    ? HashSet.add(existing.value, entry)
+                    : HashSet.make(entry);
+                updated = HashMap.set(updated, pr, entries);
               }
               return updated;
             });
@@ -252,13 +328,16 @@ const runDaemonServer = (
           }
 
           case "unsubscribe": {
-            const { sessionId, prNumbers } = command;
+            const { sessionId, prNumbers, serverUrl } = command;
+            // Create entry to match (uses structural equality)
+            const entry = new SubscriptionEntry({ sessionId, serverUrl });
+
             yield* Ref.update(registryRef, (registry) => {
               let updated = registry;
               for (const pr of prNumbers) {
                 const existing = HashMap.get(updated, pr);
                 if (existing._tag === "Some") {
-                  const sessions = HashSet.remove(existing.value, sessionId);
+                  const sessions = HashSet.remove(existing.value, entry);
                   if (HashSet.size(sessions) === 0) {
                     updated = HashMap.remove(updated, pr);
                   } else {
@@ -270,7 +349,7 @@ const runDaemonServer = (
             });
 
             yield* Effect.logInfo("Unsubscribed session from PRs").pipe(
-              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(",") }),
+              Effect.annotateLogs({ sessionId, prNumbers: prNumbers.join(","), serverUrl: serverUrl ?? "default" }),
             );
 
             return new SuccessResponse({
@@ -283,27 +362,33 @@ const runDaemonServer = (
             const registry = yield* Ref.get(registryRef);
             const connected = yield* Ref.get(connectedRef);
 
-            // Build subscriptions list
-            const subscriptions: SessionSubscription[] = [];
-            const sessionPrs = new Map<string, number[]>();
+            // Build subscriptions list - group by (sessionId, serverUrl) tuple using HashMap.reduce
+            // Accumulator: HashMap<subscriptionKey, { sessionId, serverUrl, prs }>
+            type SessionData = { sessionId: string; serverUrl: string | undefined; prs: number[] };
+            const subscriptionKey = (e: SubscriptionEntry) => `${e.sessionId}@${e.serverUrl ?? "default"}`;
 
-            for (const [pr, sessions] of HashMap.entries(registry)) {
-              for (const sessionId of HashSet.values(sessions)) {
-                const prs = sessionPrs.get(sessionId) ?? [];
-                prs.push(pr);
-                sessionPrs.set(sessionId, prs);
-              }
-            }
+            const grouped = HashMap.reduce(
+              registry,
+              HashMap.empty<string, SessionData>(),
+              (acc, entries, pr) =>
+                HashSet.reduce(entries, acc, (innerAcc, entry) => {
+                  const key = subscriptionKey(entry);
+                  const existing = HashMap.get(innerAcc, key);
+                  return existing._tag === "Some"
+                    ? HashMap.set(innerAcc, key, { ...existing.value, prs: [...existing.value.prs, pr] })
+                    : HashMap.set(innerAcc, key, { sessionId: entry.sessionId, serverUrl: entry.serverUrl, prs: [pr] });
+                }),
+            );
 
-            for (const [sessionId, prs] of sessionPrs.entries()) {
-              subscriptions.push(
+            const subscriptions = Array.from(HashMap.values(grouped)).map(
+              ({ sessionId, serverUrl, prs }) =>
                 new SessionSubscription({
                   sessionId,
                   prNumbers: prs as unknown as readonly PrNumber[],
                   subscribedAt: new Date().toISOString(),
+                  serverUrl,
                 }),
-              );
-            }
+            );
 
             return new StatusResponse({
               type: "status_response",
@@ -335,53 +420,40 @@ const runDaemonServer = (
 
             // Find and remove subscriptions for sessions that no longer exist
             const registry = yield* Ref.get(registryRef);
-            const allSessionIds = new Set<string>();
 
-            // Collect all session IDs from the registry
-            for (const [_pr, sessions] of HashMap.entries(registry)) {
-              for (const sessionId of HashSet.values(sessions)) {
-                allSessionIds.add(sessionId);
-              }
-            }
+            // Collect all unique session IDs from the registry using reduce
+            const allSessionIds = HashMap.reduce(
+              registry,
+              new Set<string>(),
+              (acc, entries) => HashSet.reduce(entries, acc, (set, entry) => set.add(entry.sessionId)),
+            );
 
-            // Find stale sessions (subscribed but not in active sessions)
-            const staleSessions: string[] = [];
-            for (const sessionId of allSessionIds) {
-              if (!activeSessions.has(sessionId)) {
-                staleSessions.push(sessionId);
-              }
-            }
+            // Find stale session IDs (subscribed but not in active sessions)
+            const staleSessionIds = new Set(
+              Array.from(allSessionIds).filter((id) => !activeSessions.has(id)),
+            );
 
-            // Remove stale sessions from registry
-            if (staleSessions.length > 0) {
-              yield* Ref.update(registryRef, (reg) => {
-                let updated = reg;
-                for (const [pr, sessions] of HashMap.entries(reg)) {
-                  let newSessions = sessions;
-                  for (const staleId of staleSessions) {
-                    newSessions = HashSet.remove(newSessions, staleId);
-                  }
-                  if (HashSet.size(newSessions) === 0) {
-                    updated = HashMap.remove(updated, pr);
-                  } else {
-                    updated = HashMap.set(updated, pr, newSessions);
-                  }
-                }
-                return updated;
-              });
+            // Remove stale entries from registry using HashMap.map + HashSet.filter
+            if (staleSessionIds.size > 0) {
+              yield* Ref.update(registryRef, (reg) =>
+                HashMap.reduce(reg, HashMap.empty<number, HashSet.HashSet<SubscriptionEntry>>(), (acc, entries, pr) => {
+                  const filtered = HashSet.filter(entries, (entry) => !staleSessionIds.has(entry.sessionId));
+                  return HashSet.size(filtered) > 0 ? HashMap.set(acc, pr, filtered) : acc;
+                }),
+              );
 
               yield* Effect.logInfo("Cleaned up stale subscriptions").pipe(
                 Effect.annotateLogs({
-                  removedSessions: staleSessions.join(","),
-                  count: String(staleSessions.length),
+                  removedSessions: Array.from(staleSessionIds).join(","),
+                  count: String(staleSessionIds.size),
                 }),
               );
             }
 
             return new CleanupResponse({
               type: "cleanup_response",
-              removedSessions: staleSessions,
-              remainingSessions: allSessionIds.size - staleSessions.length,
+              removedSessions: Array.from(staleSessionIds),
+              remainingSessions: allSessionIds.size - staleSessionIds.size,
             });
           }
         }
@@ -623,15 +695,20 @@ const runDaemonServer = (
           }),
         );
 
-        // Forward to all sessions concurrently, removing stale sessions on failure
+        // Forward to all sessions concurrently, removing stale entries on failure
         yield* Effect.forEach(
           HashSet.toValues(sessions.value),
-          (sessionId) =>
-            Schema.decode(SessionId)(sessionId).pipe(
-              Effect.flatMap((sid) => openCodeService.sendPromptAsync(sid, message)),
+          (entry) =>
+            Schema.decode(SessionId)(entry.sessionId).pipe(
+              Effect.flatMap((sid) => sendPromptToServer(sid, message, entry.serverUrl)),
               Effect.tap(() =>
                 Effect.logInfo("Forwarded event to session").pipe(
-                  Effect.annotateLogs({ event: eventDesc, prNumber: String(prNumber), sessionId }),
+                  Effect.annotateLogs({
+                    event: eventDesc,
+                    prNumber: String(prNumber),
+                    sessionId: entry.sessionId,
+                    serverUrl: entry.serverUrl ?? "default",
+                  }),
                 ),
               ),
               Effect.catchAll((e) => {
@@ -643,21 +720,25 @@ const runDaemonServer = (
                   (isTaggedError(e, "OpenCodeError") && e.message.includes("404"));
 
                 if (isSessionGone) {
-                  // Remove the stale subscription
+                  // Remove the stale subscription entry
                   return Ref.update(registryRef, (reg) => {
                     const existing = HashMap.get(reg, prNumber);
                     if (existing._tag === "Some") {
-                      const newSessions = HashSet.remove(existing.value, sessionId);
-                      if (HashSet.size(newSessions) === 0) {
+                      const newEntries = HashSet.remove(existing.value, entry);
+                      if (HashSet.size(newEntries) === 0) {
                         return HashMap.remove(reg, prNumber);
                       }
-                      return HashMap.set(reg, prNumber, newSessions);
+                      return HashMap.set(reg, prNumber, newEntries);
                     }
                     return reg;
                   }).pipe(
                     Effect.tap(() =>
                       Effect.logInfo("Removed stale subscription (session no longer exists)").pipe(
-                        Effect.annotateLogs({ sessionId, prNumber: String(prNumber) }),
+                        Effect.annotateLogs({
+                          sessionId: entry.sessionId,
+                          serverUrl: entry.serverUrl ?? "default",
+                          prNumber: String(prNumber),
+                        }),
                       ),
                     ),
                   );
@@ -668,7 +749,8 @@ const runDaemonServer = (
                   "Failed to forward to session (will retry on next event)",
                 ).pipe(
                   Effect.annotateLogs({
-                    sessionId,
+                    sessionId: entry.sessionId,
+                    serverUrl: entry.serverUrl ?? "default",
                     error: String(e),
                     errorTag: (e as { _tag?: string })?._tag ?? "unknown",
                   }),
@@ -745,11 +827,13 @@ const make = Effect.gen(function* () {
   const subscribe = (
     sessionId: string,
     prNumbers: ReadonlyArray<number>,
+    serverUrl?: string,
   ): Effect.Effect<void, DaemonErrors> =>
     sendCommand({
       type: "subscribe",
       sessionId,
       prNumbers: prNumbers as number[],
+      serverUrl,
     }).pipe(
       Effect.flatMap((response) => {
         if (response.type === "success") {
@@ -765,11 +849,13 @@ const make = Effect.gen(function* () {
   const unsubscribe = (
     sessionId: string,
     prNumbers: ReadonlyArray<number>,
+    serverUrl?: string,
   ): Effect.Effect<void, DaemonErrors> =>
     sendCommand({
       type: "unsubscribe",
       sessionId,
       prNumbers: prNumbers as number[],
+      serverUrl,
     }).pipe(
       Effect.flatMap((response) => {
         if (response.type === "success") {
