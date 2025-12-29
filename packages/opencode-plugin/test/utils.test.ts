@@ -446,17 +446,17 @@ describe("addGuidance", () => {
 
     it("includes skill reference when true", () => {
       const result = addGuidance("action=test", { skill: true });
-      expect(result).toContain('Skill: skill(name="ship-cli")');
+      expect(result).toContain('IMPORTANT: Load skill first → skill(name="ship-cli")');
     });
 
     it("omits skill when false", () => {
       const result = addGuidance("action=test", { skill: false });
-      expect(result).not.toContain("Skill:");
+      expect(result).not.toContain("IMPORTANT: Load skill first");
     });
 
     it("omits skill when not provided", () => {
       const result = addGuidance("action=test", {});
-      expect(result).not.toContain("Skill:");
+      expect(result).not.toContain("IMPORTANT: Load skill first");
     });
 
     it("includes note when provided", () => {
@@ -480,7 +480,7 @@ describe("addGuidance", () => {
 
       expect(result).toContain("Next: action=next");
       expect(result).toContain("Workdir: /workspace");
-      expect(result).toContain('Skill: skill(name="ship-cli")');
+      expect(result).toContain('IMPORTANT: Load skill first → skill(name="ship-cli")');
       expect(result).toContain("Note: Check docs");
     });
 
@@ -493,7 +493,7 @@ describe("addGuidance", () => {
 
       const nextIndex = result.indexOf("Next:");
       const workdirIndex = result.indexOf("Workdir:");
-      const skillIndex = result.indexOf("Skill:");
+      const skillIndex = result.indexOf("IMPORTANT:");
       const noteIndex = result.indexOf("Note:");
 
       expect(nextIndex).toBeLessThan(workdirIndex);
