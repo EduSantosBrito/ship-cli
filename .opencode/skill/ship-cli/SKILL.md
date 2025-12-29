@@ -20,7 +20,7 @@ description: Work management system replacing built-in todos with tracked tasks 
 ship: action=stack-sync                    # Get latest trunk
 ship: action=ready                         # Find work
 ship: action=start, taskId=<id>            # Mark In Progress (Linear only)
-ship: action=stack-create, message="<id>: <title>", bookmark="user/<id>-slug"
+ship: action=stack-create, message="<type>: <short description>", bookmark="user/<id>-slug"
 # Store workspace path from output, use for all subsequent workdir params
 bash: command="pnpm install", workdir=<workspace-path>
 ```
@@ -29,6 +29,14 @@ bash: command="pnpm install", workdir=<workspace-path>
 
 - Use `workdir=<workspace-path>` for ALL bash and ship commands
 - Make changes, run quality checks (lint, format, typecheck)
+
+### Update Commit Message (for multi-line)
+
+```
+ship: action=stack-describe, title="<type>: <subject>", description="<body>", workdir=<path>
+```
+
+Use `title` + `description` params for proper multi-line commits (NOT `message` with `\n`).
 
 ### Submit Work (MANDATORY - do not skip)
 
@@ -84,7 +92,7 @@ All support optional `workdir` param.
 | `stack-sync` | - | Fetch + rebase onto trunk |
 | `stack-restack` | - | Rebase onto trunk (no fetch) |
 | `stack-create` | message?, bookmark?, noWorkspace? | New change (creates workspace by default) |
-| `stack-describe` | message | Update description |
+| `stack-describe` | title, description? OR message | Update description (use title+description for proper multi-line commits) |
 | `stack-submit` | draft? | Push + create/update PR |
 | `stack-status` | - | Current change info |
 | `stack-log` | - | View stack |
