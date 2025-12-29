@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "@effect/vitest";
+import { describe, it, expect } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import * as YAML from "yaml";
@@ -10,33 +10,63 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
-// === Test Utilities ===
+// === Effect-Managed Test Resources ===
 
-const createTempDir = async (): Promise<{ path: string; cleanup: () => Promise<void> }> => {
-  const tmpPath = await fs.mkdtemp(path.join(os.tmpdir(), "ship-template-test-"));
-  return {
-    path: tmpPath,
-    cleanup: async () => {
+/**
+ * TempDir resource that creates a temp directory and changes process.cwd to it.
+ * Uses Effect.acquireRelease to guarantee cleanup even on test failure.
+ */
+const TempDirResource = Effect.acquireRelease(
+  Effect.promise(async () => {
+    const tmpPath = await fs.mkdtemp(path.join(os.tmpdir(), "ship-template-test-"));
+    const originalCwd = process.cwd();
+    process.chdir(tmpPath);
+    return { path: tmpPath, originalCwd };
+  }),
+  ({ path: tmpPath, originalCwd }) =>
+    Effect.promise(async () => {
+      process.chdir(originalCwd);
       await fs.rm(tmpPath, { recursive: true, force: true });
-    },
-  };
-};
+    }),
+);
 
-const writeTemplateFile = async (
+/**
+ * Write a template file in the temp directory
+ */
+const writeTemplateFile = (
   tmpDir: string,
   name: string,
   content: string,
   extension: string = "yaml",
-): Promise<void> => {
-  const templatesDir = path.join(tmpDir, ".ship", "templates");
-  await fs.mkdir(templatesDir, { recursive: true });
-  await fs.writeFile(path.join(templatesDir, `${name}.${extension}`), content);
-};
+): Effect.Effect<void> =>
+  Effect.promise(async () => {
+    const templatesDir = path.join(tmpDir, ".ship", "templates");
+    await fs.mkdir(templatesDir, { recursive: true });
+    await fs.writeFile(path.join(templatesDir, `${name}.${extension}`), content);
+  });
 
-const ensureTemplatesDir = async (tmpDir: string): Promise<void> => {
-  const templatesDir = path.join(tmpDir, ".ship", "templates");
-  await fs.mkdir(templatesDir, { recursive: true });
-};
+/**
+ * Ensure templates directory exists
+ */
+const ensureTemplatesDir = (tmpDir: string): Effect.Effect<void> =>
+  Effect.promise(async () => {
+    const templatesDir = path.join(tmpDir, ".ship", "templates");
+    await fs.mkdir(templatesDir, { recursive: true });
+  });
+
+/**
+ * Write an arbitrary file in the templates directory (for testing non-yaml files)
+ */
+const writeArbitraryFile = (
+  tmpDir: string,
+  filename: string,
+  content: string,
+): Effect.Effect<void> =>
+  Effect.promise(async () => {
+    const templatesDir = path.join(tmpDir, ".ship", "templates");
+    await fs.mkdir(templatesDir, { recursive: true });
+    await fs.writeFile(path.join(templatesDir, filename), content);
+  });
 
 // Layer that provides all dependencies for TemplateService
 const PlatformLayer = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
@@ -66,43 +96,33 @@ const makeValidTemplate = (
 };
 
 describe("TemplateServiceLive Integration", () => {
-  let tmpDir: { path: string; cleanup: () => Promise<void> };
-  let originalCwd: string;
-
-  beforeEach(async () => {
-    tmpDir = await createTempDir();
-    originalCwd = process.cwd();
-    process.chdir(tmpDir.path);
-  });
-
-  afterEach(async () => {
-    process.chdir(originalCwd);
-    await tmpDir.cleanup();
-  });
-
   describe("hasTemplates", () => {
-    it.effect("returns false when templates directory does not exist", () =>
+    it.scoped("returns false when templates directory does not exist", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const service = yield* TemplateService;
         const result = yield* service.hasTemplates();
         expect(result).toBe(false);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("returns true when templates directory exists", () =>
+    it.scoped("returns true when templates directory exists", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => ensureTemplatesDir(tmpDir.path));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* ensureTemplatesDir(tmpPath);
+
         const service = yield* TemplateService;
         const result = yield* service.hasTemplates();
         expect(result).toBe(true);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("returns true when templates directory exists with files", () =>
+    it.scoped("returns true when templates directory exists with files", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(tmpDir.path, "bug", makeValidTemplate({ name: "bug" })),
-        );
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "bug", makeValidTemplate({ name: "bug" }));
+
         const service = yield* TemplateService;
         const result = yield* service.hasTemplates();
         expect(result).toBe(true);
@@ -111,30 +131,33 @@ describe("TemplateServiceLive Integration", () => {
   });
 
   describe("listTemplates", () => {
-    it.effect("returns empty array when templates directory does not exist", () =>
+    it.scoped("returns empty array when templates directory does not exist", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const service = yield* TemplateService;
         const templates = yield* service.listTemplates();
         expect(templates).toHaveLength(0);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("returns empty array when templates directory is empty", () =>
+    it.scoped("returns empty array when templates directory is empty", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => ensureTemplatesDir(tmpDir.path));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* ensureTemplatesDir(tmpPath);
+
         const service = yield* TemplateService;
         const templates = yield* service.listTemplates();
         expect(templates).toHaveLength(0);
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("lists all .yaml templates in directory", () =>
+    it.scoped("lists all .yaml templates in directory", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(async () => {
-          await writeTemplateFile(tmpDir.path, "bug", makeValidTemplate({ name: "bug" }));
-          await writeTemplateFile(tmpDir.path, "feature", makeValidTemplate({ name: "feature" }));
-          await writeTemplateFile(tmpDir.path, "chore", makeValidTemplate({ name: "chore" }));
-        });
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "bug", makeValidTemplate({ name: "bug" }));
+        yield* writeTemplateFile(tmpPath, "feature", makeValidTemplate({ name: "feature" }));
+        yield* writeTemplateFile(tmpPath, "chore", makeValidTemplate({ name: "chore" }));
 
         const service = yield* TemplateService;
         const templates = yield* service.listTemplates();
@@ -147,17 +170,11 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("lists .yml templates alongside .yaml templates", () =>
+    it.scoped("lists .yml templates alongside .yaml templates", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(async () => {
-          await writeTemplateFile(tmpDir.path, "bug", makeValidTemplate({ name: "bug" }), "yaml");
-          await writeTemplateFile(
-            tmpDir.path,
-            "feature",
-            makeValidTemplate({ name: "feature" }),
-            "yml",
-          );
-        });
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "bug", makeValidTemplate({ name: "bug" }), "yaml");
+        yield* writeTemplateFile(tmpPath, "feature", makeValidTemplate({ name: "feature" }), "yml");
 
         const service = yield* TemplateService;
         const templates = yield* service.listTemplates();
@@ -169,15 +186,13 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("ignores non-yaml files in templates directory", () =>
+    it.scoped("ignores non-yaml files in templates directory", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(async () => {
-          await writeTemplateFile(tmpDir.path, "bug", makeValidTemplate({ name: "bug" }));
-          // Write a non-yaml file
-          const templatesDir = path.join(tmpDir.path, ".ship", "templates");
-          await fs.writeFile(path.join(templatesDir, "readme.md"), "# Templates");
-          await fs.writeFile(path.join(templatesDir, "config.json"), "{}");
-        });
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "bug", makeValidTemplate({ name: "bug" }));
+        // Write non-yaml files using the helper for consistency
+        yield* writeArbitraryFile(tmpPath, "readme.md", "# Templates");
+        yield* writeArbitraryFile(tmpPath, "config.json", "{}");
 
         const service = yield* TemplateService;
         const templates = yield* service.listTemplates();
@@ -187,12 +202,11 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("skips invalid templates and returns valid ones", () =>
+    it.scoped("skips invalid templates and returns valid ones", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(async () => {
-          await writeTemplateFile(tmpDir.path, "valid", makeValidTemplate({ name: "valid" }));
-          await writeTemplateFile(tmpDir.path, "invalid", "invalid: yaml: [");
-        });
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "valid", makeValidTemplate({ name: "valid" }));
+        yield* writeTemplateFile(tmpPath, "invalid", "invalid: yaml: [");
 
         const service = yield* TemplateService;
         const templates = yield* service.listTemplates();
@@ -202,14 +216,13 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("uses filename as template name when name field is missing", () =>
+    it.scoped("uses filename as template name when name field is missing", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "my-template",
-            makeValidTemplate({ title: "fix: {title}" }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "my-template",
+          makeValidTemplate({ title: "fix: {title}" }),
         );
 
         const service = yield* TemplateService;
@@ -222,19 +235,18 @@ describe("TemplateServiceLive Integration", () => {
   });
 
   describe("getTemplate", () => {
-    it.effect("retrieves template by name with .yaml extension", () =>
+    it.scoped("retrieves template by name with .yaml extension", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "bug",
-            makeValidTemplate({
-              name: "bug",
-              title: "fix: {title}",
-              priority: "high",
-              type: "bug",
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "bug",
+          makeValidTemplate({
+            name: "bug",
+            title: "fix: {title}",
+            priority: "high",
+            type: "bug",
+          }),
         );
 
         const service = yield* TemplateService;
@@ -247,15 +259,14 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("retrieves template by name with .yml extension", () =>
+    it.scoped("retrieves template by name with .yml extension", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "feature",
-            makeValidTemplate({ name: "feature", title: "feat: {title}" }),
-            "yml",
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "feature",
+          makeValidTemplate({ name: "feature", title: "feat: {title}" }),
+          "yml",
         );
 
         const service = yield* TemplateService;
@@ -266,22 +277,21 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("prefers .yaml over .yml when both exist", () =>
+    it.scoped("prefers .yaml over .yml when both exist", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(async () => {
-          await writeTemplateFile(
-            tmpDir.path,
-            "test",
-            makeValidTemplate({ name: "test-yaml", title: "from yaml" }),
-            "yaml",
-          );
-          await writeTemplateFile(
-            tmpDir.path,
-            "test",
-            makeValidTemplate({ name: "test-yml", title: "from yml" }),
-            "yml",
-          );
-        });
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "test",
+          makeValidTemplate({ name: "test-yaml", title: "from yaml" }),
+          "yaml",
+        );
+        yield* writeTemplateFile(
+          tmpPath,
+          "test",
+          makeValidTemplate({ name: "test-yml", title: "from yml" }),
+          "yml",
+        );
 
         const service = yield* TemplateService;
         const template = yield* service.getTemplate("test");
@@ -291,9 +301,10 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with TemplateNotFoundError when template does not exist", () =>
+    it.scoped("fails with TemplateNotFoundError when template does not exist", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => ensureTemplatesDir(tmpDir.path));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* ensureTemplatesDir(tmpPath);
 
         const service = yield* TemplateService;
         const result = yield* service.getTemplate("nonexistent").pipe(Effect.either);
@@ -306,8 +317,10 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with TemplateNotFoundError when templates directory does not exist", () =>
+    it.scoped("fails with TemplateNotFoundError when templates directory does not exist", () =>
       Effect.gen(function* () {
+        yield* TempDirResource;
+
         const service = yield* TemplateService;
         const result = yield* service.getTemplate("any").pipe(Effect.either);
 
@@ -318,9 +331,10 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with TemplateError for invalid YAML syntax", () =>
+    it.scoped("fails with TemplateError for invalid YAML syntax", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeTemplateFile(tmpDir.path, "bad", "invalid: yaml: ["));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "bad", "invalid: yaml: [");
 
         const service = yield* TemplateService;
         const result = yield* service.getTemplate("bad").pipe(Effect.either);
@@ -333,14 +347,13 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("fails with TemplateError for invalid schema", () =>
+    it.scoped("fails with TemplateError for invalid schema", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "bad-schema",
-            YAML.stringify({ priority: "invalid-priority" }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "bad-schema",
+          YAML.stringify({ priority: "invalid-priority" }),
         );
 
         const service = yield* TemplateService;
@@ -356,11 +369,10 @@ describe("TemplateServiceLive Integration", () => {
   });
 
   describe("template parsing", () => {
-    it.effect("parses minimal template with only name", () =>
+    it.scoped("parses minimal template with only name", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(tmpDir.path, "minimal", makeValidTemplate({})),
-        );
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "minimal", makeValidTemplate({}));
 
         const service = yield* TemplateService;
         const template = yield* service.getTemplate("minimal");
@@ -373,20 +385,19 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("parses full template with all fields", () =>
+    it.scoped("parses full template with all fields", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "full",
-            makeValidTemplate({
-              name: "full-template",
-              title: "feat: {title}",
-              description: "## Feature\n\n{title}",
-              priority: "medium",
-              type: "feature",
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "full",
+          makeValidTemplate({
+            name: "full-template",
+            title: "feat: {title}",
+            description: "## Feature\n\n{title}",
+            priority: "medium",
+            type: "feature",
+          }),
         );
 
         const service = yield* TemplateService;
@@ -400,14 +411,13 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("parses template with all valid priority values", () =>
+    it.scoped("parses template with all valid priority values", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
         const priorities = ["urgent", "high", "medium", "low", "none"];
 
         for (const priority of priorities) {
-          yield* Effect.promise(() =>
-            writeTemplateFile(tmpDir.path, `p-${priority}`, makeValidTemplate({ priority })),
-          );
+          yield* writeTemplateFile(tmpPath, `p-${priority}`, makeValidTemplate({ priority }));
         }
 
         const service = yield* TemplateService;
@@ -419,14 +429,13 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("parses template with all valid type values", () =>
+    it.scoped("parses template with all valid type values", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
         const types = ["bug", "feature", "task", "epic", "chore"];
 
         for (const type of types) {
-          yield* Effect.promise(() =>
-            writeTemplateFile(tmpDir.path, `t-${type}`, makeValidTemplate({ type })),
-          );
+          yield* writeTemplateFile(tmpPath, `t-${type}`, makeValidTemplate({ type }));
         }
 
         const service = yield* TemplateService;
@@ -440,9 +449,10 @@ describe("TemplateServiceLive Integration", () => {
   });
 
   describe("edge cases", () => {
-    it.effect("handles empty YAML file with TemplateError", () =>
+    it.scoped("handles empty YAML file with TemplateError", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() => writeTemplateFile(tmpDir.path, "empty", ""));
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "empty", "");
 
         const service = yield* TemplateService;
         const result = yield* service.getTemplate("empty").pipe(Effect.either);
@@ -455,11 +465,10 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles YAML file with only comments with TemplateError", () =>
+    it.scoped("handles YAML file with only comments with TemplateError", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(tmpDir.path, "comments", "# This is a comment\n# Another comment"),
-        );
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(tmpPath, "comments", "# This is a comment\n# Another comment");
 
         const service = yield* TemplateService;
         const result = yield* service.getTemplate("comments").pipe(Effect.either);
@@ -472,19 +481,18 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles template with extra unknown fields (should be ignored)", () =>
+    it.scoped("handles template with extra unknown fields (should be ignored)", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "extra",
-            YAML.stringify({
-              name: "extra",
-              title: "test",
-              unknownField: "should be ignored",
-              anotherUnknown: { nested: true },
-            }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "extra",
+          YAML.stringify({
+            name: "extra",
+            title: "test",
+            unknownField: "should be ignored",
+            anotherUnknown: { nested: true },
+          }),
         );
 
         const service = yield* TemplateService;
@@ -495,8 +503,9 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles template with multiline description", () =>
+    it.scoped("handles template with multiline description", () =>
       Effect.gen(function* () {
+        const { path: tmpPath } = yield* TempDirResource;
         const multilineDesc = `## Bug Report
 
 **What happened:**
@@ -513,15 +522,13 @@ describe("TemplateServiceLive Integration", () => {
 - OS: 
 - Version: `;
 
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "multiline",
-            YAML.stringify({
-              name: "multiline",
-              description: multilineDesc,
-            }),
-          ),
+        yield* writeTemplateFile(
+          tmpPath,
+          "multiline",
+          YAML.stringify({
+            name: "multiline",
+            description: multilineDesc,
+          }),
         );
 
         const service = yield* TemplateService;
@@ -533,14 +540,13 @@ describe("TemplateServiceLive Integration", () => {
       }).pipe(Effect.provide(TestLayer)),
     );
 
-    it.effect("handles template names with special characters in filename", () =>
+    it.scoped("handles template names with special characters in filename", () =>
       Effect.gen(function* () {
-        yield* Effect.promise(() =>
-          writeTemplateFile(
-            tmpDir.path,
-            "my-special_template.v2",
-            makeValidTemplate({ name: "my-special_template.v2" }),
-          ),
+        const { path: tmpPath } = yield* TempDirResource;
+        yield* writeTemplateFile(
+          tmpPath,
+          "my-special_template.v2",
+          makeValidTemplate({ name: "my-special_template.v2" }),
         );
 
         const service = yield* TemplateService;
