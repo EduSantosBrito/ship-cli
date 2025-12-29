@@ -31,7 +31,7 @@ const make = Effect.gen(function* () {
         Effect.flatMap((req) => client.execute(req)),
         Effect.flatMap((res) => res.json),
         Effect.catchAll((e) =>
-          Effect.fail(new AuthError({ message: `Failed to validate API key: ${e}` })),
+          Effect.fail(new AuthError({ message: `Failed to validate API key: ${e}`, cause: e })),
         ),
       );
 
@@ -63,7 +63,7 @@ const make = Effect.gen(function* () {
         .saveAuth(auth)
         .pipe(
           Effect.mapError(
-            (e) => new AuthError({ message: `Failed to save API key: ${e.message}` }),
+            (e) => new AuthError({ message: `Failed to save API key: ${e.message}`, cause: e }),
           ),
         );
 
@@ -72,7 +72,7 @@ const make = Effect.gen(function* () {
         .ensureGitignore()
         .pipe(
           Effect.mapError(
-            (e) => new AuthError({ message: `Failed to update .gitignore: ${e.message}` }),
+            (e) => new AuthError({ message: `Failed to update .gitignore: ${e.message}`, cause: e }),
           ),
         );
 
