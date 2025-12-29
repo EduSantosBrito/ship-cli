@@ -553,10 +553,12 @@ interface ShipService {
   readonly subscribeToPRs: (
     sessionId: string,
     prNumbers: number[],
+    serverUrl?: string,
   ) => Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError>;
   readonly unsubscribeFromPRs: (
     sessionId: string,
     prNumbers: number[],
+    serverUrl?: string,
   ) => Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError>;
   readonly cleanupStaleSubscriptions: () => Effect.Effect<
     WebhookCleanupResult,
@@ -979,34 +981,32 @@ const makeShipService = Effect.gen(function* () {
   const subscribeToPRs = (
     sessionId: string,
     prNumbers: number[],
+    serverUrl?: string,
   ): Effect.Effect<WebhookSubscribeResult, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       const prNumbersStr = prNumbers.join(",");
-      const output = yield* shell.run([
-        "webhook",
-        "subscribe",
-        "--json",
-        "--session",
-        sessionId,
-        prNumbersStr,
-      ]);
+      const args = ["webhook", "subscribe", "--json", "--session", sessionId];
+      if (serverUrl) {
+        args.push("--server-url", serverUrl);
+      }
+      args.push(prNumbersStr);
+      const output = yield* shell.run(args);
       return yield* parseJson<WebhookSubscribeResult>(output);
     });
 
   const unsubscribeFromPRs = (
     sessionId: string,
     prNumbers: number[],
+    serverUrl?: string,
   ): Effect.Effect<WebhookUnsubscribeResult, ShipCommandError | JsonParseError> =>
     Effect.gen(function* () {
       const prNumbersStr = prNumbers.join(",");
-      const output = yield* shell.run([
-        "webhook",
-        "unsubscribe",
-        "--json",
-        "--session",
-        sessionId,
-        prNumbersStr,
-      ]);
+      const args = ["webhook", "unsubscribe", "--json", "--session", sessionId];
+      if (serverUrl) {
+        args.push("--server-url", serverUrl);
+      }
+      args.push(prNumbersStr);
+      const output = yield* shell.run(args);
       return yield* parseJson<WebhookUnsubscribeResult>(output);
     });
 
@@ -1251,6 +1251,8 @@ interface ActionContext {
   sessionId?: string;
   /** Main repository path (default workspace location) */
   mainRepoPath: string;
+  /** OpenCode server URL for webhook routing (e.g., http://127.0.0.1:4097) */
+  serverUrl?: string;
 }
 
 /**
@@ -1869,29 +1871,31 @@ Subscriptions:`;
       if (!args.prNumbers || args.prNumbers.length === 0) {
         return "Error: prNumbers is required for webhook-subscribe action";
       }
-      const result = yield* ship.subscribeToPRs(sessionId, args.prNumbers);
+      const result = yield* ship.subscribeToPRs(sessionId, args.prNumbers, ctx.serverUrl);
       if (!result.subscribed) {
         return `Error: ${result.error || "Failed to subscribe"}`;
       }
-      return `Subscribed session ${sessionId} to PRs: ${args.prNumbers.join(", ")}
+      const serverInfo = ctx.serverUrl ? ` (server: ${ctx.serverUrl})` : "";
+      return `Subscribed session ${sessionId} to PRs: ${args.prNumbers.join(", ")}${serverInfo}
 
 The daemon will forward GitHub events for these PRs to your session.
 Use 'webhook-unsubscribe' to stop receiving events.`;
     }),
 
-  "webhook-unsubscribe": (ship, args, _ctx) =>
+  "webhook-unsubscribe": (ship, args, ctx) =>
     Effect.gen(function* () {
-      if (!args.sessionId) {
+      const sessionId = args.sessionId || ctx.sessionId;
+      if (!sessionId) {
         return "Error: sessionId is required for webhook-unsubscribe action";
       }
       if (!args.prNumbers || args.prNumbers.length === 0) {
         return "Error: prNumbers is required for webhook-unsubscribe action";
       }
-      const result = yield* ship.unsubscribeFromPRs(args.sessionId, args.prNumbers);
+      const result = yield* ship.unsubscribeFromPRs(sessionId, args.prNumbers, ctx.serverUrl);
       if (!result.unsubscribed) {
         return `Error: ${result.error || "Failed to unsubscribe"}`;
       }
-      return `Unsubscribed session ${args.sessionId} from PRs: ${args.prNumbers.join(", ")}`;
+      return `Unsubscribed session ${sessionId} from PRs: ${args.prNumbers.join(", ")}`;
     }),
 
   "webhook-cleanup": (ship, _args, _ctx) =>
@@ -2044,7 +2048,7 @@ const executeAction = (
  * @param directory - Current working directory from opencode (Instance.directory)
  * @returns ToolDefinition for the ship tool
  */
-const createShipTool = ($: BunShell, directory: string): ToolDefinition => {
+const createShipTool = ($: BunShell, directory: string, serverUrl?: string): ToolDefinition => {
   const shellService = makeShellService($, directory);
   const ShellServiceLive = Layer.succeed(ShellService, shellService);
   const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(
@@ -2260,10 +2264,11 @@ Run 'ship init' in the terminal first if not configured.`,
     },
 
     async execute(args, context) {
-      // Build action context with session ID and main repo path
+      // Build action context with session ID, main repo path, and server URL
       const actionContext: ActionContext = {
         sessionId: context.sessionID,
         mainRepoPath: directory,
+        serverUrl,
       };
       const result = await runEffect(
         executeAction(args, actionContext).pipe(
@@ -2467,15 +2472,23 @@ const createToolExecuteAfterHook = (): Hooks["tool.execute.after"] => {
 // Plugin Export
 // =============================================================================
 
-export const ShipPlugin: Plugin = async ({ $, directory }) => {
+// Extended PluginInput type to include serverUrl (available in OpenCode 1.0.144+)
+type ExtendedPluginInput = Parameters<Plugin>[0] & {
+  serverUrl?: URL;
+};
+
+export const ShipPlugin = async (input: ExtendedPluginInput) => {
+  const { $, directory, serverUrl } = input;
   const shellService = makeShellService($, directory);
+  // Convert URL object to string for passing to CLI commands
+  const serverUrlString = serverUrl?.toString();
 
   return {
-    config: async (config) => {
+    config: async (config: Parameters<NonNullable<Awaited<ReturnType<Plugin>>["config"]>>[0]) => {
       config.command = { ...config.command, ...SHIP_COMMANDS };
     },
     tool: {
-      ship: createShipTool($, directory),
+      ship: createShipTool($, directory, serverUrlString),
     },
     "tool.execute.after": createToolExecuteAfterHook(),
     "experimental.session.compacting": createCompactionHook(shellService),

@@ -19,6 +19,11 @@ const sessionOption = Options.text("session").pipe(
   Options.withDescription("OpenCode session ID to subscribe"),
 );
 
+const serverUrlOption = Options.text("server-url").pipe(
+  Options.withDescription("OpenCode server URL (e.g., http://127.0.0.1:4097)"),
+  Options.optional,
+);
+
 const jsonOption = Options.boolean("json").pipe(
   Options.withDescription("Output as JSON"),
   Options.withDefault(false),
@@ -34,8 +39,8 @@ const prNumbersArg = Args.text({ name: "pr-numbers" }).pipe(
 
 export const subscribeCommand = Command.make(
   "subscribe",
-  { session: sessionOption, prNumbers: prNumbersArg, json: jsonOption },
-  ({ session, prNumbers, json }) =>
+  { session: sessionOption, serverUrl: serverUrlOption, prNumbers: prNumbersArg, json: jsonOption },
+  ({ session, serverUrl, prNumbers, json }) =>
     Effect.gen(function* () {
       const daemonService = yield* DaemonService;
 
@@ -69,16 +74,28 @@ export const subscribeCommand = Command.make(
         return;
       }
 
+      // Get server URL from option or environment variable
+      const resolvedServerUrl =
+        serverUrl._tag === "Some"
+          ? serverUrl.value
+          : process.env.OPENCODE_SERVER_URL ?? undefined;
+
       // Subscribe
-      const result = yield* daemonService.subscribe(session, prs).pipe(
-        Effect.map(() => ({ subscribed: true, sessionId: session, prNumbers: prs })),
+      const result = yield* daemonService.subscribe(session, prs, resolvedServerUrl).pipe(
+        Effect.map(() => ({
+          subscribed: true,
+          sessionId: session,
+          prNumbers: prs,
+          serverUrl: resolvedServerUrl,
+        })),
         Effect.catchAll((e) => Effect.succeed({ subscribed: false, error: String(e) })),
       );
 
       if (json) {
         yield* Console.log(JSON.stringify(result));
       } else if (result.subscribed) {
-        yield* Console.log(`Subscribed session ${session} to PRs: ${prs.join(", ")}`);
+        const serverInfo = resolvedServerUrl ? ` (server: ${resolvedServerUrl})` : "";
+        yield* Console.log(`Subscribed session ${session} to PRs: ${prs.join(", ")}${serverInfo}`);
       } else {
         yield* Console.error(
           `Failed to subscribe: ${"error" in result ? result.error : "Unknown error"}`,
