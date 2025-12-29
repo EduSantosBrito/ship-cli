@@ -106,7 +106,7 @@ const make = Effect.gen(function* () {
       return Option.isSome(cfg.auth);
     }).pipe(
       // Config errors mean we can't determine auth status - log and return false
-      Effect.catchAll((e) =>
+      Effect.catchTag("ConfigError", (e) =>
         Effect.logWarning(`Error checking authentication: ${e.message}`).pipe(
           Effect.map(() => false),
         ),

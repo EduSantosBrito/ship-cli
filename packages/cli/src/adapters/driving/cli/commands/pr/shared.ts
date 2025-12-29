@@ -10,7 +10,7 @@ import * as Console from "effect/Console";
 import { VcsService, type Change } from "../../../../../ports/VcsService.js";
 import { PrService } from "../../../../../ports/PrService.js";
 import { ConfigRepository } from "../../../../../ports/ConfigRepository.js";
-import { JjNotInstalledError, VcsError } from "../../../../../domain/Errors.js";
+
 
 // === Types ===
 
@@ -46,15 +46,9 @@ export const checkVcsAvailability = (): Effect.Effect<
     // Check if we're in a jj repo - handle specific errors
     const isRepoResult = yield* vcs.isRepo().pipe(
       Effect.map((isRepo) => ({ isRepo, error: null as string | null })),
-      Effect.catchAll((e) => {
-        if (e instanceof JjNotInstalledError) {
-          return Effect.succeed({ isRepo: false, error: "jj is not installed" });
-        }
-        if (e instanceof VcsError) {
-          return Effect.succeed({ isRepo: false, error: e.message });
-        }
-        return Effect.succeed({ isRepo: false, error: "Unknown VCS error" });
-      }),
+      Effect.catchTag("NotARepoError", (e) => Effect.succeed({ isRepo: false, error: e.message })),
+      Effect.catchTag("VcsError", (e) => Effect.succeed({ isRepo: false, error: e.message })),
+      Effect.catchAll(() => Effect.succeed({ isRepo: false, error: "Unknown VCS error" })),
     );
 
     if (isRepoResult.error) {
