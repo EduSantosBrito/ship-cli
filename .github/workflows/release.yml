@@ -42,8 +42,13 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Publish to npm (Trusted Publishing)
-        run: pnpm -r publish --access public --no-git-checks --provenance
+      - name: Publish @ship-cli/core
+        working-directory: packages/cli
+        run: npm publish --access public --provenance
+
+      - name: Publish @ship-cli/opencode
+        working-directory: packages/opencode-plugin
+        run: npm publish --access public --provenance
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
