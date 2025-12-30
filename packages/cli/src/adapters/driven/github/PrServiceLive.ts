@@ -292,9 +292,15 @@ const make = Effect.gen(function* () {
           return null;
         }
 
+        // Check for empty output (can happen if gh returns empty stdout)
+        const trimmedOutput = result.output.trim();
+        if (!trimmedOutput) {
+          return null;
+        }
+
         // Parse the JSON output
         const parsed = yield* Effect.try({
-          try: () => JSON.parse(result.output) as { nameWithOwner: string },
+          try: () => JSON.parse(trimmedOutput) as { nameWithOwner: string },
           catch: (e) => new PrError({ message: `Failed to parse repo info: ${e}`, cause: e }),
         });
 
