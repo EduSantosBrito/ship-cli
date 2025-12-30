@@ -9,20 +9,23 @@ export interface LinearClientService {
   readonly client: () => Effect.Effect<LinearSDK, LinearApiError>;
 }
 
-export const LinearClientService = Context.GenericTag<LinearClientService>("LinearClientService");
+export const LinearClientService = Context.GenericTag<LinearClientService>(
+  "LinearClientService",
+);
 
 const make = Effect.gen(function* () {
   const auth = yield* AuthService;
 
   const client = (): Effect.Effect<LinearSDK, LinearApiError> =>
     Effect.gen(function* () {
-      const apiKey = yield* auth
-        .getApiKey()
-        .pipe(
-          Effect.mapError(
-            (e) => new LinearApiError({ message: `Authentication required: ${e.message}` }),
-          ),
-        );
+      const apiKey = yield* auth.getApiKey().pipe(
+        Effect.mapError(
+          (e) =>
+            new LinearApiError({
+              message: `Authentication required: ${e.message}`,
+            }),
+        ),
+      );
 
       return new LinearSDK({ apiKey });
     });

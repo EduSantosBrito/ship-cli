@@ -375,7 +375,8 @@ const ShellService = Context.GenericTag<ShellService>("ShellService");
 const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
   const getCommand = (): string[] => {
     if (process.env.NODE_ENV === "development") {
-      return ["pnpm", "ship"];
+      // Use node with tsx loader directly to avoid pnpm re-escaping arguments with newlines
+      return ["node", "--import=tsx", "packages/cli/src/bin.ts"];
     }
     return ["ship"];
   };
@@ -2210,13 +2211,61 @@ const executeAction = (
 // =============================================================================
 
 /**
+ * Build the tool description based on whether the project is a jj repo.
+ * Only includes jj-specific hints when the project uses jj for VCS.
+ */
+const buildToolDescription = (isJjRepo: boolean): string => {
+  const baseDescription = `Linear task management and VCS operations for the current project.`;
+
+  const jjHints = isJjRepo
+    ? `
+
+IMPORTANT: Always use this tool for VCS operations. NEVER run jj, gh, or git commands directly via bash.
+- Use stack-create instead of: jj new, jj describe, jj bookmark create
+- Use stack-describe instead of: jj describe
+- Use stack-submit instead of: jj git push, gh pr create
+- Use stack-sync instead of: jj git fetch, jj rebase`
+    : "";
+
+  const taskFeatures = `
+Use this tool to:
+- List tasks ready to work on (no blockers)
+- View task details
+- Start/complete tasks
+- Create new tasks
+- Manage task dependencies (blocking relationships)
+- Get AI-optimized context about current work`;
+
+  const jjFeatures = isJjRepo
+    ? `
+- Manage stacked changes (jj workflow)
+- Start/stop GitHub webhook forwarding for real-time event notifications
+- Subscribe to PR events via the webhook daemon (multi-session support)`
+    : "";
+
+  const footer = `
+
+Requires ship to be configured in the project (.ship/config.yaml).
+Run 'ship init' in the terminal first if not configured.`;
+
+  return baseDescription + jjHints + taskFeatures + jjFeatures + footer;
+};
+
+/**
  * Create the ship tool with the opencode context.
  *
  * @param $ - Bun shell from opencode
  * @param directory - Current working directory from opencode (Instance.directory)
+ * @param serverUrl - OpenCode server URL for webhook routing
+ * @param isJjRepo - Whether the directory is a jj repository
  * @returns ToolDefinition for the ship tool
  */
-const createShipTool = ($: BunShell, directory: string, serverUrl?: string): ToolDefinition => {
+const createShipTool = (
+  $: BunShell,
+  directory: string,
+  serverUrl?: string,
+  isJjRepo?: boolean,
+): ToolDefinition => {
   const shellService = makeShellService($, directory);
   const ShellServiceLive = Layer.succeed(ShellService, shellService);
   const ShipServiceLive = Layer.effect(ShipService, makeShipService).pipe(
@@ -2227,27 +2276,7 @@ const createShipTool = ($: BunShell, directory: string, serverUrl?: string): Too
     Effect.runPromise(Effect.provide(effect, ShipServiceLive));
 
   return createTool({
-    description: `Linear task management and VCS operations for the current project.
-
-IMPORTANT: Always use this tool for VCS operations. NEVER run jj, gh, or git commands directly via bash.
-- Use stack-create instead of: jj new, jj describe, jj bookmark create
-- Use stack-describe instead of: jj describe
-- Use stack-submit instead of: jj git push, gh pr create
-- Use stack-sync instead of: jj git fetch, jj rebase
-
-Use this tool to:
-- List tasks ready to work on (no blockers)
-- View task details
-- Start/complete tasks
-- Create new tasks
-- Manage task dependencies (blocking relationships)
-- Get AI-optimized context about current work
-- Manage stacked changes (jj workflow)
-- Start/stop GitHub webhook forwarding for real-time event notifications
-- Subscribe to PR events via the webhook daemon (multi-session support)
-
-Requires ship to be configured in the project (.ship/config.yaml).
-Run 'ship init' in the terminal first if not configured.`,
+    description: buildToolDescription(isJjRepo ?? false),
 
     args: {
       action: createTool.schema
@@ -2312,7 +2341,7 @@ Run 'ship init' in the terminal first if not configured.`,
         .string()
         .optional()
         .describe(
-          "Description - for task create/update OR for stack-describe (commit body after title)",
+          "For task create: REQUIRED - use template from skill (## Summary, ## Acceptance Criteria with checkboxes, ## Notes). For task update: optional changes. For stack-describe: commit body after title.",
         ),
       priority: createTool.schema
         .enum(["urgent", "high", "medium", "low", "none"])
@@ -2662,18 +2691,35 @@ type ExtendedPluginInput = Parameters<Plugin>[0] & {
   serverUrl?: URL;
 };
 
+/**
+ * Check if a directory is a jj repository by looking for the .jj directory.
+ * This is a simple filesystem check that doesn't require jj to be installed.
+ */
+const checkIsJjRepo = async (directory: string): Promise<boolean> => {
+  try {
+    const jjPath = `${directory}/.jj`;
+    const file = Bun.file(jjPath);
+    // Bun.file().exists() returns true for directories too
+    return await file.exists();
+  } catch {
+    return false;
+  }
+};
+
 export const ShipPlugin = async (input: ExtendedPluginInput) => {
   const { $, directory, serverUrl } = input;
   const shellService = makeShellService($, directory);
   // Convert URL object to string for passing to CLI commands
   const serverUrlString = serverUrl?.toString();
+  // Check if this is a jj repository
+  const isJjRepo = await checkIsJjRepo(directory);
 
   return {
     config: async (config: Parameters<NonNullable<Awaited<ReturnType<Plugin>>["config"]>>[0]) => {
       config.command = { ...config.command, ...SHIP_COMMANDS };
     },
     tool: {
-      ship: createShipTool($, directory, serverUrlString),
+      ship: createShipTool($, directory, serverUrlString, isJjRepo),
     },
     "tool.execute.after": createToolExecuteAfterHook(),
     "experimental.session.compacting": createCompactionHook(shellService),
