@@ -77,11 +77,49 @@ After stack fully merged: notify user, switch to default workspace, suggest `shi
 | `show` | taskId | Task details |
 | `start` | taskId | Mark In Progress |
 | `done` | taskId | Mark complete |
-| `create` | title, description?, priority?, parentId? | Create task |
+| `create` | title, description, priority?, parentId? | Create task (see template below) |
 | `update` | taskId + fields | Update task |
 | `block` | blocker, blocked | Add dependency |
 | `unblock` | blocker, blocked | Remove dependency |
 | `relate` | taskId, relatedTaskId | Link related tasks |
+
+### Task Description Template
+
+When creating tasks, ALWAYS use this description format:
+
+```
+## Summary
+[1-2 sentences: What needs to be done and why]
+
+## Acceptance Criteria
+- [ ] Specific, verifiable outcome 1
+- [ ] Specific, verifiable outcome 2
+- [ ] Tests pass, linting passes
+
+## Notes
+[Optional: Implementation hints, files to modify, constraints]
+```
+
+**Rules:**
+- Summary is REQUIRED - explains the task clearly
+- Acceptance criteria are REQUIRED - must be verifiable/testable
+- Notes are optional - include when helpful for implementation
+- Keep it concise but complete
+
+**Example:**
+```
+## Summary
+Add rate limiting middleware to prevent API abuse on public endpoints.
+
+## Acceptance Criteria
+- [ ] Rate limit: 100 req/min authenticated, 20 req/min anonymous
+- [ ] Returns 429 with Retry-After header when exceeded
+- [ ] Unit tests cover rate limit scenarios
+- [ ] `pnpm test` and `pnpm check` pass
+
+## Notes
+See middleware/auth.ts for similar patterns. Use Redis for state.
+```
 
 ### Stack (VCS)
 
