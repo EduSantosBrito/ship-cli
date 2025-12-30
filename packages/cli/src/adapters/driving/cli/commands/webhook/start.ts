@@ -15,6 +15,7 @@ import * as Effect from "effect/Effect";
 import * as Console from "effect/Console";
 import { PrService } from "../../../../../ports/PrService.js";
 import { DaemonService } from "../../../../../ports/DaemonService.js";
+import { diagnoseRepoIssue, printRepoError } from "./diagnostics.js";
 
 // === Options ===
 
@@ -44,10 +45,11 @@ export const startCommand = Command.make("start", { events: eventsOption }, ({ e
       return;
     }
 
-    // 2. Get current repo
+    // 2. Get current repo with detailed diagnostics on failure
     const repo = yield* prService.getCurrentRepo();
     if (!repo) {
-      yield* Console.error("Not in a git repository or no GitHub remote configured.");
+      const issue = yield* diagnoseRepoIssue();
+      yield* printRepoError(issue);
       return;
     }
 
