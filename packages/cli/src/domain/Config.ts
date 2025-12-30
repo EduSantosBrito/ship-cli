@@ -273,6 +273,7 @@ export const loadWorkspacesFile = (
 
 /**
  * Save workspace metadata to .ship/workspaces.json with proper Schema encoding.
+ * Creates the .ship directory if it doesn't exist.
  */
 export const saveWorkspacesFile = (
   configRepo: ConfigRepository,
@@ -282,8 +283,14 @@ export const saveWorkspacesFile = (
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const configDir = yield* configRepo.getConfigDir();
-    const workspacesPath = path.join(configDir, "workspaces.json");
 
+    // Ensure the config directory exists before writing
+    const dirExists = yield* fs.exists(configDir);
+    if (!dirExists) {
+      yield* fs.makeDirectory(configDir, { recursive: true });
+    }
+
+    const workspacesPath = path.join(configDir, "workspaces.json");
     const encoded = Schema.encodeSync(WorkspacesFile)(workspacesFile);
     yield* fs.writeFileString(workspacesPath, JSON.stringify(encoded, null, 2));
   }).pipe(Effect.catchAll(() => Effect.void));

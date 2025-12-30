@@ -2,7 +2,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Duration from "effect/Duration";
-import { ProjectRepository, type CreateProjectInput } from "../../../ports/ProjectRepository.js";
+import {
+  ProjectRepository,
+  type CreateProjectInput,
+} from "../../../ports/ProjectRepository.js";
 import { LinearClientService } from "./LinearClient.js";
 import { Project, type TeamId } from "../../../domain/Task.js";
 import { LinearApiError, TaskError } from "../../../domain/Errors.js";
@@ -24,7 +27,10 @@ const withRetryAndTimeout = <A, E>(
   effect.pipe(
     Effect.timeoutFail({
       duration: API_TIMEOUT,
-      onTimeout: () => new LinearApiError({ message: `${operation} timed out after 30 seconds` }),
+      onTimeout: () =>
+        new LinearApiError({
+          message: `${operation} timed out after 30 seconds`,
+        }),
     }),
     Effect.retry(retryPolicy),
   );
@@ -32,17 +38,27 @@ const withRetryAndTimeout = <A, E>(
 const make = Effect.gen(function* () {
   const linearClient = yield* LinearClientService;
 
-  const getProjects = (teamId: TeamId): Effect.Effect<ReadonlyArray<Project>, LinearApiError> =>
+  const getProjects = (
+    teamId: TeamId,
+  ): Effect.Effect<ReadonlyArray<Project>, LinearApiError> =>
     withRetryAndTimeout(
       Effect.gen(function* () {
         const client = yield* linearClient.client();
         const team = yield* Effect.tryPromise({
           try: () => client.team(teamId),
-          catch: (e) => new LinearApiError({ message: `Failed to fetch team: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({
+              message: `Failed to fetch team: ${e}`,
+              cause: e,
+            }),
         });
         const projects = yield* Effect.tryPromise({
           try: () => team.projects(),
-          catch: (e) => new LinearApiError({ message: `Failed to fetch projects: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({
+              message: `Failed to fetch projects: ${e}`,
+              cause: e,
+            }),
         });
         return projects.nodes.map((p) => mapProject(p, teamId));
       }),
@@ -57,7 +73,11 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const client = yield* linearClient.client();
 
-        const createInput: { name: string; description?: string; teamIds: string[] } = {
+        const createInput: {
+          name: string;
+          description?: string;
+          teamIds: string[];
+        } = {
           name: input.name,
           teamIds: [teamId],
         };
@@ -67,11 +87,17 @@ const make = Effect.gen(function* () {
 
         const result = yield* Effect.tryPromise({
           try: () => client.createProject(createInput),
-          catch: (e) => new LinearApiError({ message: `Failed to create project: ${e}`, cause: e }),
+          catch: (e) =>
+            new LinearApiError({
+              message: `Failed to create project: ${e}`,
+              cause: e,
+            }),
         });
 
         if (!result.success) {
-          return yield* Effect.fail(new TaskError({ message: "Failed to create project" }));
+          return yield* Effect.fail(
+            new TaskError({ message: "Failed to create project" }),
+          );
         }
 
         if (!result.project) {
@@ -82,7 +108,10 @@ const make = Effect.gen(function* () {
         const project = yield* Effect.tryPromise({
           try: () => result.project!,
           catch: (e) =>
-            new LinearApiError({ message: `Failed to get created project: ${e}`, cause: e }),
+            new LinearApiError({
+              message: `Failed to get created project: ${e}`,
+              cause: e,
+            }),
         });
 
         return mapProject(project, teamId);
