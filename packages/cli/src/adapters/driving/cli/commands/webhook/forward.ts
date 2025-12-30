@@ -24,6 +24,7 @@ import {
 } from "../../../../../ports/WebhookService.js";
 import { OpenCodeService, SessionId } from "../../../../../ports/OpenCodeService.js";
 import { formatWebhookEvent } from "../../../../driven/opencode/WebhookEventFormatter.js";
+import { diagnoseRepoIssue, printRepoError } from "./diagnostics.js";
 
 // === Options ===
 
@@ -72,10 +73,11 @@ export const forwardCommand = Command.make(
         return;
       }
 
-      // 2. Get current repo
+      // 2. Get current repo with detailed diagnostics on failure
       const repo = yield* prService.getCurrentRepo();
       if (!repo) {
-        yield* Console.error("Not in a git repository or no GitHub remote configured.");
+        const issue = yield* diagnoseRepoIssue();
+        yield* printRepoError(issue);
         return;
       }
 
