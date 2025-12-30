@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-12-30
+
+### Changed
+
+- Upgraded @opencode-ai/plugin from 1.0.208 to 1.0.210
+- Upgraded @opencode-ai/sdk from 1.0.208 to 1.0.210
+- Upgraded @effect/cli from 0.69.0 to 0.73.0
+- Upgraded @effect/language-service from 0.62.4 to 0.63.2
+- Upgraded @effect/platform from 0.90.3 to 0.94.0
+- Upgraded @effect/platform-node from 0.96.0 to 0.104.0
+- Upgraded @effect/vitest from 0.25.1 to 0.27.0
+
 ## [0.1.0] - 2025-12-30
 
 ### Added
@@ -60,5 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ship milestone update` - Update milestone
 - `ship milestone delete` - Delete milestone
 
-[Unreleased]: https://github.com/EduSantosBrito/ship-cli/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/EduSantosBrito/ship-cli/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/EduSantosBrito/ship-cli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/EduSantosBrito/ship-cli/releases/tag/v0.1.0
