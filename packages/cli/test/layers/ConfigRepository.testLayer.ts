@@ -69,6 +69,7 @@ const defaultConfig = new ShipConfig({
     autoNavigate: true,
     autoCleanup: true,
   }),
+  notion: Option.none(),
 });
 
 export const defaultTestConfigState: TestConfigState = {
@@ -80,6 +81,7 @@ export const defaultTestConfigState: TestConfigState = {
     pr: defaultConfig.pr,
     commit: defaultConfig.commit,
     workspace: defaultConfig.workspace,
+    notion: Option.none(),
   }),
   configDir: "/test/.ship",
   exists: true,
@@ -170,6 +172,7 @@ export const TestConfigRepositoryLayer = (
                 pr: newConfig.pr,
                 commit: newConfig.commit,
                 workspace: newConfig.workspace,
+                notion: Option.none(),
               }),
             }));
           }),
@@ -206,6 +209,7 @@ export const TestConfigRepositoryLayer = (
               partialConfig: new PartialShipConfig({
                 ...s.partialConfig,
                 auth: Option.some(auth),
+                notion: s.partialConfig.notion,
               }),
             }));
           }),
@@ -227,6 +231,7 @@ export const TestConfigRepositoryLayer = (
               partialConfig: new PartialShipConfig({
                 ...s.partialConfig,
                 linear: Option.some(linear),
+                notion: s.partialConfig.notion,
               }),
             }));
           }),
@@ -299,6 +304,7 @@ export const TestConfigRepositoryLayer = (
                 pr: new PrConfig({}),
                 commit: new CommitConfig({}),
                 workspace: new WorkspaceConfig({}),
+                notion: Option.none(),
               }),
             }));
           }),

@@ -77,6 +77,7 @@ const makeTestConfigRepository = (
         git: new GitConfig({ defaultBranch: opts.defaultBranch }),
         pr: new PrConfig({ openBrowser: opts.openBrowser }),
         commit: new CommitConfig({ conventionalFormat: opts.conventionalFormat }),
+        notion: Option.none(),
       })
     : null;
 
@@ -92,10 +93,12 @@ const makeTestConfigRepository = (
           ? new PartialShipConfig({
               linear: Option.some(storedConfig.linear),
               auth: Option.some(storedConfig.auth),
+              notion: Option.none(),
             })
           : new PartialShipConfig({
               linear: Option.none(),
               auth: Option.none(),
+              notion: Option.none(),
             }),
       ),
 
@@ -113,6 +116,7 @@ const makeTestConfigRepository = (
           git: partial.git ?? storedConfig.git,
           pr: partial.pr ?? storedConfig.pr,
           commit: partial.commit ?? storedConfig.commit,
+          notion: Option.none(),
         });
       }
       return Effect.void;

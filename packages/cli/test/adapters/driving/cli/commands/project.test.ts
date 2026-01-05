@@ -55,6 +55,7 @@ describe("project command", () => {
         pr: new PrConfig({}),
         commit: new CommitConfig({}),
         workspace: new WorkspaceConfig({}),
+        notion: Option.none(),
       });
 
       const testLayer = Layer.mergeAll(

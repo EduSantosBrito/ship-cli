@@ -52,6 +52,7 @@ const unauthenticatedPartialConfig = new PartialShipConfig({
   pr: new PrConfig({}),
   commit: new CommitConfig({}),
   workspace: new WorkspaceConfig({}),
+  notion: Option.none(),
 });
 
 describe("AuthServiceLive Error Paths", () => {

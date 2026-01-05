@@ -326,6 +326,7 @@ describe("ConfigRepositoryLive Integration", () => {
           git: new GitConfig({ defaultBranch: "main" }),
           pr: new PrConfig({ openBrowser: true }),
           commit: new CommitConfig({ conventionalFormat: true }),
+          notion: Option.none(),
         });
 
         yield* repo.save(config);
@@ -357,6 +358,7 @@ describe("ConfigRepositoryLive Integration", () => {
           git: new GitConfig({ defaultBranch: "develop" }),
           pr: new PrConfig({ openBrowser: false }),
           commit: new CommitConfig({ conventionalFormat: false }),
+          notion: Option.none(),
         });
 
         yield* repo.save(config);
@@ -636,6 +638,7 @@ describe("ConfigRepositoryLive Integration", () => {
             }),
           ),
           auth: Option.none(),
+          notion: Option.none(),
         });
 
         yield* repo.savePartial(partial);
@@ -656,6 +659,7 @@ describe("ConfigRepositoryLive Integration", () => {
         const partial = new PartialShipConfig({
           linear: Option.none(),
           auth: Option.some(new AuthConfig({ apiKey: "partial_key" })),
+          notion: Option.none(),
         });
 
         yield* repo.savePartial(partial);
