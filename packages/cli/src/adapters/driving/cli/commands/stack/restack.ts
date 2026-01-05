@@ -1,7 +1,7 @@
 /**
  * ship stack restack - Fetch, rebase, and push entire stack
  *
- * Like Graphite's `gt restack`, this command:
+ * This command:
  * 1. Fetches latest changes from remote
  * 2. Rebases the entire stack onto updated trunk
  * 3. Pushes all bookmarks in the stack to update PRs

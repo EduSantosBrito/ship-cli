@@ -40,7 +40,7 @@ Commands:
   describe          Update change description
   bookmark          Create or move a bookmark on current change
   sync              Fetch and rebase onto trunk
-  restack           Fetch, rebase, and push entire stack (like Graphite)
+  restack           Fetch, rebase, and push entire stack
   submit            Push and create/update PR
   squash            Squash current change into parent
   abandon           Abandon a change
