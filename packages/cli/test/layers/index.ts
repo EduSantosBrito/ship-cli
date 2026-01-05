@@ -141,3 +141,24 @@ export {
   type TestPromptsState,
   type TestPrompts,
 } from "./Prompts.testLayer.js";
+
+// NotionClient test layer
+export {
+  TestNotionClientLayer,
+  defaultTestNotionClientState,
+  defaultTestResponses,
+  createMockPage,
+  createMockDataSource,
+  createBotUserResponse,
+  createQueryResponse,
+  createSearchResponse,
+  createTitleProperty,
+  createRichTextProperty,
+  createStatusProperty,
+  createSelectProperty,
+  createMultiSelectProperty,
+  createRelationProperty,
+  createRichText,
+  type MockNotionResponses,
+  type TestNotionClientState,
+} from "./NotionClient.testLayer.js";

@@ -88,6 +88,34 @@ const isPageObjectResponse = (page: unknown): page is PageObjectResponse =>
   "properties" in page;
 
 /**
+ * Extract status code from various error types.
+ * Notion SDK throws errors with a `status` property.
+ */
+const extractStatusCode = (error: unknown): number | undefined => {
+  if (error && typeof error === "object") {
+    // Notion SDK APIResponseError has `status` property
+    if ("status" in error && typeof error.status === "number") {
+      return error.status;
+    }
+    // Some errors may have statusCode
+    if ("statusCode" in error && typeof error.statusCode === "number") {
+      return error.statusCode;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Create a NotionApiError from a caught error, preserving the status code.
+ */
+const toNotionApiError = (message: string, cause: unknown): NotionApiError => {
+  const statusCode = extractStatusCode(cause);
+  return statusCode !== undefined
+    ? new NotionApiError({ message, statusCode, cause })
+    : new NotionApiError({ message, cause });
+};
+
+/**
  * Get the Notion config from the repository.
  */
 const getNotionConfig = (
@@ -182,7 +210,7 @@ const queryDataSource = (
       }
       return client.dataSources.query(params);
     },
-    catch: (e) => new NotionApiError({ message: `Failed to query database: ${e}`, cause: e }),
+    catch: (e) => toNotionApiError(`Failed to query database: ${e}`, e),
   });
 
 /**
@@ -215,7 +243,7 @@ const make = Effect.gen(function* () {
 
       const page = yield* Effect.tryPromise({
         try: () => client.pages.retrieve({ page_id: id }),
-        catch: (e) => new NotionApiError({ message: `Failed to fetch page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to fetch page: ${e}`, e),
       }).pipe(Effect.catchAll(handleNotFoundError(id)));
 
       if (!isPageObjectResponse(page)) {
@@ -284,7 +312,7 @@ const make = Effect.gen(function* () {
             parent: { database_id: databaseId },
             properties,
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to create page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to create page: ${e}`, e),
       }).pipe(
         Effect.mapError((e) => new TaskError({ message: `Failed to create task: ${e.message}`, cause: e })),
       );
@@ -341,7 +369,7 @@ const make = Effect.gen(function* () {
             page_id: id,
             properties: updateProps,
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
       }).pipe(
         Effect.catchAll((e: NotionApiError) => {
           if (e.statusCode === 404) {
@@ -489,7 +517,7 @@ const make = Effect.gen(function* () {
       // Get current blocked-by relations
       const page = yield* Effect.tryPromise({
         try: () => client.pages.retrieve({ page_id: blockedId }),
-        catch: (e) => new NotionApiError({ message: `Failed to fetch page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to fetch page: ${e}`, e),
       }).pipe(Effect.catchAll(handleNotFoundError(blockedId)));
 
       if (!isPageObjectResponse(page)) {
@@ -515,7 +543,7 @@ const make = Effect.gen(function* () {
               [propertyMapping.blockedBy]: relationProperty(newBlockers),
             },
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
       }).pipe(
         Effect.mapError((e) => new TaskError({ message: `Failed to add blocker: ${e.message}`, cause: e })),
       );
@@ -533,7 +561,7 @@ const make = Effect.gen(function* () {
       // Get current blocked-by relations
       const page = yield* Effect.tryPromise({
         try: () => client.pages.retrieve({ page_id: blockedId }),
-        catch: (e) => new NotionApiError({ message: `Failed to fetch page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to fetch page: ${e}`, e),
       }).pipe(Effect.catchAll(handleNotFoundError(blockedId)));
 
       if (!isPageObjectResponse(page)) {
@@ -555,7 +583,7 @@ const make = Effect.gen(function* () {
               [propertyMapping.blockedBy]: relationProperty(newBlockers),
             },
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
       }).pipe(
         Effect.mapError((e) => new TaskError({ message: `Failed to remove blocker: ${e.message}`, cause: e })),
       );
@@ -595,7 +623,7 @@ const make = Effect.gen(function* () {
       // Get current labels
       const page = yield* Effect.tryPromise({
         try: () => client.pages.retrieve({ page_id: id }),
-        catch: (e) => new NotionApiError({ message: `Failed to fetch page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to fetch page: ${e}`, e),
       }).pipe(Effect.catchAll(handleNotFoundError(id)));
 
       if (!isPageObjectResponse(page)) {
@@ -620,7 +648,7 @@ const make = Effect.gen(function* () {
               [propertyMapping.labels]: multiSelectProperty(newLabels),
             },
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
       }).pipe(
         Effect.mapError((e) => new TaskError({ message: `Failed to set session label: ${e.message}`, cause: e })),
       );
@@ -638,7 +666,7 @@ const make = Effect.gen(function* () {
       // Get current labels
       const page = yield* Effect.tryPromise({
         try: () => client.pages.retrieve({ page_id: id }),
-        catch: (e) => new NotionApiError({ message: `Failed to fetch page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to fetch page: ${e}`, e),
       }).pipe(Effect.catchAll(handleNotFoundError(id)));
 
       if (!isPageObjectResponse(page)) {
@@ -663,7 +691,7 @@ const make = Effect.gen(function* () {
               [propertyMapping.labels]: multiSelectProperty(newLabels),
             },
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
       }).pipe(
         Effect.mapError((e) => new TaskError({ message: `Failed to set type label: ${e.message}`, cause: e })),
       );
@@ -680,7 +708,7 @@ const make = Effect.gen(function* () {
       // Get current labels
       const page = yield* Effect.tryPromise({
         try: () => client.pages.retrieve({ page_id: id }),
-        catch: (e) => new NotionApiError({ message: `Failed to fetch page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to fetch page: ${e}`, e),
       }).pipe(Effect.catchAll(handleNotFoundError(id)));
 
       if (!isPageObjectResponse(page)) {
@@ -704,7 +732,7 @@ const make = Effect.gen(function* () {
               [propertyMapping.labels]: multiSelectProperty(nonSessionLabels),
             },
           }),
-        catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+        catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
       }).pipe(
         Effect.mapError((e) => new TaskError({ message: `Failed to clear session label: ${e.message}`, cause: e })),
       );
@@ -740,7 +768,7 @@ const make = Effect.gen(function* () {
                 [propertyMapping.blockedBy]: relationProperty(newBlockers),
               },
             }),
-          catch: (e) => new NotionApiError({ message: `Failed to update page: ${e}`, cause: e }),
+          catch: (e) => toNotionApiError(`Failed to update page: ${e}`, e),
         }).pipe(
           Effect.tapError((e) =>
             Effect.logWarning(`Failed to remove blocker from page ${page.id}: ${e.message}`),
