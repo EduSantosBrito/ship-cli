@@ -104,7 +104,8 @@ Add to your `opencode.json`:
 
 ```json
 {
-  "plugins": ["@ship-cli/opencode"]
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@ship-cli/opencode"]
 }
 ```
 

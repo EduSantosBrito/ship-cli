@@ -374,8 +374,8 @@ const ShellService = Context.GenericTag<ShellService>("ShellService");
  */
 const makeShellService = (_$: BunShell, defaultCwd?: string): ShellService => {
   const getCommand = (): string[] => {
-    if (process.env.NODE_ENV === "development") {
-      // Use node with tsx loader directly to avoid pnpm re-escaping arguments with newlines
+    // Use SHIP_DEV_MODE for explicit dev mode opt-in (avoids NODE_ENV conflicts)
+    if (process.env.SHIP_DEV_MODE === "true") {
       return ["node", "--import=tsx", "packages/cli/src/bin.ts"];
     }
     return ["ship"];
@@ -912,8 +912,8 @@ const makeShipService = Effect.gen(function* () {
         };
       }
 
-      // Build command
-      const cmd = process.env.NODE_ENV === "development" ? ["pnpm", "ship"] : ["ship"];
+      // Build command - use pnpm in dev mode (SHIP_DEV_MODE=true)
+      const cmd = process.env.SHIP_DEV_MODE === "true" ? ["pnpm", "ship"] : ["ship"];
       const args = [...cmd, "webhook", "forward"];
       if (events) {
         args.push("--events", events);
