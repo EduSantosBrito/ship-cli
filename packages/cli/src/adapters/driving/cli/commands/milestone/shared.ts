@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { Milestone, MilestoneId, ProjectId } from "../../../../../domain/Task.js";
 import { MilestoneRepository } from "../../../../../ports/MilestoneRepository.js";
-import { MilestoneNotFoundError, LinearApiError } from "../../../../../domain/Errors.js";
+import { MilestoneNotFoundError, type TaskApiError } from "../../../../../domain/Errors.js";
 
 /**
  * Generate a slug from a milestone name.
@@ -21,7 +21,7 @@ export const nameToSlug = (name: string): string =>
 export const resolveMilestone = (
   slugOrId: string,
   projectId: ProjectId,
-): Effect.Effect<Milestone, MilestoneNotFoundError | LinearApiError, MilestoneRepository> =>
+): Effect.Effect<Milestone, MilestoneNotFoundError | TaskApiError, MilestoneRepository> =>
   Effect.gen(function* () {
     const milestoneRepo = yield* MilestoneRepository;
 

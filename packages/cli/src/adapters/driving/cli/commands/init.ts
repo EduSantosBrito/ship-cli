@@ -11,21 +11,22 @@ import { TeamRepository } from "../../../../ports/TeamRepository.js";
 import { ProjectRepository, type CreateProjectInput } from "../../../../ports/ProjectRepository.js";
 import { Prompts } from "../../../../ports/Prompts.js";
 import { LinearConfig } from "../../../../domain/Config.js";
-import { LinearApiError, TaskError } from "../../../../domain/Errors.js";
+import { type TaskApiError, TaskError } from "../../../../domain/Errors.js";
 import type { Team, Project, TeamId, ProjectId } from "../../../../domain/Task.js";
 
 const CREATE_NEW = "__create_new__" as const;
 const NO_PROJECT = null;
 
 /**
- * Extract error message from Linear API or Task errors.
+ * Extract error message from task provider API or Task errors.
  * Uses Effect Match for exhaustive pattern matching.
  */
-const formatApiError = (error: LinearApiError | TaskError): string =>
+const formatApiError = (error: TaskApiError | TaskError): string =>
   pipe(
     error,
     Match.value,
     Match.tag("LinearApiError", (e) => e.message),
+    Match.tag("NotionApiError", (e) => e.message),
     Match.tag("TaskError", (e) => e.message),
     Match.exhaustive,
   );
@@ -34,7 +35,7 @@ const formatApiError = (error: LinearApiError | TaskError): string =>
  * Wrap an Effect that creates a resource, handling errors gracefully.
  * Returns Option.some(resource) on success, Option.none() on failure.
  */
-const tryCreate = <A, E extends LinearApiError | TaskError>(
+const tryCreate = <A, E extends TaskApiError | TaskError>(
   effect: Effect.Effect<A, E>,
   spinner: ReturnType<typeof clack.spinner>,
   successMsg: (a: A) => string,

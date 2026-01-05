@@ -35,8 +35,9 @@ import {
   WebhookRateLimitError,
   // Prompt Errors
   PromptCancelledError,
-  // Linear API Errors
+  // Task Provider API Errors
   LinearApiError,
+  NotionApiError,
   RateLimitError,
   // OpenCode Errors
   OpenCodeError,
@@ -474,7 +475,7 @@ describe("Domain Errors", () => {
     })
   })
 
-  describe("Linear API Errors", () => {
+  describe("Task Provider API Errors", () => {
     describe("LinearApiError", () => {
       it("should have correct _tag", () => {
         const error = new LinearApiError({ message: "API error" })
@@ -487,6 +488,39 @@ describe("Domain Errors", () => {
           statusCode: 404,
         })
         expect(error.statusCode).toBe(404)
+      })
+    })
+
+    describe("NotionApiError", () => {
+      it("should have correct _tag", () => {
+        const error = new NotionApiError({ message: "API error" })
+        expect(error._tag).toBe("NotionApiError")
+      })
+
+      it("should store optional statusCode", () => {
+        const error = new NotionApiError({
+          message: "Not found",
+          statusCode: 404,
+        })
+        expect(error.statusCode).toBe(404)
+      })
+
+      it("should store optional code for Notion-specific error codes", () => {
+        const error = new NotionApiError({
+          message: "Validation failed",
+          code: "validation_error",
+          statusCode: 400,
+        })
+        expect(error.code).toBe("validation_error")
+      })
+
+      it("should store cause for error chaining", () => {
+        const cause = new Error("underlying error")
+        const error = new NotionApiError({
+          message: "API error",
+          cause,
+        })
+        expect(error.cause).toBe(cause)
       })
     })
 
