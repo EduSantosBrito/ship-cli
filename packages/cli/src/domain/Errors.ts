@@ -250,13 +250,40 @@ export class PromptCancelledError extends Data.TaggedError("PromptCancelledError
   });
 }
 
-// === Linear API Errors ===
+// === Task Provider API Errors ===
 
+/** Linear API error - errors from the Linear GraphQL API */
 export class LinearApiError extends Data.TaggedError("LinearApiError")<{
   readonly message: string;
   readonly statusCode?: number;
   readonly cause?: unknown;
 }> {}
+
+/**
+ * Notion API error - errors from the Notion REST API.
+ *
+ * Common error codes from Notion API:
+ * - `validation_error` - Invalid request parameters or malformed request body
+ * - `unauthorized` - Invalid or missing authentication token
+ * - `restricted_resource` - Integration doesn't have access to the resource
+ * - `object_not_found` - The requested resource doesn't exist
+ * - `rate_limited` - Too many requests, retry after the specified time
+ * - `internal_server_error` - Notion server error
+ * - `service_unavailable` - Notion is temporarily unavailable
+ *
+ * @see https://developers.notion.com/reference/status-codes
+ */
+export class NotionApiError extends Data.TaggedError("NotionApiError")<{
+  readonly message: string;
+  /** HTTP status code from the API response (e.g., 404, 429, 500) */
+  readonly statusCode?: number;
+  /** Notion-specific error code (e.g., "object_not_found", "rate_limited") */
+  readonly code?: string;
+  readonly cause?: unknown;
+}> {}
+
+/** Union type for task provider API errors - used in port interfaces */
+export type TaskApiError = LinearApiError | NotionApiError;
 
 export class RateLimitError extends Data.TaggedError("RateLimitError")<{
   readonly message: string;
