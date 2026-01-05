@@ -7,7 +7,7 @@ import {
   type CreateProjectInput,
 } from "../../../ports/ProjectRepository.js";
 import { LinearClientService } from "./LinearClient.js";
-import { Project, type TeamId, type ProjectId } from "../../../domain/Task.js";
+import { Project, type TeamId } from "../../../domain/Task.js";
 import { LinearApiError, TaskError } from "../../../domain/Errors.js";
 import { mapProject } from "./Mapper.js";
 
@@ -100,20 +100,33 @@ const make = Effect.gen(function* () {
           );
         }
 
-        // Use projectId directly from mutation result to avoid race condition
-        // The lazy result.project fetch may fail due to eventual consistency
-        const projectId = result.projectId;
-        if (!projectId) {
-          return yield* Effect.fail(
-            new TaskError({ message: "Project ID not returned after create" }),
-          );
-        }
-
-        return new Project({
-          id: projectId as ProjectId,
-          name: input.name,
-          teamId: teamId as TeamId,
+        // Fetch the created project to verify it was persisted and get full data
+        // Use retry with delay to handle eventual consistency where newly created
+        // projects may not be immediately queryable
+        const fetchProject = Effect.tryPromise({
+          try: async () => {
+            const createdProject = await result.project;
+            if (!createdProject) {
+              throw new Error("Project not found after creation");
+            }
+            return createdProject;
+          },
+          catch: (e) =>
+            new TaskError({
+              message: `Project creation may have failed - could not verify project exists: ${e}`,
+            }),
         });
+
+        // Retry fetching with exponential backoff (100ms, 200ms, 400ms) to handle
+        // eventual consistency delays in Linear's API
+        const fetchRetryPolicy = Schedule.intersect(
+          Schedule.exponential(Duration.millis(100)),
+          Schedule.recurs(3),
+        );
+
+        const project = yield* fetchProject.pipe(Effect.retry(fetchRetryPolicy));
+
+        return mapProject(project, teamId);
       }),
       "Creating project",
     );
