@@ -128,7 +128,7 @@ All support optional `workdir` param.
 | Action | Params | Description |
 |--------|--------|-------------|
 | `stack-sync` | - | Fetch + rebase onto trunk |
-| `stack-restack` | - | Rebase onto trunk (no fetch) |
+| `stack-restack` | - | Fetch + rebase + push entire stack (like Graphite restack) |
 | `stack-create` | message?, bookmark?, noWorkspace? | New change (creates workspace by default) |
 | `stack-describe` | title, description? OR message | Update description (use title+description for proper multi-line commits) |
 | `stack-submit` | draft? | Push + create/update PR |

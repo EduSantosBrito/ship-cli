@@ -10,6 +10,7 @@ import {
   GitConfig,
   LinearConfig,
   NotionConfig,
+  NotionPropertyMapping,
   PartialShipConfig,
   PrConfig,
   CommitConfig,
@@ -295,19 +296,52 @@ const make = Effect.gen(function* () {
   const load = (): Effect.Effect<ShipConfig, WorkspaceNotInitializedError | ConfigError> =>
     Effect.gen(function* () {
       const yaml = yield* readYaml();
-      if (!yaml || !yaml.linear || !yaml.auth) {
+      if (!yaml || !yaml.auth) {
         return yield* Effect.fail(WorkspaceNotInitializedError.default);
       }
 
+      // Check if we have valid provider config
+      const provider = yaml.provider ?? "linear";
+      if (provider === "linear" && !yaml.linear) {
+        return yield* Effect.fail(WorkspaceNotInitializedError.default);
+      }
+      if (provider === "notion" && !yaml.notion) {
+        return yield* Effect.fail(WorkspaceNotInitializedError.default);
+      }
+
+      // Build Linear config (use dummy if provider is notion)
+      const linearConfig = yaml.linear
+        ? new LinearConfig({
+            teamId: asTeamId(yaml.linear.teamId),
+            teamKey: yaml.linear.teamKey,
+            projectId: yaml.linear.projectId
+              ? Option.some(asProjectId(yaml.linear.projectId))
+              : Option.none(),
+          })
+        : new LinearConfig({
+            teamId: asTeamId("notion-workspace"),
+            teamKey: "NOTION",
+            projectId: Option.none(),
+          });
+
+      // Build Notion config if present
+      const notionConfig = yaml.notion
+        ? Option.some(
+            new NotionConfig({
+              databaseId: yaml.notion.databaseId,
+              workspaceId: yaml.notion.workspaceId
+                ? Option.some(yaml.notion.workspaceId)
+                : Option.none(),
+              // Use defaults from NotionPropertyMapping, override with yaml values if present
+              propertyMapping: new NotionPropertyMapping({}),
+            }),
+          )
+        : Option.none();
+
       return new ShipConfig({
-        linear: new LinearConfig({
-          teamId: asTeamId(yaml.linear.teamId),
-          teamKey: yaml.linear.teamKey,
-          projectId: yaml.linear.projectId
-            ? Option.some(asProjectId(yaml.linear.projectId))
-            : Option.none(),
-        }),
-        notion: Option.none(), // TODO: Parse notion config from yaml when implemented
+        provider,
+        linear: linearConfig,
+        notion: notionConfig,
         auth: new AuthConfig({ apiKey: yaml.auth.apiKey }),
         git: new GitConfig({ defaultBranch: yaml.git?.defaultBranch ?? "main" }),
         pr: new PrConfig({ openBrowser: yaml.pr?.openBrowser ?? true }),
