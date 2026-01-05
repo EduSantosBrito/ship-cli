@@ -45,8 +45,18 @@ ship task done BRI-123
 ## Requirements
 
 - Node.js 20, 22, or 24 (LTS versions)
-- [Linear](https://linear.app) account
+- [Linear](https://linear.app) or [Notion](https://notion.so) account
 - [jj](https://martinvonz.github.io/jj) (for VCS features)
+
+## Task Providers
+
+Ship supports Linear (default) and Notion as task backends. To use Notion:
+
+```sh
+ship init  # Select "Notion" when prompted
+```
+
+See [Notion Setup Guide](docs/NOTION.md) for detailed configuration.
 
 ## Commands
 

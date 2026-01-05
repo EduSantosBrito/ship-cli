@@ -1,0 +1,71 @@
+# Example Ship configuration for Notion
+# Copy this to .ship/config.yaml in your project root
+# 
+# To set up:
+# 1. Create a Notion integration at https://www.notion.so/my-integrations
+# 2. Share your database with the integration
+# 3. Replace the values below with your actual configuration
+# 4. Run `ship init` to validate the setup
+
+# Task provider - use "notion" for Notion databases
+provider: notion
+
+# Notion configuration
+notion:
+  # Your Notion database ID
+  # Find this in the database URL: https://notion.so/workspace/DATABASE_ID?v=...
+  databaseId: "your-database-id-here"
+  
+  # Optional: Workspace ID (only needed for multi-workspace setups)
+  # workspaceId: "your-workspace-id"
+  
+  # Property mapping - customize if your database uses different property names
+  # All properties are optional; defaults are shown below
+  propertyMapping:
+    # Required properties
+    title: "Name"              # Title property for task name
+    status: "Status"           # Status property for workflow state
+    
+    # Recommended properties
+    priority: "Priority"       # Select property for priority (Urgent, High, Medium, Low, None)
+    description: "Description" # Rich text property for task details
+    labels: "Labels"           # Multi-select property for tags
+    
+    # Optional properties
+    type: "Type"               # Select property for task type (Bug, Feature, etc.)
+    blockedBy: "Blocked By"    # Relation property (self-referencing) for dependencies
+    identifier: "ID"           # Rich text property for custom task identifiers
+    parent: "Parent"           # Relation property (self-referencing) for subtasks
+
+# Authentication
+# The API key is your Notion integration secret (starts with secret_...)
+# This is typically set by `ship init` and stored securely
+auth:
+  apiKey: "secret_your_integration_secret_here"
+
+# Git configuration
+git:
+  # Default branch name for your repository
+  defaultBranch: main
+
+# Pull request configuration
+pr:
+  # Automatically open PR in browser after creation
+  openBrowser: true
+
+# Commit configuration
+commit:
+  # Use conventional commit format (feat:, fix:, etc.)
+  conventionalFormat: true
+
+# Workspace configuration
+workspace:
+  # Path pattern for jj workspaces
+  # Available variables: {repo}, {stack}, {user}
+  basePath: ".ship/workspaces/{stack}"
+  
+  # Print cd command after creating workspace
+  autoNavigate: true
+  
+  # Clean up workspaces when stack is completed/abandoned
+  autoCleanup: true
