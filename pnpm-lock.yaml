@@ -88,8 +88,8 @@ importers:
   packages/opencode-plugin:
     dependencies:
       '@opencode-ai/plugin':
-        specifier: ^1.0.210
-        version: 1.0.210
+        specifier: ^1.1.2
+        version: 1.1.2
       '@opencode-ai/sdk':
         specifier: ^1.1.2
         version: 1.1.2
@@ -541,11 +541,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opencode-ai/plugin@1.0.210':
-    resolution: {integrity: sha512-xuxMUN2l6pEkCz3EvkR0s5iF943pQmuk17wea3ATvpYO0BaorrRVSA2ii1+9zrQiZogBSIGz1UxkN92Ebb6iEQ==}
-
-  '@opencode-ai/sdk@1.0.210':
-    resolution: {integrity: sha512-bTHfV4yGxrPkIZFmQrJwKFTE6m8ztvT3S6/zoFY7KrJ10RSxStLYdYLO5e5gVThEmavARSXGiYlZ9nycou+6rQ==}
+  '@opencode-ai/plugin@1.1.2':
+    resolution: {integrity: sha512-5j9X51ky55loaYbGRox52YKt9I34W/u46Q22nSdKRlK/Wo9H1fbeeZty+zimFUxb2qvRCZITvT8dH+oUfkkp0Q==}
 
   '@opencode-ai/sdk@1.1.2':
     resolution: {integrity: sha512-qQRcQrE+9RDiZRA7qpNhy1jXjkwSwGy5+WfPGrCCFb3k1zwVDUn5LKTLlwT441/l+YpuenZ0sRJBz73ZRa75bA==}
@@ -2097,12 +2094,10 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.3':
     optional: true
 
-  '@opencode-ai/plugin@1.0.210':
+  '@opencode-ai/plugin@1.1.2':
     dependencies:
-      '@opencode-ai/sdk': 1.0.210
+      '@opencode-ai/sdk': 1.1.2
       zod: 4.1.8
-
-  '@opencode-ai/sdk@1.0.210': {}
 
   '@opencode-ai/sdk@1.1.2': {}
 
