@@ -190,10 +190,11 @@ const handleNotFoundError = (
 };
 
 /**
- * Query the Notion data source (database) with filters.
- * In SDK v5.6.0+, databases are now called "data sources".
+ * Query a Notion database with filters.
+ * Uses the stable /v1/databases/{id}/query endpoint via raw request
+ * since the SDK's dataSources.query uses a newer API that may not be available.
  */
-const queryDataSource = (
+const queryDatabase = (
   client: NotionSDK,
   databaseId: string,
   filter?: QueryDataSourceParameters["filter"],
@@ -201,14 +202,18 @@ const queryDataSource = (
 ): Effect.Effect<QueryDataSourceResponse, NotionApiError> =>
   Effect.tryPromise({
     try: () => {
-      const params: QueryDataSourceParameters = {
-        data_source_id: databaseId,
+      // Use the raw request method to call the stable databases query endpoint
+      const body: Record<string, unknown> = {
         page_size: pageSize,
       };
       if (filter !== undefined) {
-        params.filter = filter;
+        body.filter = filter;
       }
-      return client.dataSources.query(params);
+      return client.request<QueryDataSourceResponse>({
+        path: `databases/${databaseId}/query`,
+        method: "post",
+        body,
+      });
     },
     catch: (e) => toNotionApiError(`Failed to query database: ${e}`, e),
   });
@@ -262,7 +267,7 @@ const make = Effect.gen(function* () {
       const client = yield* getClient();
 
       // Search by identifier property or title
-      const response = yield* queryDataSource(client, databaseId, {
+      const response = yield* queryDatabase(client, databaseId, {
         or: [
           // Try to match by ID property (if it's a rich_text)
           {
@@ -439,7 +444,7 @@ const make = Effect.gen(function* () {
         ? { and: conditions as QueryDataSourceParameters["filter"] extends { and: infer T } ? T : never }
         : undefined;
 
-      const response = yield* queryDataSource(client, databaseId, queryFilter as QueryDataSourceParameters["filter"]);
+      const response = yield* queryDatabase(client, databaseId, queryFilter as QueryDataSourceParameters["filter"]);
       const pages = extractPages(response);
 
       return pages.map((page) =>
@@ -457,7 +462,7 @@ const make = Effect.gen(function* () {
       const client = yield* getClient();
 
       // Query for non-completed tasks
-      const response = yield* queryDataSource(client, databaseId, {
+      const response = yield* queryDatabase(client, databaseId, {
         and: [
           { property: propertyMapping.status, status: { does_not_equal: "Done" } },
           { property: propertyMapping.status, status: { does_not_equal: "Cancelled" } },
@@ -486,7 +491,7 @@ const make = Effect.gen(function* () {
       const client = yield* getClient();
 
       // Query for non-completed tasks
-      const response = yield* queryDataSource(client, databaseId, {
+      const response = yield* queryDatabase(client, databaseId, {
         and: [
           { property: propertyMapping.status, status: { does_not_equal: "Done" } },
           { property: propertyMapping.status, status: { does_not_equal: "Cancelled" } },
@@ -747,7 +752,7 @@ const make = Effect.gen(function* () {
       const client = yield* getClient();
 
       // Find all tasks that have this task as a blocker
-      const response = yield* queryDataSource(client, databaseId, {
+      const response = yield* queryDatabase(client, databaseId, {
         property: propertyMapping.blockedBy,
         relation: { contains: blockerId },
       });
