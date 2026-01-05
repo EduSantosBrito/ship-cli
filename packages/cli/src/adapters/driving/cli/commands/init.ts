@@ -2,14 +2,57 @@ import * as Command from "@effect/cli/Command";
 import * as Options from "@effect/cli/Options";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import { pipe } from "effect/Function";
+import * as Match from "effect/Match";
 import * as clack from "@clack/prompts";
 import { ConfigRepository } from "../../../../ports/ConfigRepository.js";
 import { AuthService } from "../../../../ports/AuthService.js";
 import { TeamRepository } from "../../../../ports/TeamRepository.js";
-import { ProjectRepository } from "../../../../ports/ProjectRepository.js";
+import { ProjectRepository, type CreateProjectInput } from "../../../../ports/ProjectRepository.js";
 import { Prompts } from "../../../../ports/Prompts.js";
 import { LinearConfig } from "../../../../domain/Config.js";
-import type { Team, Project } from "../../../../domain/Task.js";
+import { LinearApiError, TaskError } from "../../../../domain/Errors.js";
+import type { Team, Project, TeamId, ProjectId } from "../../../../domain/Task.js";
+
+const CREATE_NEW = "__create_new__" as const;
+const NO_PROJECT = null;
+
+/**
+ * Extract error message from Linear API or Task errors.
+ * Uses Effect Match for exhaustive pattern matching.
+ */
+const formatApiError = (error: LinearApiError | TaskError): string =>
+  pipe(
+    error,
+    Match.value,
+    Match.tag("LinearApiError", (e) => e.message),
+    Match.tag("TaskError", (e) => e.message),
+    Match.exhaustive,
+  );
+
+/**
+ * Wrap an Effect that creates a resource, handling errors gracefully.
+ * Returns Option.some(resource) on success, Option.none() on failure.
+ */
+const tryCreate = <A, E extends LinearApiError | TaskError>(
+  effect: Effect.Effect<A, E>,
+  spinner: ReturnType<typeof clack.spinner>,
+  successMsg: (a: A) => string,
+  failureContext: string,
+): Effect.Effect<Option.Option<A>, never> =>
+  effect.pipe(
+    Effect.tap((a) => Effect.sync(() => spinner.stop(successMsg(a)))),
+    Effect.map(Option.some),
+    Effect.catchAll((error) =>
+      Effect.sync(() => {
+        spinner.stop(`Failed to create ${failureContext}`);
+        clack.log.error(
+          `Could not create ${failureContext}: ${formatApiError(error)}\nYou may not have permission to create ${failureContext}s.`,
+        );
+        return Option.none<A>();
+      }),
+    ),
+  );
 
 const teamOption = Options.text("team").pipe(
   Options.withAlias("t"),
@@ -87,13 +130,7 @@ export const initCommand = Command.make(
         Effect.tapError(() => Effect.sync(() => teamSpinner.stop("Failed to fetch teams"))),
       );
 
-      if (teams.length === 0) {
-        clack.log.error("No teams found. Please create a team in Linear first.");
-        clack.outro("Setup incomplete");
-        return;
-      }
-
-      // Select team
+      // Select team or create new
       let selectedTeam: Team;
       if (Option.isSome(team)) {
         const found = teams.find((t) => t.id === team.value || t.key === team.value);
@@ -109,15 +146,69 @@ export const initCommand = Command.make(
         selectedTeam = teams[0]!;
         clack.log.success(`Using team: ${selectedTeam.key} - ${selectedTeam.name}`);
       } else {
-        const teamChoice = yield* prompts.select({
-          message: "Select a team",
-          options: teams.map((t) => ({
-            value: t.id,
+        // Build options - always include create option
+        const teamOptions: Array<{ value: TeamId | typeof CREATE_NEW; label: string }> = [
+          ...teams.map((t) => ({
+            value: t.id as TeamId,
             label: `${t.key} - ${t.name}`,
           })),
+          { value: CREATE_NEW, label: "Create new team..." },
+        ];
+
+        const teamChoice = yield* prompts.select({
+          message: "Select a team",
+          options: teamOptions,
         });
 
-        selectedTeam = teams.find((t) => t.id === teamChoice)!;
+        if (teamChoice === CREATE_NEW) {
+          // Create new team
+          const teamName = yield* prompts.text({
+            message: "Team name",
+            placeholder: "My Team",
+            validate: (v) => (!v ? "Name is required" : undefined),
+          });
+
+          const teamKey = yield* prompts.text({
+            message: "Team key (short identifier, e.g. ENG)",
+            placeholder: "ENG",
+            validate: (v) => {
+              if (!v) return "Key is required";
+              if (!/^[A-Z]{2,5}$/.test(v.toUpperCase())) return "Key must be 2-5 uppercase letters";
+              return undefined;
+            },
+          });
+
+          const createSpinner = clack.spinner();
+          createSpinner.start("Creating team...");
+
+          const maybeTeam = yield* tryCreate(
+            teamRepo.createTeam({ name: teamName, key: teamKey.toUpperCase() }),
+            createSpinner,
+            (t) => `Created team: ${t.key}`,
+            "team",
+          );
+
+          if (Option.isNone(maybeTeam)) {
+            if (teams.length === 0) {
+              clack.log.error("No teams available and could not create one.");
+              clack.outro("Setup incomplete");
+              return;
+            }
+            clack.log.info("Please select an existing team instead.");
+            const fallbackChoice = yield* prompts.select({
+              message: "Select a team",
+              options: teams.map((t) => ({
+                value: t.id as TeamId,
+                label: `${t.key} - ${t.name}`,
+              })),
+            });
+            selectedTeam = teams.find((t) => t.id === fallbackChoice)!;
+          } else {
+            selectedTeam = maybeTeam.value;
+          }
+        } else {
+          selectedTeam = teams.find((t) => t.id === teamChoice)!;
+        }
       }
 
       // Step 3: Get projects (optional)
@@ -136,19 +227,75 @@ export const initCommand = Command.make(
             `Project '${project.value}' not found, continuing without project filter.`,
           );
         }
-      } else if (projects.length > 0) {
+      } else {
+        // Build options - always include no project and create options
+        const projectOptions: Array<{
+          value: ProjectId | typeof CREATE_NEW | typeof NO_PROJECT;
+          label: string;
+          hint?: string;
+        }> = [
+          { value: NO_PROJECT, label: "No project filter", hint: "show all team tasks" },
+          ...projects.map((p) => ({
+            value: p.id as ProjectId,
+            label: p.name,
+          })),
+          { value: CREATE_NEW, label: "Create new project..." },
+        ];
+
         const projectChoice = yield* prompts.select({
           message: "Select a project (optional)",
-          options: [
-            { value: null as string | null, label: "No project filter" },
-            ...projects.map((p) => ({
-              value: p.id as string | null,
-              label: p.name,
-            })),
-          ],
+          options: projectOptions,
         });
 
-        if (projectChoice) {
+        if (projectChoice === CREATE_NEW) {
+          // Create new project
+          const projectName = yield* prompts.text({
+            message: "Project name",
+            placeholder: "My Project",
+            validate: (v) => (!v ? "Name is required" : undefined),
+          });
+
+          const projectDesc = yield* prompts.text({
+            message: "Description (optional)",
+            placeholder: "A brief description of the project",
+          });
+
+          const createSpinner = clack.spinner();
+          createSpinner.start("Creating project...");
+
+          const createInput: CreateProjectInput = {
+            name: projectName,
+            ...(projectDesc && { description: projectDesc }),
+          };
+
+          const maybeProject = yield* tryCreate(
+            projectRepo.createProject(selectedTeam.id, createInput),
+            createSpinner,
+            (p) => `Created project: ${p.name}`,
+            "project",
+          );
+
+          if (Option.isSome(maybeProject)) {
+            selectedProject = maybeProject.value;
+          } else if (projects.length > 0) {
+            clack.log.info("Please select an existing project instead, or continue without one.");
+            const fallbackChoice = yield* prompts.select({
+              message: "Select a project",
+              options: [
+                { value: NO_PROJECT, label: "No project filter" },
+                ...projects.map((p) => ({
+                  value: p.id as ProjectId,
+                  label: p.name,
+                })),
+              ],
+            });
+            if (fallbackChoice !== NO_PROJECT) {
+              selectedProject = projects.find((p) => p.id === fallbackChoice);
+            }
+          } else {
+            clack.log.info("Continuing without a project filter.");
+          }
+        } else if (projectChoice !== NO_PROJECT) {
           selectedProject = projects.find((p) => p.id === projectChoice);
         }
       }
