@@ -19,6 +19,7 @@ import { DaemonServiceLive } from "../adapters/driven/daemon/DaemonServiceLive.j
 import { TemplateServiceLive } from "../adapters/driven/template/TemplateServiceLive.js";
 import { PromptsLive } from "../adapters/driven/prompts/PromptsLive.js";
 import { MilestoneRepositoryStub } from "./MilestoneRepositoryStub.js";
+import { LinearClientStub } from "./LinearClientStub.js";
 
 // =============================================================================
 // Layer Dependencies Documentation
@@ -78,6 +79,7 @@ const NotionRepositoryLayers = Layer.mergeAll(
   ProjectRepositoryNotion,
   IssueRepositoryNotion.pipe(Layer.provide(ConfigRepositoryLive)),
   MilestoneRepositoryStub, // Notion doesn't have milestones
+  LinearClientStub, // Stub for Linear-specific code (e.g., task start auto-assignment)
 );
 
 // =============================================================================
