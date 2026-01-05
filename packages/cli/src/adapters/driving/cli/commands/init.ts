@@ -10,7 +10,7 @@ import { AuthService } from "../../../../ports/AuthService.js";
 import { TeamRepository } from "../../../../ports/TeamRepository.js";
 import { ProjectRepository, type CreateProjectInput } from "../../../../ports/ProjectRepository.js";
 import { Prompts } from "../../../../ports/Prompts.js";
-import { LinearConfig } from "../../../../domain/Config.js";
+import { LinearConfig, NotionConfig, NotionPropertyMapping } from "../../../../domain/Config.js";
 import { type TaskApiError, TaskError } from "../../../../domain/Errors.js";
 import type { Team, Project, TeamId, ProjectId } from "../../../../domain/Task.js";
 
@@ -92,8 +92,77 @@ export const initCommand = Command.make(
           clack.outro("Run 'ship task ready' to see available tasks.");
           return;
         }
+        if (Option.isSome(partial.auth) && Option.isSome(partial.notion)) {
+          clack.note(
+            `Provider: Notion\nDatabase: ${partial.notion.value.databaseId}`,
+            "Already initialized",
+          );
+          clack.outro("Run 'ship task ready' to see available tasks.");
+          return;
+        }
       }
 
+      // Step 0: Select provider
+      const provider = yield* prompts.select({
+        message: "Select task provider",
+        options: [
+          { value: "linear" as const, label: "Linear", hint: "recommended" },
+          { value: "notion" as const, label: "Notion", hint: "use Notion database as task backend" },
+        ],
+      });
+
+      // Notion provider flow
+      if (provider === "notion") {
+        clack.note(
+          "Create an integration at:\nhttps://www.notion.so/my-integrations\n\nThen share your task database with the integration.",
+          "Notion Authentication",
+        );
+
+        const notionToken = yield* prompts.text({
+          message: "Paste your Notion API token",
+          placeholder: "ntn_... or secret_...",
+          validate: (value) => {
+            if (!value) return "API token is required";
+            if (!value.startsWith("ntn_") && !value.startsWith("secret_"))
+              return "Token should start with ntn_ or secret_";
+            return undefined;
+          },
+        });
+
+        const databaseId = yield* prompts.text({
+          message: "Paste your Notion database ID",
+          placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+          validate: (value) => {
+            if (!value) return "Database ID is required";
+            // Basic UUID-like validation (with or without dashes)
+            const cleaned = value.replace(/-/g, "");
+            if (cleaned.length !== 32) return "Invalid database ID format";
+            return undefined;
+          },
+        });
+
+        // Save Notion config
+        yield* config.saveAuth({ apiKey: notionToken });
+        yield* config.saveNotion(
+          new NotionConfig({
+            databaseId: databaseId.replace(/-/g, ""),
+            workspaceId: Option.none(),
+            propertyMapping: new NotionPropertyMapping({}),
+          }),
+        );
+        yield* config.ensureGitignore();
+        yield* config.ensureOpencodeSkill();
+
+        clack.note(
+          `Provider: Notion\nDatabase: ${databaseId}\n\nOpenCode skill created at .opencode/skill/ship-cli/SKILL.md`,
+          "Workspace initialized",
+        );
+
+        clack.outro("Run 'ship task ready' to see available tasks.");
+        return;
+      }
+
+      // Linear provider flow (existing code)
       // Step 1: Authenticate if needed
       const isAuth = yield* auth.isAuthenticated();
       if (!isAuth) {

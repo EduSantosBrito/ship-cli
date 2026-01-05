@@ -9,6 +9,7 @@ import {
   AuthConfig,
   GitConfig,
   LinearConfig,
+  NotionConfig,
   PartialShipConfig,
   PrConfig,
   CommitConfig,
@@ -32,11 +33,31 @@ const OPENCODE_SKILL_FILE = "SKILL.md";
 
 // YAML representation (with optional fields for partial configs)
 const YamlConfig = Schema.Struct({
+  provider: Schema.optional(Schema.Literal("linear", "notion")),
   linear: Schema.optional(
     Schema.Struct({
       teamId: Schema.String,
       teamKey: Schema.String,
       projectId: Schema.NullOr(Schema.String),
+    }),
+  ),
+  notion: Schema.optional(
+    Schema.Struct({
+      databaseId: Schema.String,
+      workspaceId: Schema.NullOr(Schema.String),
+      propertyMapping: Schema.optional(
+        Schema.Struct({
+          title: Schema.optional(Schema.String),
+          status: Schema.optional(Schema.String),
+          priority: Schema.optional(Schema.String),
+          description: Schema.optional(Schema.String),
+          labels: Schema.optional(Schema.String),
+          blockedBy: Schema.optional(Schema.String),
+          type: Schema.optional(Schema.String),
+          identifier: Schema.optional(Schema.String),
+          parent: Schema.optional(Schema.String),
+        }),
+      ),
     }),
   ),
   auth: Schema.optional(
@@ -64,10 +85,26 @@ const YamlConfig = Schema.Struct({
 type YamlConfig = typeof YamlConfig.Type;
 
 interface MutableYamlConfig {
+  provider?: "linear" | "notion";
   linear?: {
     teamId: string;
     teamKey: string;
     projectId: string | null;
+  };
+  notion?: {
+    databaseId: string;
+    workspaceId: string | null;
+    propertyMapping?: {
+      title?: string;
+      status?: string;
+      priority?: string;
+      description?: string;
+      labels?: string;
+      blockedBy?: string;
+      type?: string;
+      identifier?: string;
+      parent?: string;
+    };
   };
   auth?: {
     apiKey: string;
@@ -338,6 +375,40 @@ const make = Effect.gen(function* () {
       yield* writeYaml(yaml);
     });
 
+  const saveNotion = (notion: NotionConfig) =>
+    Effect.gen(function* () {
+      const existingYaml = yield* readYaml();
+      const yaml: MutableYamlConfig = {};
+      // Preserve existing config
+      if (existingYaml?.auth) {
+        yaml.auth = { apiKey: existingYaml.auth.apiKey };
+      }
+      if (existingYaml?.git?.defaultBranch)
+        yaml.git = { defaultBranch: existingYaml.git.defaultBranch };
+      if (existingYaml?.pr?.openBrowser !== undefined)
+        yaml.pr = { openBrowser: existingYaml.pr.openBrowser };
+      if (existingYaml?.commit?.conventionalFormat !== undefined)
+        yaml.commit = { conventionalFormat: existingYaml.commit.conventionalFormat };
+      // Set provider and notion config
+      yaml.provider = "notion";
+      yaml.notion = {
+        databaseId: notion.databaseId,
+        workspaceId: Option.isSome(notion.workspaceId) ? notion.workspaceId.value : null,
+        propertyMapping: {
+          title: notion.propertyMapping.title,
+          status: notion.propertyMapping.status,
+          priority: notion.propertyMapping.priority,
+          description: notion.propertyMapping.description,
+          labels: notion.propertyMapping.labels,
+          blockedBy: notion.propertyMapping.blockedBy,
+          type: notion.propertyMapping.type,
+          identifier: notion.propertyMapping.identifier,
+          parent: notion.propertyMapping.parent,
+        },
+      };
+      yield* writeYaml(yaml);
+    });
+
   const deleteConfig = () =>
     Effect.gen(function* () {
       const configPath = yield* getConfigPath();
@@ -380,6 +451,7 @@ const make = Effect.gen(function* () {
     savePartial,
     saveAuth,
     saveLinear,
+    saveNotion,
     exists,
     getConfigDir,
     ensureConfigDir,

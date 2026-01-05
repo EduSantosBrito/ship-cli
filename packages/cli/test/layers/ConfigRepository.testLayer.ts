@@ -236,6 +236,16 @@ export const TestConfigRepositoryLayer = (
             }));
           }),
 
+        saveNotion: () =>
+          Effect.gen(function* () {
+            yield* trackCall("saveNotion", []);
+            const state = yield* Ref.get(stateRef);
+
+            if (state.saveError) {
+              return yield* Effect.fail(state.saveError);
+            }
+          }),
+
         exists: () =>
           Effect.gen(function* () {
             yield* trackCall("exists", []);

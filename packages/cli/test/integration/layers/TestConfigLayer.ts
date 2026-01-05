@@ -142,6 +142,8 @@ const makeTestConfigRepository = (
       return Effect.void;
     },
 
+    saveNotion: () => Effect.void,
+
     exists: () => Effect.succeed(storedConfig !== null),
 
     getConfigDir: () => Effect.succeed("/tmp/test-config"),

@@ -1,6 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import type { AuthConfig, LinearConfig, PartialShipConfig, ShipConfig } from "../domain/Config.js";
+import type { AuthConfig, LinearConfig, NotionConfig, PartialShipConfig, ShipConfig } from "../domain/Config.js";
 import type { ConfigError, WorkspaceNotInitializedError } from "../domain/Errors.js";
 
 export interface ConfigRepository {
@@ -10,6 +10,7 @@ export interface ConfigRepository {
   readonly savePartial: (config: PartialShipConfig) => Effect.Effect<void, ConfigError>;
   readonly saveAuth: (auth: AuthConfig) => Effect.Effect<void, ConfigError>;
   readonly saveLinear: (linear: LinearConfig) => Effect.Effect<void, ConfigError>;
+  readonly saveNotion: (notion: NotionConfig) => Effect.Effect<void, ConfigError>;
   readonly exists: () => Effect.Effect<boolean, ConfigError>;
   readonly getConfigDir: () => Effect.Effect<string, never>;
   readonly ensureConfigDir: () => Effect.Effect<void, ConfigError>;

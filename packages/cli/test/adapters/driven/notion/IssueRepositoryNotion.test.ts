@@ -212,6 +212,7 @@ const createTestLayer = (mockClient: ReturnType<typeof createMockClient>, config
     savePartial: () => Effect.void,
     saveAuth: () => Effect.void,
     saveLinear: () => Effect.void,
+    saveNotion: () => Effect.void,
     exists: () => Effect.succeed(true),
     getConfigDir: () => Effect.succeed("/test/.ship"),
     ensureConfigDir: () => Effect.void,
