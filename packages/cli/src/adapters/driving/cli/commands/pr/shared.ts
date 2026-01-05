@@ -55,7 +55,10 @@ export const checkVcsAvailability = (): Effect.Effect<
     }
 
     if (!isRepoResult.isRepo) {
-      return { available: false, error: "Not a jj repository" } as const;
+      return {
+        available: false,
+        error: "Not a jj repository. Run 'jj git init --colocate' to set up jj for stacked changes.",
+      } as const;
     }
 
     return { available: true, vcs } as const;

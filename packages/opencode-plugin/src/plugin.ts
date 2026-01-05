@@ -1567,7 +1567,7 @@ const actionHandlers: Record<string, ActionHandler> = {
     Effect.gen(function* () {
       const status = yield* ship.getStackStatus(args.workdir);
       if (!status.isRepo) {
-        return `Error: ${status.error || "Not a jj repository"}`;
+        return `Error: ${status.error || "Not a jj repository. Run 'jj git init --colocate' to set up jj for stacked changes."}`;
       }
       if (!status.change) {
         return "Error: Could not get current change";
