@@ -47,3 +47,16 @@ export {
   // IssueRepository implementation for Notion
   IssueRepositoryNotion,
 } from "./IssueRepositoryNotion.js";
+
+export {
+  // TeamRepository implementation for Notion
+  TeamRepositoryNotion,
+  // Constants
+  NOTION_TEAM_ID,
+  NOTION_TEAM_KEY,
+} from "./TeamRepositoryNotion.js";
+
+export {
+  // ProjectRepository implementation for Notion
+  ProjectRepositoryNotion,
+} from "./ProjectRepositoryNotion.js";
