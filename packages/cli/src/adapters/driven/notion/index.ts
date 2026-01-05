@@ -42,3 +42,8 @@ export {
   // Types
   type MapPageToTaskConfig,
 } from "./NotionMapper.js";
+
+export {
+  // IssueRepository implementation for Notion
+  IssueRepositoryNotion,
+} from "./IssueRepositoryNotion.js";
