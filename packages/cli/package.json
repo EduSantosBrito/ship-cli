@@ -1,6 +1,6 @@
 {
   "name": "@ship-cli/core",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "license": "MIT",
   "description": "Linear + jj workflow CLI for AI agents",

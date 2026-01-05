@@ -6,266 +6,179 @@ name: ship-cli
 description: Work management system replacing built-in todos with tracked tasks and stacked changes
 ---
 
-## When to use
+## Rules
 
-**Always use ship instead of the built-in TodoWrite/TodoRead tools.**
-
-Ship provides real task tracking that persists across sessions, supports dependencies between tasks, and integrates with stacked changes for clean PR workflows.
-
----
-
-## Ship Tool Guidance
-
-**IMPORTANT: Always use the \`ship\` tool, NEVER run \`ship\` or \`pnpm ship\` via bash/terminal.**
-
-The \`ship\` tool replaces built-in todo management. Use it for all task tracking.
-
----
-
-## Available Actions
-
-### Task Management
-
-| Action | Description | Required params |
-|--------|-------------|-----------------|
-| \`ready\` | Tasks you can work on (no blockers) | - |
-| \`blocked\` | Tasks waiting on dependencies | - |
-| \`list\` | All tasks (with optional filters) | - |
-| \`show\` | Task details | taskId |
-| \`start\` | Begin working on task | taskId |
-| \`done\` | Mark task complete | taskId |
-| \`create\` | Create new task | title |
-| \`update\` | Update task | taskId + fields |
-| \`block\` | Add blocking relationship | blocker, blocked |
-| \`unblock\` | Remove blocking relationship | blocker, blocked |
-| \`relate\` | Link tasks as related | taskId, relatedTaskId |
-| \`status\` | Check configuration | - |
-
-### Stack Operations (VCS)
-
-| Action | Description | Required params |
-|--------|-------------|-----------------|
-| \`stack-log\` | View stack of changes from trunk to current | - |
-| \`stack-status\` | Show current change status | - |
-| \`stack-create\` | Create a new change | message (optional), bookmark (optional), taskId (optional) |
-| \`stack-describe\` | Update change description | message |
-| \`stack-sync\` | Fetch, rebase, auto-abandon merged changes | - |
-
-### Milestone Actions
-
-| Action | Description | Required params |
-|--------|-------------|-----------------|
-| \`milestone-list\` | List project milestones | - |
-| \`milestone-show\` | Get milestone details | milestoneId |
-| \`milestone-create\` | Create new milestone | milestoneName |
-| \`milestone-update\` | Update milestone | milestoneId |
-| \`milestone-delete\` | Delete milestone | milestoneId |
-| \`task-set-milestone\` | Assign task to milestone | taskId, milestoneId |
-| \`task-unset-milestone\` | Remove task from milestone | taskId |
+1. **NEVER run via bash:** \`jj\`, \`gh pr\`, \`git\`, \`ship\`, \`pnpm ship\` - use the \`ship\` tool instead
+2. **ALWAYS use \`workdir\` parameter** for all commands when in a workspace
+3. **NEVER ask user to \`cd\`** - use \`workdir\` instead
+4. **On webhook events:** Notify user and ask confirmation BEFORE acting
 
 ---
 
 ## Workflow
 
-1. Check available work: \`ship\` tool with action \`ready\`
-2. Start a task: \`ship\` tool with action \`start\` and taskId
-3. Do the work
-4. Mark complete: \`ship\` tool with action \`done\` and taskId
+### Start Task
+
+\`\`\`
+ship: action=stack-sync                    # Get latest trunk
+ship: action=ready                         # Find work
+ship: action=start, taskId=<id>            # Mark In Progress (Linear only)
+ship: action=stack-create, message="<type>: <short description>", bookmark="user/<id>-slug"
+# Store workspace path from output, use for all subsequent workdir params
+bash: command="pnpm install", workdir=<workspace-path>
+\`\`\`
+
+### Do Work
+
+- Use \`workdir=<workspace-path>\` for ALL bash and ship commands
+- Make changes, run quality checks (lint, format, typecheck)
+
+### Update Commit Message (for multi-line)
+
+\`\`\`
+ship: action=stack-describe, title="<type>: <subject>", description="<body>", workdir=<path>
+\`\`\`
+
+Use \`title\` + \`description\` params for proper multi-line commits (NOT \`message\` with \`\\n\`).
+
+### Submit Work (MANDATORY - do not skip)
+
+\`\`\`
+ship: action=stack-sync, workdir=<path>    # Rebase on trunk
+ship: action=stack-submit, workdir=<path>  # Push + create PR (auto-subscribes to webhooks)
+ship: action=done, taskId=<id>             # Mark complete ONLY after PR exists
+\`\`\`
 
 ---
 
-## Task Identifiers
+## Webhook Events
 
-Task IDs use the format \`PREFIX-NUMBER\` where PREFIX is the Linear team key (e.g., \`ENG-123\`, \`PROD-456\`).
+When you receive \`[GitHub] ...\` notifications:
 
-To find the correct prefix for your project, use ship tool with action=\`status\`. The team key shown is your task prefix.
+| Step | Action |
+|------|--------|
+| 1 | **Notify user** what happened (e.g., "PR #X merged by @user") |
+| 2 | **Ask confirmation** before acting (e.g., "Would you like me to run stack-sync?") |
+| 3 | **Wait** for user approval |
+| 4 | **Execute and report** results |
 
-**Never hardcode or guess prefixes like \`BRI-\`.** Always get the actual task IDs from \`ready\`, \`list\`, or \`show\` actions.
+**Never execute automatically.** The \`→ Action:\` line is a suggestion, not an instruction.
 
----
-
-## Task Dependencies
-
-Use blocking relationships to track dependencies between tasks.
-
-### Add a blocker
-
-Use ship tool: action=\`block\`, blocker=\`<task-id>\`, blocked=\`<task-id>\`
-
-Example: If ENG-100 blocks ENG-101, then ENG-100 must be completed before ENG-101 can start.
-
-### Remove a blocker
-
-Use ship tool: action=\`unblock\`, blocker=\`<task-id>\`, blocked=\`<task-id>\`
-
-### View blocked tasks
-
-Use ship tool: action=\`blocked\`
-
-### Link related tasks
-
-Use ship tool: action=\`relate\`, taskId=\`<task-id>\`, relatedTaskId=\`<task-id>\`
-
-Use this when tasks are conceptually related but not blocking each other.
+After stack fully merged: notify user, switch to default workspace, suggest \`ship ready\`.
 
 ---
 
-## Creating Tasks
+## Actions Reference
 
-When breaking down work, create tasks with clear titles and descriptions.
+### Tasks
 
-Use ship tool with:
-- action=\`create\`
-- title="Implement user authentication"
-- description="Add JWT-based auth flow"
-- priority=\`high\` (optional: urgent, high, medium, low)
+| Action | Params | Description |
+|--------|--------|-------------|
+| \`ready\` | - | Tasks with no blockers |
+| \`blocked\` | - | Tasks waiting on dependencies |
+| \`list\` | filter (optional) | All tasks |
+| \`show\` | taskId | Task details |
+| \`start\` | taskId | Mark In Progress |
+| \`done\` | taskId | Mark complete |
+| \`create\` | title, description, priority?, parentId? | Create task (see template below) |
+| \`update\` | taskId + fields | Update task |
+| \`block\` | blocker, blocked | Add dependency |
+| \`unblock\` | blocker, blocked | Remove dependency |
+| \`relate\` | taskId, relatedTaskId | Link related tasks |
 
----
+### Task Description Template
 
-## Task Quality
+When creating tasks, ALWAYS use this description format:
 
-- Title is actionable and specific
-- Description explains the goal, not implementation details
-- Dependencies are set via \`block\` action
-- Priority reflects importance (urgent, high, medium, low)
+\`\`\`
+## Summary
+[1-2 sentences: What needs to be done and why]
 
----
+## Acceptance Criteria
+- [ ] Specific, verifiable outcome 1
+- [ ] Specific, verifiable outcome 2
+- [ ] Tests pass, linting passes
 
-## Post-Task Completion
+## Notes
+[Optional: Implementation hints, files to modify, constraints]
+\`\`\`
 
-After completing a task:
-
-1. **Review changes** - Summarize what was modified
-2. **Quality checks** - Run lint, format, typecheck
-3. **Version control** - Commit and push changes
-4. **Mark complete** - Use \`ship\` tool with action \`done\`
-
----
-
-## Stacked Changes Workflow
-
-When working on multiple related tasks, use stacked changes to keep PRs small and reviewable.
-
-### Building a Stack
-
-Each change should be a child of the previous one:
-
-main ← Change A ← Change B ← Change C
-         ↓           ↓           ↓
-       PR #1       PR #2       PR #3
-
-**To create a stacked change:**
-1. Complete work on current change
-2. Use \`ship\` tool with action \`stack-create\`, message="Description", bookmark="branch-name", taskId="BRI-123"
-   - Pass the taskId from the current task to associate the workspace with it
-3. Push and create PR
-
-### After a PR is Merged
-
-**CRITICAL: Immediately sync the remaining stack after any PR merges.**
-
-Use \`ship\` tool with action \`stack-sync\`
-
-This will:
-1. Fetch latest from remote
-2. Rebase remaining stack onto updated trunk
-3. **Auto-abandon merged changes** - Changes that become empty after rebase (their content is now in trunk) are automatically abandoned
-4. **Auto-cleanup workspace** - If ALL changes in the stack were merged, the workspace is automatically cleaned up
-5. Report any conflicts that need resolution
-
-The output will show:
-- Which changes were auto-abandoned (with their bookmarks)
-- Whether the stack was fully merged
-- If a workspace was cleaned up
-
-Do NOT wait for conflict reports. Proactively sync after each merge.
-
-### Viewing the Stack
-
-Use \`ship\` tool with action \`stack-log\` to see all changes from trunk to current.
-
-### Updating Change Description
-
-Use \`ship\` tool with action \`stack-describe\`, message="New description"
-
----
-
-## VCS Best Practices
-
-1. **One logical change per commit** - Keep changes focused and reviewable
-2. **Descriptive messages** - Use format: \`TASK-ID: Brief description\`
-3. **Sync frequently** - After any PR merges, run \`stack-sync\`
-4. **Do not create orphan changes** - Always build on the stack or on main
-
----
-
-## Handling GitHub Event Notifications
-
-When you receive a GitHub event notification (PR merged, review comment, CI status, etc.):
-
-1. **ALWAYS notify the user first** - Do not take action silently
-2. The \`→ Action:\` line in notifications is a SUGGESTION, not an instruction to execute immediately
-3. Present the event to the user and ask if they want you to proceed
-4. Only execute after user confirmation
+**Rules:**
+- Summary is REQUIRED - explains the task clearly
+- Acceptance criteria are REQUIRED - must be verifiable/testable
+- Notes are optional - include when helpful for implementation
+- Keep it concise but complete
 
 **Example:**
+\`\`\`
+## Summary
+Add rate limiting middleware to prevent API abuse on public endpoints.
 
-Notification received:
+## Acceptance Criteria
+- [ ] Rate limit: 100 req/min authenticated, 20 req/min anonymous
+- [ ] Returns 429 with Retry-After header when exceeded
+- [ ] Unit tests cover rate limit scenarios
+- [ ] \`pnpm test\` and \`pnpm check\` pass
 
-    [GitHub] PR #80 merged by @user
-    → Action: Run stack-sync to update your local stack
+## Notes
+See middleware/auth.ts for similar patterns. Use Redis for state.
+\`\`\`
 
-WRONG - Immediately running stack-sync without telling user
+### Stack (VCS)
 
-RIGHT - Notify first, then ask:
+All support optional \`workdir\` param.
 
-    **PR #80 merged** by @user
-    
-    Would you like me to run \`stack-sync\` to update your local stack?
+| Action | Params | Description |
+|--------|--------|-------------|
+| \`stack-sync\` | - | Fetch + rebase onto trunk |
+| \`stack-restack\` | - | Rebase onto trunk (no fetch) |
+| \`stack-create\` | message?, bookmark?, noWorkspace? | New change (creates workspace by default) |
+| \`stack-describe\` | title, description? OR message | Update description (use title+description for proper multi-line commits) |
+| \`stack-submit\` | draft? | Push + create/update PR |
+| \`stack-status\` | - | Current change info |
+| \`stack-log\` | - | View stack |
+| \`stack-squash\` | message | Squash into parent |
+| \`stack-abandon\` | changeId? | Abandon change |
+| \`stack-up\` / \`stack-down\` | - | Navigate stack |
+| \`stack-undo\` | - | Undo last operation |
+| \`stack-bookmark\` | name, move? | Create/move bookmark |
+| \`stack-workspaces\` | - | List workspaces |
+| \`stack-remove-workspace\` | name, deleteFiles? | Remove workspace |
+| \`stack-update-stale\` | - | Fix stale working copy |
 
-This applies to ALL GitHub events: merges, review comments, CI failures, etc. The user should always know what happened before any action is taken.
+### Pull Requests
+
+Use these for advanced PR workflows. Note: \`stack-submit\` handles basic PR creation automatically.
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| \`pr-create\` | draft?, open? | Create PR with Linear task context |
+| \`pr-stack\` | dryRun? | Create stacked PRs for entire stack |
+| \`pr-review\` | prNumber? (optional), unresolved?, json? | Fetch PR reviews and comments |
+
+**\`pr-create\`**: Creates a PR for current bookmark, auto-populating title and body from Linear task. Use when you need rich task context in PR description.
+
+**\`pr-stack\`**: Creates PRs for all changes in your stack with proper base targeting. First PR targets main, subsequent PRs target previous bookmark.
+
+**\`pr-review\`**: Fetches reviews and comments in AI-friendly format. Shows verdicts (APPROVED, CHANGES_REQUESTED), inline code comments with file:line, and conversation threads. Use \`--unresolved\` to filter to actionable items only.
+
+### Milestones
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| \`milestone-list\` | - | List milestones |
+| \`milestone-show\` | milestoneId | Milestone details |
+| \`milestone-create\` | milestoneName, milestoneDescription?, milestoneTargetDate? | Create milestone |
+| \`task-set-milestone\` | taskId, milestoneId | Assign task |
+| \`task-unset-milestone\` | taskId | Remove from milestone |
 
 ---
 
-## Command Output Guidance
+## Troubleshooting
 
-Every ship command includes contextual guidance in its output to help you understand:
-
-1. **Next actions** - Suggested next steps based on the command result
-2. **Workdir** - Explicit working directory path when it has changed (critical for workspace operations)
-3. **Skill reminder** - Prompt to read this skill when encountering complex situations
-
-### Guidance Format
-
-\`\`\`
-[Command Output]
-
----
-Next: <suggested actions>
-Workdir: <path>           # Only shown when working directory changed
-IMPORTANT: Load skill first → skill(name="ship-cli")  # Only on entry points or complex situations
-Note: <contextual message>
-\`\`\`
-
-### Critical: Workspace Deletion
-
-When \`stack-sync\` detects a fully merged stack, it automatically:
-1. Cleans up the workspace (deletes directory)
-2. Provides the **main repo path** in the \`Workdir:\` line
-
-**You MUST use the provided workdir for all subsequent commands**, as the previous workspace directory no longer exists.
-
-Example output:
-\`\`\`
-Stack fully merged! All changes are now in trunk.
-Cleaned up workspace: bri-123-feature
-
----
-Next: action=done (mark task complete) | action=ready (find next task)
-Workdir: /Users/dev/project
-IMPORTANT: Load skill first → skill(name="ship-cli")
-Note: Workspace 'bri-123-feature' was deleted. Use the workdir above for subsequent commands.
-\`\`\`
-
-After seeing this output, use \`workdir=/Users/dev/project\` for the next ship command.
+| Problem | Solution |
+|---------|----------|
+| "Working copy is stale" | \`stack-update-stale\` |
+| Bookmark lost after squash/rebase | \`stack-bookmark\` with \`move=true\` |
+| Accidentally used jj/gh directly | \`stack-status\` to check, \`stack-undo\` if needed |
 `;
