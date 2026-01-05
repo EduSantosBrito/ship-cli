@@ -189,7 +189,7 @@ describe("WebhookEventFormatter", () => {
       const message = formatWebhookEvent(event);
 
       expect(message).toContain("[GitHub] PR #42 merged by @merger");
-      expect(message).toContain("Action: Run stack-sync");
+      expect(message).toContain("Action: Run stack-restack");
     });
 
     it("formats PR closed (not merged) event", () => {

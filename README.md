@@ -260,7 +260,7 @@ GitHub PR Event → smee.io → ship webhook daemon → OpenCode session
 
 | Event | What Happens |
 |-------|--------------|
-| **PR Merged** | Agent receives notification, can run `stack-sync` to rebase |
+| **PR Merged** | Agent receives notification, can run `stack-restack` to rebase and push |
 | **CI Failed** | Agent receives notification with failure details |
 | **Review Comment** | Agent receives the comment, can address feedback |
 | **Changes Requested** | Agent receives the review, can make fixes |
@@ -280,7 +280,7 @@ GitHub PR Event → smee.io → ship webhook daemon → OpenCode session
 
 4. PR #42 merged
    → Agent receives: "[GitHub] PR #42 merged"
-   → Agent runs `stack-sync` to rebase remaining stack
+   → Agent runs `stack-restack` to rebase and push remaining stack
 ```
 
 This enables a tight feedback loop where agents can respond to code review without manual intervention.
