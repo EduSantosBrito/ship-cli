@@ -14,6 +14,7 @@ Ship bridges [Linear](https://linear.app) task management with [jj](https://mart
 - [Way of Working](#way-of-working)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
+  - [Task Providers](#task-providers)
 - [Commands](#commands)
 - [OpenCode Integration](#opencode-integration)
   - [Webhook Integration](#webhook-integration)
@@ -112,8 +113,19 @@ Add to your `opencode.json`:
 ### Requirements
 
 - Node.js 20, 22, or 24 (LTS versions)
-- [Linear](https://linear.app) account
+- [Linear](https://linear.app) or [Notion](https://notion.so) account
 - [jj](https://martinvonz.github.io/jj) (for VCS features)
+
+### Task Providers
+
+Ship supports multiple task management backends:
+
+| Provider | Status | Best For |
+|----------|--------|----------|
+| [Linear](https://linear.app) | Default | Teams using Linear for project management |
+| [Notion](https://notion.so) | Supported | Teams using Notion databases for tasks |
+
+To use Notion instead of Linear, run `ship init` and select "Notion" when prompted, or see the [Notion Setup Guide](packages/cli/docs/NOTION.md).
 
 ## Commands
 
