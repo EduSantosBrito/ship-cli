@@ -117,6 +117,7 @@ export interface ShipConfigInput {
 export const makeShipConfig = (overrides: ShipConfigInput = {}): ShipConfig =>
   new ShipConfig({
     linear: overrides.linear ?? makeLinearConfig(),
+    notion: Option.none(),
     auth: overrides.auth ?? makeAuthConfig(),
     git: overrides.git ?? makeGitConfig(),
     pr: overrides.pr ?? makePrConfig(),
@@ -143,6 +144,7 @@ export const makePartialShipConfig = (
       overrides.linear === null
         ? Option.none()
         : Option.fromNullable(overrides.linear),
+    notion: Option.none(),
     auth:
       overrides.auth === null
         ? Option.none()

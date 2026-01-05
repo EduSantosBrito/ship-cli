@@ -187,11 +187,13 @@ const make = Effect.gen(function* () {
     if (!yaml) {
       return new PartialShipConfig({
         linear: Option.none(),
+        notion: Option.none(),
         auth: Option.none(),
       });
     }
 
     return new PartialShipConfig({
+      // provider defaults to "linear" in schema
       linear: yaml.linear
         ? Option.some(
             new LinearConfig({
@@ -203,6 +205,7 @@ const make = Effect.gen(function* () {
             }),
           )
         : Option.none(),
+      notion: Option.none(), // TODO: Parse notion config from yaml when implemented
       auth: yaml.auth ? Option.some(new AuthConfig({ apiKey: yaml.auth.apiKey })) : Option.none(),
     });
   };
@@ -267,6 +270,7 @@ const make = Effect.gen(function* () {
             ? Option.some(asProjectId(yaml.linear.projectId))
             : Option.none(),
         }),
+        notion: Option.none(), // TODO: Parse notion config from yaml when implemented
         auth: new AuthConfig({ apiKey: yaml.auth.apiKey }),
         git: new GitConfig({ defaultBranch: yaml.git?.defaultBranch ?? "main" }),
         pr: new PrConfig({ openBrowser: yaml.pr?.openBrowser ?? true }),

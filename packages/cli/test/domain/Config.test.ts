@@ -5,9 +5,13 @@ import {
   SHIP_WORKSPACES_DIR,
   DEFAULT_WORKSPACE_NAME,
   DEFAULT_WORKSPACE_PATH_PATTERN,
+  // Task provider types
+  TaskProvider,
   // Config classes
   AuthConfig,
   LinearConfig,
+  NotionPropertyMapping,
+  NotionConfig,
   GitConfig,
   PrConfig,
   CommitConfig,
@@ -19,6 +23,11 @@ import {
   WorkspacesFile,
   // Utility functions
   resolveWorkspacePath,
+  // Validation functions
+  validateProviderConfig,
+  hasProviderConfig,
+  getLinearConfig,
+  getNotionConfig,
 } from "../../src/domain/Config.js"
 import { ProjectId } from "../../src/domain/Task.js"
 
@@ -252,6 +261,7 @@ describe("Config Domain", () => {
           auth: {
             apiKey: "lin_api_xxx",
           },
+          notion: null,
         }
         const result = yield* Schema.decode(ShipConfig)(data)
         expect(result.linear.teamId).toBe("team-123")
@@ -270,6 +280,7 @@ describe("Config Domain", () => {
           auth: {
             apiKey: "lin_api_xxx",
           },
+          notion: null,
         }
         const result = yield* Schema.decode(ShipConfig)(data)
         // Check defaults are applied
@@ -305,6 +316,7 @@ describe("Config Domain", () => {
             autoNavigate: false,
             autoCleanup: false,
           },
+          notion: null,
         }
         const result = yield* Schema.decode(ShipConfig)(data)
         expect(result.linear.teamKey).toBe("PROD")
@@ -322,6 +334,7 @@ describe("Config Domain", () => {
         const data = {
           linear: null,
           auth: null,
+          notion: null,
         }
         const result = yield* Schema.decode(PartialShipConfig)(data)
         expect(Option.isNone(result.linear)).toBe(true)
@@ -340,6 +353,7 @@ describe("Config Domain", () => {
           auth: {
             apiKey: "lin_api_xxx",
           },
+          notion: null,
         }
         const result = yield* Schema.decode(PartialShipConfig)(data)
         expect(Option.isSome(result.linear)).toBe(true)
@@ -352,12 +366,272 @@ describe("Config Domain", () => {
         const data = {
           linear: null,
           auth: null,
+          notion: null,
         }
         const result = yield* Schema.decode(PartialShipConfig)(data)
         expect(result.git.defaultBranch).toBe("main")
         expect(result.pr.openBrowser).toBe(true)
         expect(result.commit.conventionalFormat).toBe(true)
         expect(result.workspace.basePath).toBe(DEFAULT_WORKSPACE_PATH_PATTERN)
+      }),
+    )
+  })
+
+  describe("TaskProvider", () => {
+    it.effect("should decode 'linear' provider", () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decode(TaskProvider)("linear")
+        expect(result).toBe("linear")
+      }),
+    )
+
+    it.effect("should decode 'notion' provider", () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decode(TaskProvider)("notion")
+        expect(result).toBe("notion")
+      }),
+    )
+
+    it.effect("should reject invalid provider", () =>
+      Effect.gen(function* () {
+        const result = yield* Schema.decode(TaskProvider)("invalid" as any).pipe(
+          Effect.flip,
+        )
+        expect(result).toBeDefined()
+      }),
+    )
+  })
+
+  describe("NotionPropertyMapping", () => {
+    it.effect("should decode with all defaults", () =>
+      Effect.gen(function* () {
+        const data = {}
+        const result = yield* Schema.decode(NotionPropertyMapping)(data)
+        expect(result.title).toBe("Name")
+        expect(result.status).toBe("Status")
+        expect(result.priority).toBe("Priority")
+        expect(result.description).toBe("Description")
+        expect(result.labels).toBe("Labels")
+        expect(result.blockedBy).toBe("Blocked By")
+        expect(result.type).toBe("Type")
+        expect(result.identifier).toBe("ID")
+        expect(result.parent).toBe("Parent")
+      }),
+    )
+
+    it.effect("should decode with custom property names", () =>
+      Effect.gen(function* () {
+        const data = {
+          title: "Task Name",
+          status: "State",
+          priority: "Urgency",
+          blockedBy: "Dependencies",
+        }
+        const result = yield* Schema.decode(NotionPropertyMapping)(data)
+        expect(result.title).toBe("Task Name")
+        expect(result.status).toBe("State")
+        expect(result.priority).toBe("Urgency")
+        expect(result.blockedBy).toBe("Dependencies")
+        // Defaults still apply for unspecified
+        expect(result.description).toBe("Description")
+      }),
+    )
+  })
+
+  describe("NotionConfig", () => {
+    it.effect("should decode with required databaseId", () =>
+      Effect.gen(function* () {
+        const data = {
+          databaseId: "abc123-def456",
+          workspaceId: null,
+        }
+        const result = yield* Schema.decode(NotionConfig)(data)
+        expect(result.databaseId).toBe("abc123-def456")
+        expect(Option.isNone(result.workspaceId)).toBe(true)
+        // Default property mapping
+        expect(result.propertyMapping.title).toBe("Name")
+      }),
+    )
+
+    it.effect("should decode with optional workspaceId", () =>
+      Effect.gen(function* () {
+        const data = {
+          databaseId: "db-123",
+          workspaceId: "ws-456",
+        }
+        const result = yield* Schema.decode(NotionConfig)(data)
+        expect(Option.isSome(result.workspaceId)).toBe(true)
+        expect(Option.getOrElse(result.workspaceId, () => "")).toBe("ws-456")
+      }),
+    )
+
+    it.effect("should decode with custom property mapping", () =>
+      Effect.gen(function* () {
+        const data = {
+          databaseId: "db-789",
+          workspaceId: null,
+          propertyMapping: {
+            title: "Task Title",
+            status: "Task Status",
+          },
+        }
+        const result = yield* Schema.decode(NotionConfig)(data)
+        expect(result.propertyMapping.title).toBe("Task Title")
+        expect(result.propertyMapping.status).toBe("Task Status")
+        // Defaults for unspecified
+        expect(result.propertyMapping.priority).toBe("Priority")
+      }),
+    )
+  })
+
+  describe("Config Validation", () => {
+    it.effect("validateProviderConfig should pass for linear provider with linear config", () =>
+      Effect.gen(function* () {
+        const config = new ShipConfig({
+          provider: "linear",
+          linear: new LinearConfig({
+            teamId: "team-1" as any,
+            teamKey: "ENG",
+            projectId: Option.none(),
+          }),
+          notion: Option.none(),
+          auth: new AuthConfig({ apiKey: "key" }),
+        })
+        const result = yield* validateProviderConfig(config)
+        expect(result.provider).toBe("linear")
+      }),
+    )
+
+    it.effect("validateProviderConfig should pass for notion provider with notion config", () =>
+      Effect.gen(function* () {
+        const config = new ShipConfig({
+          provider: "notion",
+          linear: new LinearConfig({
+            teamId: "team-1" as any,
+            teamKey: "ENG",
+            projectId: Option.none(),
+          }),
+          notion: Option.some(
+            new NotionConfig({
+              databaseId: "db-123",
+              workspaceId: Option.none(),
+            }),
+          ),
+          auth: new AuthConfig({ apiKey: "key" }),
+        })
+        const result = yield* validateProviderConfig(config)
+        expect(result.provider).toBe("notion")
+      }),
+    )
+
+    it.effect("validateProviderConfig should fail for notion provider without notion config", () =>
+      Effect.gen(function* () {
+        const config = new ShipConfig({
+          provider: "notion",
+          linear: new LinearConfig({
+            teamId: "team-1" as any,
+            teamKey: "ENG",
+            projectId: Option.none(),
+          }),
+          notion: Option.none(),
+          auth: new AuthConfig({ apiKey: "key" }),
+        })
+        const result = yield* validateProviderConfig(config).pipe(Effect.flip)
+        expect(result._tag).toBe("ConfigValidationError")
+        expect(result.message).toContain("Notion provider selected")
+      }),
+    )
+
+    it("hasProviderConfig should return true when linear config present for linear provider", () => {
+      const config = new PartialShipConfig({
+        provider: "linear",
+        linear: Option.some(
+          new LinearConfig({
+            teamId: "team-1" as any,
+            teamKey: "ENG",
+            projectId: Option.none(),
+          }),
+        ),
+        notion: Option.none(),
+        auth: Option.none(),
+      })
+      expect(hasProviderConfig(config)).toBe(true)
+    })
+
+    it("hasProviderConfig should return false when linear config missing for linear provider", () => {
+      const config = new PartialShipConfig({
+        provider: "linear",
+        linear: Option.none(),
+        notion: Option.none(),
+        auth: Option.none(),
+      })
+      expect(hasProviderConfig(config)).toBe(false)
+    })
+
+    it("hasProviderConfig should return true when notion config present for notion provider", () => {
+      const config = new PartialShipConfig({
+        provider: "notion",
+        linear: Option.none(),
+        notion: Option.some(
+          new NotionConfig({
+            databaseId: "db-123",
+            workspaceId: Option.none(),
+          }),
+        ),
+        auth: Option.none(),
+      })
+      expect(hasProviderConfig(config)).toBe(true)
+    })
+
+    it("getLinearConfig should return the linear config", () => {
+      const linearConfig = new LinearConfig({
+        teamId: "team-1" as any,
+        teamKey: "ENG",
+        projectId: Option.none(),
+      })
+      const config = new ShipConfig({
+        linear: linearConfig,
+        notion: Option.none(),
+        auth: new AuthConfig({ apiKey: "key" }),
+      })
+      expect(getLinearConfig(config)).toBe(linearConfig)
+    })
+
+    it.effect("getNotionConfig should return the notion config when present", () =>
+      Effect.gen(function* () {
+        const notionConfig = new NotionConfig({
+          databaseId: "db-123",
+          workspaceId: Option.none(),
+        })
+        const config = new ShipConfig({
+          provider: "notion",
+          linear: new LinearConfig({
+            teamId: "team-1" as any,
+            teamKey: "ENG",
+            projectId: Option.none(),
+          }),
+          notion: Option.some(notionConfig),
+          auth: new AuthConfig({ apiKey: "key" }),
+        })
+        const result = yield* getNotionConfig(config)
+        expect(result.databaseId).toBe("db-123")
+      }),
+    )
+
+    it.effect("getNotionConfig should fail when notion config is missing", () =>
+      Effect.gen(function* () {
+        const config = new ShipConfig({
+          linear: new LinearConfig({
+            teamId: "team-1" as any,
+            teamKey: "ENG",
+            projectId: Option.none(),
+          }),
+          notion: Option.none(),
+          auth: new AuthConfig({ apiKey: "key" }),
+        })
+        const result = yield* getNotionConfig(config).pipe(Effect.flip)
+        expect(result._tag).toBe("ConfigValidationError")
+        expect(result.message).toContain("Notion configuration not found")
       }),
     )
   })

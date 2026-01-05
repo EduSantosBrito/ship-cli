@@ -1,4 +1,7 @@
 import * as Schema from "effect/Schema";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import { ProjectId, TeamId } from "./Task.js";
 
 // =============================================================================
@@ -24,6 +27,18 @@ export const DEFAULT_WORKSPACE_NAME = "default";
 export const DEFAULT_WORKSPACE_PATH_PATTERN = `.ship/${SHIP_WORKSPACES_DIR}/{stack}`;
 
 // =============================================================================
+// Task Provider Types
+// =============================================================================
+
+/**
+ * Supported task management providers.
+ * - "linear": Linear.app (default, original provider)
+ * - "notion": Notion databases
+ */
+export const TaskProvider = Schema.Literal("linear", "notion");
+export type TaskProvider = typeof TaskProvider.Type;
+
+// =============================================================================
 // Config Schemas
 // =============================================================================
 
@@ -36,6 +51,48 @@ export class LinearConfig extends Schema.Class<LinearConfig>("LinearConfig")({
   teamId: TeamId,
   teamKey: Schema.String,
   projectId: Schema.OptionFromNullOr(ProjectId),
+}) {}
+
+/**
+ * Notion database property mapping configuration.
+ * Maps ship's task fields to Notion database property names.
+ * All properties have sensible defaults matching common Notion task templates.
+ */
+export class NotionPropertyMapping extends Schema.Class<NotionPropertyMapping>(
+  "NotionPropertyMapping",
+)({
+  /** Property name for task title (default: "Name") */
+  title: Schema.optionalWith(Schema.String, { default: () => "Name" }),
+  /** Property name for task status (default: "Status") */
+  status: Schema.optionalWith(Schema.String, { default: () => "Status" }),
+  /** Property name for task priority (default: "Priority") */
+  priority: Schema.optionalWith(Schema.String, { default: () => "Priority" }),
+  /** Property name for task description (default: "Description") */
+  description: Schema.optionalWith(Schema.String, { default: () => "Description" }),
+  /** Property name for labels/tags (default: "Labels") */
+  labels: Schema.optionalWith(Schema.String, { default: () => "Labels" }),
+  /** Property name for blocked-by relation (default: "Blocked By") */
+  blockedBy: Schema.optionalWith(Schema.String, { default: () => "Blocked By" }),
+  /** Property name for task type (default: "Type") */
+  type: Schema.optionalWith(Schema.String, { default: () => "Type" }),
+  /** Property name for task identifier (default: "ID") */
+  identifier: Schema.optionalWith(Schema.String, { default: () => "ID" }),
+  /** Property name for parent task relation (default: "Parent") */
+  parent: Schema.optionalWith(Schema.String, { default: () => "Parent" }),
+}) {}
+
+/**
+ * Notion-specific configuration for task management.
+ */
+export class NotionConfig extends Schema.Class<NotionConfig>("NotionConfig")({
+  /** The Notion database ID to use for tasks */
+  databaseId: Schema.String,
+  /** Optional workspace ID (for multi-workspace setups) */
+  workspaceId: Schema.OptionFromNullOr(Schema.String),
+  /** Property mapping configuration */
+  propertyMapping: Schema.optionalWith(NotionPropertyMapping, {
+    default: () => new NotionPropertyMapping({}),
+  }),
 }) {}
 
 export class GitConfig extends Schema.Class<GitConfig>("GitConfig")({
@@ -74,8 +131,18 @@ export class WorkspaceConfig extends Schema.Class<WorkspaceConfig>("WorkspaceCon
   autoCleanup: Schema.optionalWith(Schema.Boolean, { default: () => true }),
 }) {}
 
+/**
+ * Main ship configuration.
+ * Supports multiple task providers with backward compatibility for Linear-only configs.
+ */
 export class ShipConfig extends Schema.Class<ShipConfig>("ShipConfig")({
+  /** Task provider to use (default: "linear" for backward compatibility) */
+  provider: Schema.optionalWith(TaskProvider, { default: () => "linear" as const }),
+  /** Linear configuration (required for "linear" provider, which is default) */
   linear: LinearConfig,
+  /** Notion configuration (required when provider is "notion") */
+  notion: Schema.OptionFromNullOr(NotionConfig),
+  /** Authentication config */
   auth: AuthConfig,
   git: Schema.optionalWith(GitConfig, { default: () => new GitConfig({}) }),
   pr: Schema.optionalWith(PrConfig, { default: () => new PrConfig({}) }),
@@ -83,15 +150,109 @@ export class ShipConfig extends Schema.Class<ShipConfig>("ShipConfig")({
   workspace: Schema.optionalWith(WorkspaceConfig, { default: () => new WorkspaceConfig({}) }),
 }) {}
 
-// Partial config for when we're initializing
+/**
+ * Partial config for when we're initializing.
+ * All provider-specific fields are optional during initialization.
+ */
 export class PartialShipConfig extends Schema.Class<PartialShipConfig>("PartialShipConfig")({
+  /** Task provider to use (default: "linear" for backward compatibility) */
+  provider: Schema.optionalWith(TaskProvider, { default: () => "linear" as const }),
+  /** Linear configuration (optional during initialization) */
   linear: Schema.OptionFromNullOr(LinearConfig),
+  /** Notion configuration (optional during initialization) */
+  notion: Schema.OptionFromNullOr(NotionConfig),
+  /** Authentication config (optional during initialization) */
   auth: Schema.OptionFromNullOr(AuthConfig),
   git: Schema.optionalWith(GitConfig, { default: () => new GitConfig({}) }),
   pr: Schema.optionalWith(PrConfig, { default: () => new PrConfig({}) }),
   commit: Schema.optionalWith(CommitConfig, { default: () => new CommitConfig({}) }),
   workspace: Schema.optionalWith(WorkspaceConfig, { default: () => new WorkspaceConfig({}) }),
 }) {}
+
+// =============================================================================
+// Config Validation
+// =============================================================================
+
+/**
+ * Error type for invalid configuration.
+ */
+export class ConfigValidationError extends Data.TaggedError("ConfigValidationError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+/**
+ * Validate that the configuration has the required provider-specific config.
+ * Returns Effect with the config if valid, fails with ConfigValidationError if invalid.
+ *
+ * Note: For "linear" provider, linear config is always present (required field).
+ * For "notion" provider, notion config must be present.
+ *
+ * @param config - The config to validate
+ * @returns Effect containing the validated config or ConfigValidationError
+ */
+export const validateProviderConfig = (
+  config: ShipConfig,
+): Effect.Effect<ShipConfig, ConfigValidationError> =>
+  Effect.gen(function* () {
+    // linear is always present (required field), so only check notion
+    if (config.provider === "notion" && Option.isNone(config.notion)) {
+      return yield* Effect.fail(
+        new ConfigValidationError({
+          message: "Notion provider selected but notion configuration is missing. Run 'ship init' to configure.",
+        }),
+      );
+    }
+    return config;
+  });
+
+/**
+ * Check if the partial config has the required provider-specific config.
+ * Used during initialization to determine what still needs to be configured.
+ *
+ * @param config - The partial config to check
+ * @returns true if provider config is complete, false otherwise
+ */
+export const hasProviderConfig = (config: PartialShipConfig): boolean => {
+  if (config.provider === "linear") {
+    return Option.isSome(config.linear);
+  }
+  if (config.provider === "notion") {
+    return Option.isSome(config.notion);
+  }
+  return false;
+};
+
+/**
+ * Get the Linear config from a ShipConfig.
+ * Use this when you know the provider is "linear".
+ *
+ * @param config - The config
+ * @returns The LinearConfig
+ */
+export const getLinearConfig = (config: ShipConfig): LinearConfig => {
+  return config.linear;
+};
+
+/**
+ * Get the Notion config from a ShipConfig.
+ * Returns Effect with the NotionConfig or fails with ConfigValidationError.
+ *
+ * @param config - The config
+ * @returns Effect containing the NotionConfig or ConfigValidationError
+ */
+export const getNotionConfig = (
+  config: ShipConfig,
+): Effect.Effect<NotionConfig, ConfigValidationError> =>
+  Option.match(config.notion, {
+    onNone: () =>
+      Effect.fail(
+        new ConfigValidationError({
+          message: "Notion configuration not found. Run 'ship init' to configure.",
+        }),
+      ),
+    onSome: Effect.succeed,
+  });
 
 // === Workspace Metadata (stored in .ship/workspaces.json) ===
 
@@ -159,8 +320,6 @@ export const resolveWorkspacePath = (
 
 // === Workspace Metadata I/O Utilities ===
 
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import * as FileSystem from "@effect/platform/FileSystem";
 import * as Path from "@effect/platform/Path";
 import * as Duration from "effect/Duration";
