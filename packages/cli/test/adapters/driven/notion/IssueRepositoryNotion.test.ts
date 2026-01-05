@@ -177,6 +177,8 @@ const createMockClient = () => ({
   dataSources: {
     query: vi.fn(),
   },
+  // Used by queryDatabase for the stable /v1/databases/{id}/query endpoint
+  request: vi.fn(),
 });
 
 const createNotionConfig = () =>
@@ -319,7 +321,7 @@ describe("IssueRepositoryNotion", () => {
 
   describe("getTaskByIdentifier", () => {
     it("returns task when found by identifier", async () => {
-      mockClient.dataSources.query.mockResolvedValue(createQueryResponse([testPage1]));
+      mockClient.request.mockResolvedValue(createQueryResponse([testPage1]));
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {
@@ -332,7 +334,7 @@ describe("IssueRepositoryNotion", () => {
     });
 
     it("fails with TaskNotFoundError when not found", async () => {
-      mockClient.dataSources.query.mockResolvedValue(createQueryResponse([]));
+      mockClient.request.mockResolvedValue(createQueryResponse([]));
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {
@@ -519,7 +521,7 @@ describe("IssueRepositoryNotion", () => {
 
   describe("listTasks", () => {
     it("returns all tasks without filter", async () => {
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([testPage1, testPage2]),
       );
 
@@ -542,7 +544,7 @@ describe("IssueRepositoryNotion", () => {
     });
 
     it("filters by priority", async () => {
-      mockClient.dataSources.query.mockResolvedValue(createQueryResponse([testPage2]));
+      mockClient.request.mockResolvedValue(createQueryResponse([testPage2]));
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {
@@ -564,7 +566,7 @@ describe("IssueRepositoryNotion", () => {
     });
 
     it("excludes completed tasks by default", async () => {
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([testPage1, testPage2]),
       );
 
@@ -585,9 +587,10 @@ describe("IssueRepositoryNotion", () => {
       );
 
       // Verify the query included the does_not_equal filter
-      expect(mockClient.dataSources.query).toHaveBeenCalledWith(
+      expect(mockClient.request).toHaveBeenCalledWith(
         expect.objectContaining({
-          data_source_id: "db-123",
+          path: "databases/db-123/query",
+          method: "post",
         }),
       );
     });
@@ -599,7 +602,7 @@ describe("IssueRepositoryNotion", () => {
 
   describe("getReadyTasks", () => {
     it("returns tasks without blockers", async () => {
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([testPage1, testPage2]),
       );
 
@@ -615,7 +618,7 @@ describe("IssueRepositoryNotion", () => {
 
     it("excludes tasks with incomplete blockers", async () => {
       // Return blocked task and its incomplete blocker
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([blockedPage, testPage1]),
       );
 
@@ -641,7 +644,7 @@ describe("IssueRepositoryNotion", () => {
         "Blocked By": createRelationProperty(["page-completed-blocker"]),
       });
 
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([taskWithCompletedBlocker, completedBlockerPage]),
       );
 
@@ -663,7 +666,7 @@ describe("IssueRepositoryNotion", () => {
 
   describe("getBlockedTasks", () => {
     it("returns only tasks with incomplete blockers", async () => {
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([blockedPage, testPage1]),
       );
 
@@ -680,7 +683,7 @@ describe("IssueRepositoryNotion", () => {
     });
 
     it("returns empty when no blocked tasks", async () => {
-      mockClient.dataSources.query.mockResolvedValue(
+      mockClient.request.mockResolvedValue(
         createQueryResponse([testPage1, testPage2]),
       );
 
@@ -894,7 +897,7 @@ describe("IssueRepositoryNotion", () => {
         "Blocked By": createRelationProperty(["page-123"]),
       });
 
-      mockClient.dataSources.query.mockResolvedValue(createQueryResponse([blockedTask]));
+      mockClient.request.mockResolvedValue(createQueryResponse([blockedTask]));
       mockClient.pages.update.mockResolvedValue(blockedTask);
 
       const result = await Effect.runPromise(
@@ -909,7 +912,7 @@ describe("IssueRepositoryNotion", () => {
     });
 
     it("returns empty array when not blocking any tasks", async () => {
-      mockClient.dataSources.query.mockResolvedValue(createQueryResponse([]));
+      mockClient.request.mockResolvedValue(createQueryResponse([]));
 
       const result = await Effect.runPromise(
         Effect.gen(function* () {
